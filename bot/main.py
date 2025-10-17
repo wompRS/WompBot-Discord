@@ -144,21 +144,22 @@ async def on_message(message):
     
     # Check if bot should respond first
     should_respond = False
-    is_direct_mention = False
-    
+    is_addressing_bot = False
+
     # 1. Direct @mention
     if bot.user.mentioned_in(message):
         should_respond = True
-        is_direct_mention = True
-    
+        is_addressing_bot = True
+
     # 2. "wompbot" or "womp bot" mentioned in message (case insensitive)
     message_lower = message.content.lower()
     if 'wompbot' in message_lower or 'womp bot' in message_lower:
         should_respond = True
-    
+        is_addressing_bot = True
+
     # Analyze for trackable claims ONLY if not directly addressing bot
     # (Skip claim analysis for direct conversations with bot)
-    if not opted_out and len(message.content) > 20 and not is_direct_mention:
+    if not opted_out and len(message.content) > 20 and not is_addressing_bot:
         claim_data = await claims_tracker.analyze_message_for_claim(message)
         if claim_data:
             claim_id = await claims_tracker.store_claim(message, claim_data)
