@@ -323,16 +323,16 @@ async def handle_bot_mention(message, opted_out):
             
             # Check if search is needed
             search_results = None
+            search_msg = None
+
             if llm.should_search(content, conversation_history):
                 search_msg = await message.channel.send("🔍 Searching for current info...")
-                
+
                 search_results_raw = search.search(content)
                 search_results = search.format_results_for_llm(search_results_raw)
-                
+
                 db.store_search_log(content, len(search_results_raw), message.author.id, message.channel.id)
-                
-                await search_msg.delete()
-            
+
             # Generate response
             response = llm.generate_response(
                 user_message=content,
@@ -340,20 +340,23 @@ async def handle_bot_mention(message, opted_out):
                 user_context=user_context,
                 search_results=search_results
             )
-            
+
             # Check if response is empty
             if not response or len(response.strip()) == 0:
                 response = "I got nothing. Try asking something else?"
-            
+
             # Check if LLM says it needs more info
             if not search_results and llm.detect_needs_search_from_response(response):
-                search_msg = await message.channel.send("🔍 Let me search for that...")
-                
+                if not search_msg:
+                    search_msg = await message.channel.send("🔍 Let me search for that...")
+                else:
+                    await search_msg.edit(content="🔍 Let me search for that...")
+
                 search_results_raw = search.search(content)
                 search_results = search.format_results_for_llm(search_results_raw)
-                
+
                 db.store_search_log(content, len(search_results_raw), message.author.id, message.channel.id)
-                
+
                 # Regenerate response with search results
                 response = llm.generate_response(
                     user_message=content,
@@ -361,21 +364,33 @@ async def handle_bot_mention(message, opted_out):
                     user_context=user_context,
                     search_results=search_results
                 )
-                
-                await search_msg.delete()
-            
+
             # Final check for empty response
             if not response or len(response.strip()) == 0:
                 response = "Error: Got an empty response. Try rephrasing?"
-            
-            # Send response (split if too long)
-            if len(response) > 2000:
-                chunks = [response[i:i+2000] for i in range(0, len(response), 2000)]
-                for chunk in chunks:
-                    if chunk.strip():  # Only send non-empty chunks
-                        await message.channel.send(chunk)
+
+            # Send or edit response
+            if search_msg:
+                # Edit the search message with the response
+                if len(response) > 2000:
+                    await search_msg.edit(content=response[:2000])
+                    # Send remaining chunks as new messages
+                    remaining = response[2000:]
+                    chunks = [remaining[i:i+2000] for i in range(0, len(remaining), 2000)]
+                    for chunk in chunks:
+                        if chunk.strip():
+                            await message.channel.send(chunk)
+                else:
+                    await search_msg.edit(content=response)
             else:
-                await message.channel.send(response)
+                # No search, just send normally
+                if len(response) > 2000:
+                    chunks = [response[i:i+2000] for i in range(0, len(response), 2000)]
+                    for chunk in chunks:
+                        if chunk.strip():
+                            await message.channel.send(chunk)
+                else:
+                    await message.channel.send(response)
     
     except Exception as e:
         print(f"❌ Error handling message: {e}")
