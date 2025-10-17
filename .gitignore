@@ -14,5 +14,8 @@ postgres_data/
 # VSCode
 .vscode/
 
+# Claude Code
+.claude/
+
 # Logs
 *.log
