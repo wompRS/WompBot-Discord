@@ -97,7 +97,13 @@ Your name is WompBot. Keep it chill and conversational. Don't be cringe."""
             response.raise_for_status()
             
             result = response.json()
-            return result['choices'][0]['message']['content']
+            response_text = result['choices'][0]['message']['content']
+            
+            print(f"✅ LLM response length: {len(response_text)} chars")
+            if not response_text or len(response_text.strip()) == 0:
+                print(f"⚠️  WARNING: Empty response from LLM. Full result: {result}")
+            
+            return response_text
         except Exception as e:
             print(f"❌ LLM error: {e}")
             return f"Error generating response: {str(e)}"
