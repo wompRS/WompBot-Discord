@@ -79,7 +79,7 @@ async def generate_leaderboard_response(channel, stat_type, days):
             
             leaderboard_text = ""
             for i, user in enumerate(sorted_results, 1):
-                medal = "🥇" if i == 1 else "��" if i == 2 else "🥉" if i == 3 else f"{i}."
+                medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else f"{i}."
                 percentage = user['question_percentage']
                 leaderboard_text += f"{medal} **{user['username']}**: {user['question_count']} questions "
                 leaderboard_text += f"({percentage:.1f}% of {user['total_messages']} messages)\n"
@@ -130,75 +130,6 @@ async def on_ready():
     except Exception as e:
         print(f"❌ Failed to sync commands: {e}")
 
-async def should_bot_respond_to_message(message, recent_messages):
-    """Use LLM to determine if bot should respond based on context"""
-    try:
-        # Build context from recent messages
-        context_text = "\n".join([
-            f"{msg['username']}: {msg['content']}"
-            for msg in recent_messages[-5:]  # Last 5 messages
-        ])
-        
-        current_message = f"{message.author.name}: {message.content}"
-        
-        prompt = f"""Analyze this Discord conversation and determine if WompBot should respond to the latest message.
-
-WompBot should respond if:
-- The message is directly addressing WompBot (even without @mention)
-- The message is a follow-up question/comment to something WompBot just said
-- The message is continuing a conversation WompBot is actively part of
-- The message seems to expect WompBot's input based on context
-
-WompBot should NOT respond if:
-- Users are having a conversation among themselves
-- The message is clearly not directed at WompBot
-- It's a random comment not related to WompBot's recent messages
-- Responding would be intrusive or off-topic
-
-Recent conversation:
-{context_text}
-
-Latest message:
-{current_message}
-
-Respond with ONLY "YES" or "NO" """
-
-        headers = {
-            "Authorization": f"Bearer {llm.api_key}",
-            "Content-Type": "application/json"
-        }
-        
-        payload = {
-            "model": llm.model,
-            "messages": [
-                {"role": "system", "content": "You are an expert at understanding conversational context in group chats. Be conservative - only say YES if the bot should clearly respond."},
-                {"role": "user", "content": prompt}
-            ],
-            "max_tokens": 10,
-            "temperature": 0.1
-        }
-        
-        import requests
-        response = requests.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            headers=headers,
-            json=payload,
-            timeout=15
-        )
-        response.raise_for_status()
-        
-        result = response.json()['choices'][0]['message']['content'].strip().upper()
-        
-        should_respond = "YES" in result
-        print(f"🤔 Context check: {should_respond} - '{message.content[:50]}'")
-        
-        return should_respond
-        
-    except Exception as e:
-        print(f"❌ Error in context detection: {e}")
-        # Default to not responding if error
-        return False
-
 @bot.event
 async def on_message(message):
     # Ignore bot's own messages
@@ -211,8 +142,23 @@ async def on_message(message):
     # Store ALL messages (even if opted out, we flag them)
     db.store_message(message, opted_out=opted_out)
     
-    # Analyze for trackable claims (if not opted out)
-    if not opted_out and len(message.content) > 20:
+    # Check if bot should respond first
+    should_respond = False
+    is_direct_mention = False
+    
+    # 1. Direct @mention
+    if bot.user.mentioned_in(message):
+        should_respond = True
+        is_direct_mention = True
+    
+    # 2. "wompbot" or "womp bot" mentioned in message (case insensitive)
+    message_lower = message.content.lower()
+    if 'wompbot' in message_lower or 'womp bot' in message_lower:
+        should_respond = True
+    
+    # Analyze for trackable claims ONLY if not directly addressing bot
+    # (Skip claim analysis for direct conversations with bot)
+    if not opted_out and len(message.content) > 20 and not is_direct_mention:
         claim_data = await claims_tracker.analyze_message_for_claim(message)
         if claim_data:
             claim_id = await claims_tracker.store_claim(message, claim_data)
@@ -243,33 +189,6 @@ async def on_message(message):
                             inline=False
                         )
                         await message.channel.send(embed=embed)
-    
-    # Check if bot should respond
-    should_respond = False
-    
-    # 1. Direct @mention - always respond
-    if bot.user.mentioned_in(message):
-        should_respond = True
-    
-    # 2. "wompbot" or "womp bot" mentioned in message (case insensitive) - always respond
-    message_lower = message.content.lower()
-    if 'wompbot' in message_lower or 'womp bot' in message_lower:
-        should_respond = True
-    
-    # 3. Use LLM to check context if not already responding
-    if not should_respond and len(message.content) > 5:
-        # Get recent messages for context
-        recent_messages = db.get_recent_messages(message.channel.id, limit=6, exclude_opted_out=True)
-        
-        # Only check context if bot was recently active (within last 5 messages)
-        bot_recently_active = any(
-            'wompbot' in msg.get('username', '').lower() or 
-            str(bot.user.id) == str(msg.get('user_id', ''))
-            for msg in recent_messages[-5:]
-        )
-        
-        if bot_recently_active:
-            should_respond = await should_bot_respond_to_message(message, recent_messages)
     
     if should_respond:
         await handle_bot_mention(message, opted_out)
@@ -320,12 +239,87 @@ async def handle_bot_mention(message, opted_out):
     try:
         # Remove bot mention and "wompbot" from message
         content = message.content.replace(f'<@{bot.user.id}>', '').strip()
+        content = content.replace(f'<@!{bot.user.id}>', '').strip()  # Also handle nickname mentions
         content = content.replace('wompbot', '').replace('womp bot', '').strip()
         content = content.replace('WompBot', '').replace('Wompbot', '').strip()
         
-        if not content:
+        if not content or len(content) < 2:
             await message.channel.send("Yeah? What's up?")
             return
+        
+        # Start typing indicator
+        async with message.channel.typing():
+            # Get conversation context
+            conversation_history = db.get_recent_messages(
+                message.channel.id, 
+                limit=int(os.getenv('CONTEXT_WINDOW_MESSAGES', 6)),
+                exclude_opted_out=True
+            )
+            
+            # Get user context (if not opted out)
+            user_context = None if opted_out else db.get_user_context(message.author.id)
+            
+            # Check if search is needed
+            search_results = None
+            if llm.should_search(content, conversation_history):
+                search_msg = await message.channel.send("🔍 Searching for current info...")
+                
+                search_results_raw = search.search(content)
+                search_results = search.format_results_for_llm(search_results_raw)
+                
+                db.store_search_log(content, len(search_results_raw), message.author.id, message.channel.id)
+                
+                await search_msg.delete()
+            
+            # Generate response
+            response = llm.generate_response(
+                user_message=content,
+                conversation_history=conversation_history,
+                user_context=user_context,
+                search_results=search_results
+            )
+            
+            # Check if response is empty
+            if not response or len(response.strip()) == 0:
+                response = "I got nothing. Try asking something else?"
+            
+            # Check if LLM says it needs more info
+            if not search_results and llm.detect_needs_search_from_response(response):
+                search_msg = await message.channel.send("🔍 Let me search for that...")
+                
+                search_results_raw = search.search(content)
+                search_results = search.format_results_for_llm(search_results_raw)
+                
+                db.store_search_log(content, len(search_results_raw), message.author.id, message.channel.id)
+                
+                # Regenerate response with search results
+                response = llm.generate_response(
+                    user_message=content,
+                    conversation_history=conversation_history,
+                    user_context=user_context,
+                    search_results=search_results
+                )
+                
+                await search_msg.delete()
+            
+            # Final check for empty response
+            if not response or len(response.strip()) == 0:
+                response = "Error: Got an empty response. Try rephrasing?"
+            
+            # Send response (split if too long)
+            if len(response) > 2000:
+                chunks = [response[i:i+2000] for i in range(0, len(response), 2000)]
+                for chunk in chunks:
+                    if chunk.strip():  # Only send non-empty chunks
+                        await message.channel.send(chunk)
+            else:
+                await message.channel.send(response)
+    
+    except Exception as e:
+        print(f"❌ Error handling message: {e}")
+        import traceback
+        traceback.print_exc()
+        await message.channel.send(f"Error processing request: {str(e)}")
         
         # Check for leaderboard triggers in natural language
         content_lower = content.lower()
