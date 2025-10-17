@@ -308,7 +308,30 @@ async def handle_bot_mention(message, opted_out):
         if not content or len(content) < 2:
             await message.channel.send("Yeah? What's up?")
             return
-        
+
+        # Check for leaderboard triggers in natural language
+        content_lower = content.lower()
+        leaderboard_triggers = {
+            'messages': ['who talks the most', 'who messages the most', 'most active', 'most messages', 'who chats the most'],
+            'questions': ['who asks the most questions', 'most questions', 'most curious', 'who questions'],
+            'profanity': ['who swears the most', 'who curses the most', 'most profanity', 'saltiest', 'who says fuck']
+        }
+
+        for stat_type, triggers in leaderboard_triggers.items():
+            if any(trigger in content_lower for trigger in triggers):
+                # Extract days if mentioned
+                days = 7
+                if 'month' in content_lower or '30 days' in content_lower:
+                    days = 30
+                elif 'week' in content_lower or '7 days' in content_lower:
+                    days = 7
+                elif 'year' in content_lower:
+                    days = 365
+
+                # Generate leaderboard
+                await generate_leaderboard_response(message.channel, stat_type, days)
+                return
+
         # Start typing indicator
         async with message.channel.typing():
             # Get conversation context
