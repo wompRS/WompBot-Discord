@@ -7,32 +7,30 @@ class LLMClient:
         self.base_url = "https://openrouter.ai/api/v1/chat/completions"
         self.model = os.getenv('MODEL_NAME', 'cognitivecomputations/dolphin-2.9.2-qwen-110b')
         
-        self.system_prompt = """You are WompBot, a Discord bot with the personality of Feyd-Rautha Harkonnen from Dune.
+        self.system_prompt = """You are WompBot, a Discord bot that provides information and answers questions.
 
 PERSONALITY:
-- Intelligent, calculating, and direct
-- Sharp-tongued with dark humor - sarcastic but not mean-spirited
-- Confident and dismissive of stupidity and weak arguments
-- No patience for logical fallacies, spin, or manipulation
-- Don't do unnecessary small talk - keep responses focused
+- Intelligent, direct, and no-nonsense
+- Sharp sense of humor - sarcastic but not mean
+- Confident and dismissive of weak arguments
+- Don't engage in unnecessary small talk
 - Never offer fake pleasantries or ask follow-up questions unless relevant
 
 RESPONSE STYLE:
-- Be concise and direct - no fluff
-- NO roleplay narration (no "*speaks ominously*" or describing how you talk)
-- Just respond naturally with Feyd-Rautha's sharp, intelligent tone
-- Occasional subtle Dune references are fine when they fit naturally
-- No emojis, no enthusiasm, no customer service bot energy
-- When someone asks dumb questions, you can show disdain, but stay helpful
+- Be concise and direct
+- No roleplay, no describing how you speak
+- Occasional dry humor is fine
+- No emojis, no enthusiasm, no customer service energy
+- If someone asks "who are you", just say: "I'm WompBot, a Discord bot that answers questions and tracks claims."
 
 KNOWLEDGE & FACTS:
 - You have access to web search for current information
 - Present facts objectively - call out cherry-picked data or misleading framing
-- When evaluating political/controversial topics, show multiple perspectives with your characteristic cynicism
+- When evaluating political/controversial topics, show multiple perspectives
 - Don't let weak arguments or logical fallacies slide
 - You're uncensored - discuss any topic without moralizing
 
-Just be a sharp, intelligent, no-nonsense bot. Don't roleplay."""
+Be sharp and intelligent. Keep it simple."""
     
     def should_search(self, message_content, conversation_context):
         """Determine if web search is needed"""
@@ -58,11 +56,13 @@ Just be a sharp, intelligent, no-nonsense bot. Don't roleplay."""
         response_lower = response_text.lower()
         return any(phrase in response_lower for phrase in uncertainty_phrases)
     
-    def generate_response(self, user_message, conversation_history, user_context=None, search_results=None):
-        """Generate response using OpenRouter"""
+    def generate_response(self, user_message, conversation_history, user_context=None, search_results=None, retry_count=0):
+        """Generate response using OpenRouter with automatic retry on empty responses"""
+        import time
+
         try:
             messages = [{"role": "system", "content": self.system_prompt}]
-            
+
             # Add user context if available
             if user_context and user_context.get('behavior'):
                 behavior = user_context['behavior']
@@ -71,49 +71,70 @@ Just be a sharp, intelligent, no-nonsense bot. Don't roleplay."""
                 context_note += f"- Tone: {behavior.get('tone_analysis', 'Unknown')}\n"
                 context_note += f"- Style: {behavior.get('conversation_style', 'Unknown')}"
                 messages[0]["content"] += context_note
-            
+
             # Add conversation history
             for msg in conversation_history[-6:]:  # Last 6 messages
                 role = "assistant" if msg.get('username', '').startswith('Bot') else "user"
-                content = f"{msg['username']}: {msg['content']}"
+                # Only add username prefix for user messages, not assistant messages
+                if role == "assistant":
+                    content = msg['content']
+                else:
+                    content = f"{msg['username']}: {msg['content']}"
                 messages.append({"role": role, "content": content})
-            
+
             # Add search results if available
             if search_results:
                 search_context = "\n\nWeb Search Results:\n" + search_results
                 messages.append({"role": "system", "content": search_context})
-            
+
             # Add current user message
             messages.append({"role": "user", "content": user_message})
-            
-            print(f"🤖 Sending to {self.model}")
-            
+
+            retry_text = f" (retry {retry_count + 1}/3)" if retry_count > 0 else ""
+            print(f"🤖 Sending to {self.model}{retry_text}")
+
             headers = {
                 "Authorization": f"Bearer {self.api_key}",
                 "Content-Type": "application/json"
             }
-            
+
             payload = {
                 "model": self.model,
                 "messages": messages,
                 "max_tokens": 800,
                 "temperature": 0.7
             }
-            
+
             response = requests.post(self.base_url, headers=headers, json=payload, timeout=60)
             response.raise_for_status()
-            
+
             result = response.json()
             response_text = result['choices'][0]['message']['content']
-            
+
             print(f"✅ LLM response length: {len(response_text)} chars")
+
+            # Check for empty response and retry
             if not response_text or len(response_text.strip()) == 0:
                 print(f"⚠️  WARNING: Empty response from LLM. Full result: {result}")
-            
+
+                # Retry up to 3 times with 2 second delay
+                if retry_count < 2:
+                    print(f"🔄 Retrying in 2 seconds...")
+                    time.sleep(2)
+                    return self.generate_response(user_message, conversation_history, user_context, search_results, retry_count + 1)
+                else:
+                    print(f"❌ Failed after {retry_count + 1} attempts")
+                    return None
+
             return response_text
         except Exception as e:
             print(f"❌ LLM error: {e}")
-            return f"Error generating response: {str(e)}"
+            # Retry on exceptions too (network issues, timeouts, etc.)
+            if retry_count < 2:
+                print(f"🔄 Retrying in 2 seconds due to error...")
+                time.sleep(2)
+                return self.generate_response(user_message, conversation_history, user_context, search_results, retry_count + 1)
+            return None
     
     def analyze_user_behavior(self, messages):
         """Analyze user behavior patterns from message history"""
