@@ -96,7 +96,7 @@ class Database:
                 return list(reversed(messages))  # Return chronological order
         except Exception as e:
             print(f"❌ Error fetching messages: {e}")
-            return []}")
+            return []
             return []
     
     def get_user_context(self, user_id):
