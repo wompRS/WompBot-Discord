@@ -334,11 +334,12 @@ async def handle_bot_mention(message, opted_out):
 
         # Start typing indicator
         async with message.channel.typing():
-            # Get conversation context
+            # Get conversation context (exclude bot's own messages)
             conversation_history = db.get_recent_messages(
-                message.channel.id, 
+                message.channel.id,
                 limit=int(os.getenv('CONTEXT_WINDOW_MESSAGES', 6)),
-                exclude_opted_out=True
+                exclude_opted_out=True,
+                exclude_bot_id=bot.user.id
             )
             
             # Get user context (if not opted out)

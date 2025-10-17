@@ -78,7 +78,7 @@ class Database:
         except Exception as e:
             print(f"❌ Error storing message: {e}")
     
-    def get_recent_messages(self, channel_id, limit=10, exclude_opted_out=True):
+    def get_recent_messages(self, channel_id, limit=10, exclude_opted_out=True, exclude_bot_id=None):
         """Get recent messages from a channel for context"""
         try:
             with self.conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -89,14 +89,15 @@ class Database:
                 """
                 if exclude_opted_out:
                     query += " AND opted_out = FALSE"
+                if exclude_bot_id:
+                    query += f" AND user_id != {exclude_bot_id}"
                 query += " ORDER BY timestamp DESC LIMIT %s"
-                
+
                 cur.execute(query, (channel_id, limit))
                 messages = cur.fetchall()
                 return list(reversed(messages))  # Return chronological order
         except Exception as e:
             print(f"❌ Error fetching messages: {e}")
-            return []
             return []
     
     def get_user_context(self, user_id):
