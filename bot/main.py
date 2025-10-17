@@ -7,6 +7,7 @@ from database import Database
 from llm import LLMClient
 from search import SearchEngine
 from features.claims import ClaimsTracker
+from features.fact_check import FactChecker
 
 # Bot setup
 intents = discord.Intents.default()
@@ -24,6 +25,7 @@ search = SearchEngine()
 
 # Setup feature modules
 claims_tracker = ClaimsTracker(db, llm)
+fact_checker = FactChecker(db, llm, search)
 
 OPT_OUT_ROLE = os.getenv('OPT_OUT_ROLE_NAME', 'NoDataCollection')
 WOMPIE_USERNAME = "Wompie__"

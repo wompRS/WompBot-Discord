@@ -103,6 +103,21 @@ CREATE TABLE IF NOT EXISTS claim_contradictions (
     detected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Fact-checks table (emoji react triggered fact-checks)
+CREATE TABLE IF NOT EXISTS fact_checks (
+    id SERIAL PRIMARY KEY,
+    message_id BIGINT NOT NULL,
+    user_id BIGINT NOT NULL,
+    username VARCHAR(255) NOT NULL,
+    channel_id BIGINT NOT NULL,
+    claim_text TEXT NOT NULL,
+    fact_check_result TEXT NOT NULL,
+    search_results JSONB,
+    requested_by_user_id BIGINT NOT NULL,
+    requested_by_username VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Create indexes for common queries
 CREATE INDEX IF NOT EXISTS idx_messages_user_id ON messages(user_id);
 CREATE INDEX IF NOT EXISTS idx_messages_channel_id ON messages(channel_id);
@@ -115,3 +130,5 @@ CREATE INDEX IF NOT EXISTS idx_claims_verification_status ON claims(verification
 CREATE INDEX IF NOT EXISTS idx_quotes_user_id ON quotes(user_id);
 CREATE INDEX IF NOT EXISTS idx_quotes_timestamp ON quotes(timestamp);
 CREATE INDEX IF NOT EXISTS idx_quotes_category ON quotes(category);
+CREATE INDEX IF NOT EXISTS idx_fact_checks_message_id ON fact_checks(message_id);
+CREATE INDEX IF NOT EXISTS idx_fact_checks_user_id ON fact_checks(user_id);

@@ -250,6 +250,36 @@ class Database:
             print(f"❌ Error fetching profanity stats: {e}")
             return []
     
+    def store_fact_check(self, message_id, user_id, username, channel_id, claim_text,
+                         fact_check_result, search_results, requested_by_user_id, requested_by_username):
+        """Store fact-check results"""
+        try:
+            import json
+            with self.conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO fact_checks
+                    (message_id, user_id, username, channel_id, claim_text,
+                     fact_check_result, search_results, requested_by_user_id, requested_by_username)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id
+                """, (
+                    message_id,
+                    user_id,
+                    username,
+                    channel_id,
+                    claim_text,
+                    fact_check_result,
+                    json.dumps(search_results),
+                    requested_by_user_id,
+                    requested_by_username
+                ))
+                fact_check_id = cur.fetchone()[0]
+                print(f"✅ Stored fact-check #{fact_check_id} for message {message_id}")
+                return fact_check_id
+        except Exception as e:
+            print(f"❌ Error storing fact-check: {e}")
+            return None
+
     def close(self):
         """Close database connection"""
         if self.conn:
