@@ -217,25 +217,84 @@ async def on_message_delete(message):
 
 @bot.event
 async def on_reaction_add(reaction, user):
-    """Handle emoji reactions for quotes"""
+    """Handle emoji reactions for quotes and fact-checks"""
     # Ignore bot's own reactions
     if user == bot.user:
         return
-    
-    # Check for cloud emoji - Discord format
-    # Can be ☁️ (unicode) or :cloud: (discord name)
+
+    # Check for cloud emoji ☁️ - Save as quote
     is_cloud = (
-        str(reaction.emoji) == "☁️" or 
+        str(reaction.emoji) == "☁️" or
         (hasattr(reaction.emoji, 'name') and reaction.emoji.name == 'cloud') or
         str(reaction.emoji) == ":cloud:"
     )
-    
+
+    # Check for warning emoji ⚠️ - Trigger fact-check
+    is_warning = (
+        str(reaction.emoji) == "⚠️" or
+        str(reaction.emoji) == "⚠" or
+        (hasattr(reaction.emoji, 'name') and reaction.emoji.name == 'warning')
+    )
+
     if is_cloud:
         # Only save once (check if already exists)
         quote_id = await claims_tracker.store_quote(reaction.message, user)
         if quote_id:
             # React with checkmark to confirm
             await reaction.message.add_reaction("✅")
+
+    elif is_warning:
+        # Trigger fact-check
+        thinking_msg = await reaction.message.channel.send("🔍 Fact-checking this claim...")
+
+        try:
+            result = await fact_checker.fact_check_message(reaction.message, user)
+
+            await thinking_msg.delete()
+
+            if result['success']:
+                # Parse verdict emoji
+                verdict_emoji = fact_checker.parse_verdict(result['analysis'])
+
+                # Create embed
+                embed = discord.Embed(
+                    title=f"{verdict_emoji} Fact-Check Results",
+                    description=result['analysis'],
+                    color=discord.Color.orange()
+                )
+
+                embed.add_field(
+                    name="Original Claim",
+                    value=f"> {reaction.message.content[:200]}",
+                    inline=False
+                )
+
+                if result.get('sources'):
+                    sources_text = "\n".join([
+                        f"• [{s['title'][:60]}]({s['url']})"
+                        for s in result['sources'][:3]
+                    ])
+                    embed.add_field(
+                        name="Sources",
+                        value=sources_text,
+                        inline=False
+                    )
+
+                embed.set_footer(text=f"Requested by {user.display_name}")
+
+                await reaction.message.reply(embed=embed, mention_author=False)
+
+                # React with verdict emoji
+                await reaction.message.add_reaction(verdict_emoji)
+            else:
+                await reaction.message.channel.send(
+                    f"❌ Fact-check failed: {result.get('error', 'Unknown error')}"
+                )
+
+        except Exception as e:
+            await thinking_msg.delete()
+            await reaction.message.channel.send(f"❌ Error during fact-check: {str(e)}")
+            print(f"❌ Fact-check error: {e}")
 
 async def handle_bot_mention(message, opted_out):
     """Handle when bot is mentioned/tagged"""
@@ -552,6 +611,11 @@ async def help_command(ctx):
     embed.add_field(
         name="/quotes [@user]",
         value="View saved quotes for a user. React with ☁️ to save quotes.",
+        inline=False
+    )
+    embed.add_field(
+        name="⚠️ Fact-Check",
+        value="React to any message with ⚠️ emoji to trigger an automatic fact-check using web search.",
         inline=False
     )
     embed.add_field(
