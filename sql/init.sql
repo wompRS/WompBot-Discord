@@ -118,6 +118,43 @@ CREATE TABLE IF NOT EXISTS fact_checks (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Stats cache table (for pre-computed statistics)
+CREATE TABLE IF NOT EXISTS stats_cache (
+    id SERIAL PRIMARY KEY,
+    stat_type VARCHAR(50) NOT NULL, -- 'primetime', 'topics', 'network', 'engagement', 'channel'
+    scope VARCHAR(100) NOT NULL, -- 'server', 'channel:123', 'user:456'
+    time_range_days INT, -- NULL for custom ranges
+    start_date TIMESTAMP,
+    end_date TIMESTAMP,
+    computed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    valid_until TIMESTAMP NOT NULL,
+    results JSONB NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Message interactions table (for network graphs)
+CREATE TABLE IF NOT EXISTS message_interactions (
+    id BIGSERIAL PRIMARY KEY,
+    message_id BIGINT NOT NULL,
+    user_id BIGINT NOT NULL, -- who sent the message
+    replied_to_user_id BIGINT, -- who they replied to
+    replied_to_message_id BIGINT, -- which message they replied to
+    mentioned_user_ids BIGINT[], -- array of mentioned user IDs
+    channel_id BIGINT NOT NULL,
+    timestamp TIMESTAMP NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Topic tracking table (for trending topics over time)
+CREATE TABLE IF NOT EXISTS topic_snapshots (
+    id SERIAL PRIMARY KEY,
+    snapshot_date TIMESTAMP NOT NULL,
+    time_range_days INT NOT NULL, -- 7, 30, etc.
+    channel_id BIGINT, -- NULL for server-wide
+    topics JSONB NOT NULL, -- [{keyword: 'bitcoin', count: 45, score: 0.87}, ...]
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Create indexes for common queries
 CREATE INDEX IF NOT EXISTS idx_messages_user_id ON messages(user_id);
 CREATE INDEX IF NOT EXISTS idx_messages_channel_id ON messages(channel_id);
@@ -132,3 +169,12 @@ CREATE INDEX IF NOT EXISTS idx_quotes_timestamp ON quotes(timestamp);
 CREATE INDEX IF NOT EXISTS idx_quotes_category ON quotes(category);
 CREATE INDEX IF NOT EXISTS idx_fact_checks_message_id ON fact_checks(message_id);
 CREATE INDEX IF NOT EXISTS idx_fact_checks_user_id ON fact_checks(user_id);
+
+-- Indexes for new stats tables
+CREATE INDEX IF NOT EXISTS idx_stats_cache_type_scope ON stats_cache(stat_type, scope);
+CREATE INDEX IF NOT EXISTS idx_stats_cache_valid_until ON stats_cache(valid_until);
+CREATE INDEX IF NOT EXISTS idx_message_interactions_user_id ON message_interactions(user_id);
+CREATE INDEX IF NOT EXISTS idx_message_interactions_replied_to ON message_interactions(replied_to_user_id);
+CREATE INDEX IF NOT EXISTS idx_message_interactions_timestamp ON message_interactions(timestamp);
+CREATE INDEX IF NOT EXISTS idx_topic_snapshots_date ON topic_snapshots(snapshot_date);
+CREATE INDEX IF NOT EXISTS idx_topic_snapshots_channel ON topic_snapshots(channel_id);
