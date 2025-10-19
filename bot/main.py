@@ -585,6 +585,16 @@ async def wompbot_help(ctx):
         inline=False
     )
     embed.add_field(
+        name="📊 Chat Statistics",
+        value=(
+            "/stats_server [days|date_range] - Network graph & server stats\n"
+            "/stats_topics [days|date_range] - Trending keywords (TF-IDF)\n"
+            "/stats_primetime [@user] [days|date_range] - Activity heatmap\n"
+            "/stats_engagement [@user] [days|date_range] - Engagement metrics"
+        ),
+        inline=False
+    )
+    embed.add_field(
         name="/leaderboard <type> [days]",
         value="Show top users by: `messages`, `questions`, or `profanity`. Default: 7 days",
         inline=False
@@ -858,7 +868,7 @@ async def stats_server(interaction: discord.Interaction, date_range: str = "30")
         top_users = sorted(nodes.items(), key=lambda x: x[1]['degree'], reverse=True)[:10]
 
         table_data = []
-        for user_id, data in top_users:
+        for _, data in top_users:
             table_data.append([data['username'][:15], str(data['messages']), str(data['degree'])])
 
         table = chat_stats.format_as_discord_table(
