@@ -75,6 +75,22 @@ CREATE TABLE IF NOT EXISTS claims (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Hot takes table (controversial claims with community tracking)
+CREATE TABLE IF NOT EXISTS hot_takes (
+    id SERIAL PRIMARY KEY,
+    claim_id INT UNIQUE REFERENCES claims(id) ON DELETE CASCADE,
+    controversy_score FLOAT DEFAULT 0.0, -- LLM-scored 0-10 (only for high-engagement)
+    community_score FLOAT DEFAULT 0.0, -- Reaction-based 0-10
+    total_reactions INT DEFAULT 0,
+    reaction_diversity FLOAT DEFAULT 0.0, -- Mix of different reactions 0-1
+    reply_count INT DEFAULT 0,
+    vindication_status VARCHAR(20) DEFAULT 'pending', -- 'pending', 'won', 'lost', 'mixed'
+    vindication_date TIMESTAMP,
+    vindication_notes TEXT,
+    age_score FLOAT, -- How well it aged: 10.0 (won), 5.0 (mixed), 0.0 (lost)
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Quotes table
 CREATE TABLE IF NOT EXISTS quotes (
     id SERIAL PRIMARY KEY,
@@ -178,3 +194,10 @@ CREATE INDEX IF NOT EXISTS idx_message_interactions_replied_to ON message_intera
 CREATE INDEX IF NOT EXISTS idx_message_interactions_timestamp ON message_interactions(timestamp);
 CREATE INDEX IF NOT EXISTS idx_topic_snapshots_date ON topic_snapshots(snapshot_date);
 CREATE INDEX IF NOT EXISTS idx_topic_snapshots_channel ON topic_snapshots(channel_id);
+
+-- Indexes for hot takes
+CREATE INDEX IF NOT EXISTS idx_hot_takes_claim_id ON hot_takes(claim_id);
+CREATE INDEX IF NOT EXISTS idx_hot_takes_controversy ON hot_takes(controversy_score);
+CREATE INDEX IF NOT EXISTS idx_hot_takes_community ON hot_takes(community_score);
+CREATE INDEX IF NOT EXISTS idx_hot_takes_vindication ON hot_takes(vindication_status);
+CREATE INDEX IF NOT EXISTS idx_hot_takes_created_at ON hot_takes(created_at);
