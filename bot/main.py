@@ -803,6 +803,321 @@ async def help_slash(interaction: discord.Interaction):
 
     await interaction.response.send_message(embed=embed)
 
+# CHAT STATISTICS SLASH COMMANDS
+
+@bot.tree.command(name="stats_server", description="Show server network graph and interaction statistics")
+@app_commands.describe(date_range="Days (e.g., '30') or date range (e.g., '01/15/2024-02/15/2024')")
+async def stats_server(interaction: discord.Interaction, date_range: str = "30"):
+    """Show server network statistics and interaction graph"""
+    await interaction.response.defer()
+
+    try:
+        # Parse date range
+        start_date, end_date = chat_stats.parse_date_range(date_range)
+
+        # Check cache
+        scope = f"server:{interaction.guild.id}"
+        cached = chat_stats.get_cached_stats('network', scope, start_date, end_date)
+
+        if cached:
+            results = cached
+        else:
+            # Get messages
+            messages = chat_stats.get_messages_for_analysis(None, start_date, end_date, exclude_opted_out=True)
+
+            if not messages:
+                await interaction.followup.send("No messages found in this time range.")
+                return
+
+            # Build network graph
+            network = chat_stats.build_network_graph(messages)
+            results = network
+
+            # Cache results
+            chat_stats.cache_stats('network', scope, start_date, end_date, results, cache_hours=6)
+
+        # Format output
+        embed = discord.Embed(
+            title="📊 Server Network Statistics",
+            description=f"Analysis from {start_date.strftime('%m/%d/%Y')} to {end_date.strftime('%m/%d/%Y')}",
+            color=discord.Color.blue()
+        )
+
+        # Top connected users
+        nodes = results['nodes']
+        top_users = sorted(nodes.items(), key=lambda x: x[1]['degree'], reverse=True)[:10]
+
+        table_data = []
+        for user_id, data in top_users:
+            table_data.append([data['username'][:15], str(data['messages']), str(data['degree'])])
+
+        table = chat_stats.format_as_discord_table(
+            ['User', 'Messages', 'Connections'],
+            table_data
+        )
+
+        embed.add_field(name="Most Connected Users", value=table, inline=False)
+        embed.set_footer(text=f"Total users analyzed: {len(nodes)} | Cached for 6 hours")
+
+        await interaction.followup.send(embed=embed)
+
+    except ValueError as e:
+        await interaction.followup.send(f"❌ {str(e)}")
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error generating stats: {str(e)}")
+        print(f"❌ Stats error: {e}")
+        import traceback
+        traceback.print_exc()
+
+@bot.tree.command(name="stats_topics", description="Show trending topics and keywords")
+@app_commands.describe(date_range="Days (e.g., '30') or date range (e.g., '01/15/2024-02/15/2024')")
+async def stats_topics(interaction: discord.Interaction, date_range: str = "30"):
+    """Show trending topics using TF-IDF keyword extraction"""
+    await interaction.response.defer()
+
+    try:
+        # Parse date range
+        start_date, end_date = chat_stats.parse_date_range(date_range)
+
+        # Check cache
+        scope = f"server:{interaction.guild.id}"
+        cached = chat_stats.get_cached_stats('topics', scope, start_date, end_date)
+
+        if cached:
+            topics = cached
+        else:
+            # Get messages
+            messages = chat_stats.get_messages_for_analysis(None, start_date, end_date, exclude_opted_out=True)
+
+            if not messages:
+                await interaction.followup.send("No messages found in this time range.")
+                return
+
+            # Extract topics
+            topics = chat_stats.extract_topics_tfidf(messages, top_n=15)
+
+            if not topics:
+                await interaction.followup.send("Could not extract topics from messages.")
+                return
+
+            # Cache results
+            chat_stats.cache_stats('topics', scope, start_date, end_date, topics, cache_hours=6)
+
+        # Format output
+        embed = discord.Embed(
+            title="🔥 Trending Topics",
+            description=f"Top keywords from {start_date.strftime('%m/%d/%Y')} to {end_date.strftime('%m/%d/%Y')}",
+            color=discord.Color.orange()
+        )
+
+        table_data = []
+        for i, topic in enumerate(topics[:15], 1):
+            # Create bar visualization
+            bar_length = int(topic['score'] * 20)
+            bar = "█" * bar_length
+            table_data.append([f"{i}.", topic['keyword'][:20], str(topic['count']), bar])
+
+        table = chat_stats.format_as_discord_table(
+            ['#', 'Keyword', 'Count', 'Relevance'],
+            table_data
+        )
+
+        embed.add_field(name="Top Keywords (TF-IDF Analysis)", value=table, inline=False)
+        embed.set_footer(text="Cached for 6 hours | Uses keyword extraction (no LLM)")
+
+        await interaction.followup.send(embed=embed)
+
+    except ValueError as e:
+        await interaction.followup.send(f"❌ {str(e)}")
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error generating topics: {str(e)}")
+        print(f"❌ Topics error: {e}")
+        import traceback
+        traceback.print_exc()
+
+@bot.tree.command(name="stats_primetime", description="Show activity patterns and peak hours")
+@app_commands.describe(
+    user="User to analyze (optional, defaults to server-wide)",
+    date_range="Days (e.g., '30') or date range (e.g., '01/15/2024-02/15/2024')"
+)
+async def stats_primetime(interaction: discord.Interaction, user: discord.Member = None, date_range: str = "30"):
+    """Show activity heatmap and peak hours"""
+    await interaction.response.defer()
+
+    try:
+        # Parse date range
+        start_date, end_date = chat_stats.parse_date_range(date_range)
+
+        # Determine scope
+        if user:
+            scope = f"user:{user.id}"
+        else:
+            scope = f"server:{interaction.guild.id}"
+
+        # Check cache
+        cached = chat_stats.get_cached_stats('primetime', scope, start_date, end_date)
+
+        if cached:
+            results = cached
+        else:
+            # Get messages
+            messages = chat_stats.get_messages_for_analysis(None, start_date, end_date, exclude_opted_out=True)
+
+            # Filter by user if specified
+            if user:
+                messages = [m for m in messages if m['user_id'] == user.id]
+
+            if not messages:
+                await interaction.followup.send(f"No messages found for {user.display_name if user else 'server'} in this time range.")
+                return
+
+            # Calculate primetime stats
+            results = chat_stats.calculate_primetime(messages)
+
+            # Cache results
+            chat_stats.cache_stats('primetime', scope, start_date, end_date, results, cache_hours=6)
+
+        # Format output
+        target_name = user.display_name if user else "Server"
+        embed = discord.Embed(
+            title=f"⏰ Prime Time Analysis - {target_name}",
+            description=f"Activity from {start_date.strftime('%m/%d/%Y')} to {end_date.strftime('%m/%d/%Y')}",
+            color=discord.Color.purple()
+        )
+
+        # Hourly heatmap
+        hourly = results['hourly']
+        max_hour_count = max(hourly.values()) if hourly else 1
+
+        hourly_viz = []
+        for hour in range(24):
+            count = hourly.get(hour, 0)
+            bar_length = int((count / max_hour_count) * 15) if max_hour_count > 0 else 0
+            bar = "█" * bar_length
+            time_str = f"{hour:02d}:00"
+            hourly_viz.append([time_str, str(count), bar])
+
+        hourly_table = chat_stats.format_as_discord_table(
+            ['Hour', 'Msgs', 'Activity'],
+            hourly_viz
+        )
+
+        embed.add_field(name="Hourly Activity", value=hourly_table, inline=False)
+
+        # Day of week breakdown
+        day_names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+        daily = results['daily']
+        max_day_count = max(daily.values()) if daily else 1
+
+        daily_viz = []
+        for day in range(7):
+            count = daily.get(day, 0)
+            bar_length = int((count / max_day_count) * 15) if max_day_count > 0 else 0
+            bar = "█" * bar_length
+            daily_viz.append([day_names[day], str(count), bar])
+
+        daily_table = chat_stats.format_as_discord_table(
+            ['Day', 'Msgs', 'Activity'],
+            daily_viz
+        )
+
+        embed.add_field(name="Day of Week", value=daily_table, inline=False)
+
+        peak_hour = results['peak_hour']
+        peak_day = day_names[results['peak_day']]
+        embed.set_footer(text=f"Peak hour: {peak_hour:02d}:00 | Peak day: {peak_day} | Total: {results['total_messages']} msgs")
+
+        await interaction.followup.send(embed=embed)
+
+    except ValueError as e:
+        await interaction.followup.send(f"❌ {str(e)}")
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error generating primetime stats: {str(e)}")
+        print(f"❌ Primetime error: {e}")
+        import traceback
+        traceback.print_exc()
+
+@bot.tree.command(name="stats_engagement", description="Show engagement metrics and conversation patterns")
+@app_commands.describe(
+    user="User to analyze (optional, defaults to server-wide)",
+    date_range="Days (e.g., '30') or date range (e.g., '01/15/2024-02/15/2024')"
+)
+async def stats_engagement(interaction: discord.Interaction, user: discord.Member = None, date_range: str = "30"):
+    """Show engagement metrics"""
+    await interaction.response.defer()
+
+    try:
+        # Parse date range
+        start_date, end_date = chat_stats.parse_date_range(date_range)
+
+        # Determine scope
+        if user:
+            scope = f"user_engagement:{user.id}"
+        else:
+            scope = f"server_engagement:{interaction.guild.id}"
+
+        # Check cache
+        cached = chat_stats.get_cached_stats('engagement', scope, start_date, end_date)
+
+        if cached:
+            results = cached
+        else:
+            # Get messages
+            messages = chat_stats.get_messages_for_analysis(None, start_date, end_date, exclude_opted_out=True)
+
+            # Filter by user if specified
+            if user:
+                messages = [m for m in messages if m['user_id'] == user.id]
+
+            if not messages:
+                await interaction.followup.send(f"No messages found for {user.display_name if user else 'server'} in this time range.")
+                return
+
+            # Calculate engagement
+            results = chat_stats.calculate_engagement(messages)
+
+            # Cache results
+            chat_stats.cache_stats('engagement', scope, start_date, end_date, results, cache_hours=6)
+
+        # Format output
+        target_name = user.display_name if user else "Server"
+        embed = discord.Embed(
+            title=f"📈 Engagement Metrics - {target_name}",
+            description=f"Analysis from {start_date.strftime('%m/%d/%Y')} to {end_date.strftime('%m/%d/%Y')}",
+            color=discord.Color.green()
+        )
+
+        # Summary stats
+        embed.add_field(name="Total Messages", value=f"{results['total_messages']:,}", inline=True)
+        embed.add_field(name="Unique Users", value=f"{results['unique_users']}", inline=True)
+        embed.add_field(name="Avg Length", value=f"{results['avg_message_length']:.1f} chars", inline=True)
+
+        if not user:
+            embed.add_field(name="Avg Msgs/User", value=f"{results['avg_messages_per_user']:.1f}", inline=True)
+
+        # Top responders
+        if results['top_responders']:
+            table_data = []
+            for username, count in results['top_responders'][:10]:
+                table_data.append([username[:15], str(count)])
+
+            table = chat_stats.format_as_discord_table(
+                ['User', 'Responses'],
+                table_data
+            )
+
+            embed.add_field(name="Most Responsive Users", value=table, inline=False)
+
+        await interaction.followup.send(embed=embed)
+
+    except ValueError as e:
+        await interaction.followup.send(f"❌ {str(e)}")
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error generating engagement stats: {str(e)}")
+        print(f"❌ Engagement error: {e}")
+        import traceback
+        traceback.print_exc()
+
 # Error handling
 async def leaderboard(ctx, stat_type: str = 'messages', days: int = 7):
     """Show leaderboard for various statistics
