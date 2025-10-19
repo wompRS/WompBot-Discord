@@ -32,6 +32,81 @@ chat_stats = ChatStatistics(db)
 OPT_OUT_ROLE = os.getenv('OPT_OUT_ROLE_NAME', 'NoDataCollection')
 WOMPIE_USERNAME = "Wompie__"
 
+# Background task for pre-computing statistics
+@tasks.loop(hours=1)  # Run every hour (can adjust to minutes=30 for 30-min intervals)
+async def precompute_stats():
+    """Background task to pre-compute common statistics"""
+    try:
+        print("🔄 Starting background stats computation...")
+
+        for guild in bot.guilds:
+            guild_id = guild.id
+
+            # Common time ranges to pre-compute
+            time_ranges = [7, 30]  # 7 days, 30 days
+
+            for days in time_ranges:
+                start_date = datetime.now() - timedelta(days=days)
+                end_date = datetime.now()
+
+                # Get messages once for this time range
+                messages = chat_stats.get_messages_for_analysis(None, start_date, end_date, exclude_opted_out=True)
+
+                if not messages:
+                    continue
+
+                print(f"📊 Computing stats for guild {guild_id}, last {days} days ({len(messages)} messages)...")
+
+                # 1. Network stats
+                try:
+                    scope = f"server:{guild_id}"
+                    network = chat_stats.build_network_graph(messages)
+                    chat_stats.cache_stats('network', scope, start_date, end_date, network, cache_hours=2)
+                    print(f"  ✅ Network stats cached (last {days} days)")
+                except Exception as e:
+                    print(f"  ❌ Network stats failed: {e}")
+
+                # 2. Topic trends
+                try:
+                    scope = f"server:{guild_id}"
+                    topics = chat_stats.extract_topics_tfidf(messages, top_n=15)
+                    if topics:
+                        chat_stats.cache_stats('topics', scope, start_date, end_date, topics, cache_hours=2)
+                        print(f"  ✅ Topic trends cached (last {days} days)")
+                except Exception as e:
+                    print(f"  ❌ Topic trends failed: {e}")
+
+                # 3. Primetime (server-wide)
+                try:
+                    scope = f"server:{guild_id}"
+                    primetime = chat_stats.calculate_primetime(messages)
+                    chat_stats.cache_stats('primetime', scope, start_date, end_date, primetime, cache_hours=2)
+                    print(f"  ✅ Primetime stats cached (last {days} days)")
+                except Exception as e:
+                    print(f"  ❌ Primetime stats failed: {e}")
+
+                # 4. Engagement (server-wide)
+                try:
+                    scope = f"server_engagement:{guild_id}"
+                    engagement = chat_stats.calculate_engagement(messages)
+                    chat_stats.cache_stats('engagement', scope, start_date, end_date, engagement, cache_hours=2)
+                    print(f"  ✅ Engagement stats cached (last {days} days)")
+                except Exception as e:
+                    print(f"  ❌ Engagement stats failed: {e}")
+
+        print("✅ Background stats computation complete!")
+
+    except Exception as e:
+        print(f"❌ Background stats computation error: {e}")
+        import traceback
+        traceback.print_exc()
+
+@precompute_stats.before_loop
+async def before_precompute_stats():
+    """Wait for bot to be ready before starting background task"""
+    await bot.wait_until_ready()
+    print("🚀 Background stats computation task started")
+
 def user_has_opted_out(member):
     """Check if user has the opt-out role"""
     return any(role.name == OPT_OUT_ROLE for role in member.roles)
@@ -133,6 +208,11 @@ async def on_ready():
         print(f"✅ Synced {len(synced)} slash commands")
     except Exception as e:
         print(f"❌ Failed to sync commands: {e}")
+
+    # Start background stats computation task
+    if not precompute_stats.is_running():
+        precompute_stats.start()
+        print("🔄 Background stats pre-computation enabled (runs every hour)")
 
 @bot.event
 async def on_message(message):
@@ -423,6 +503,20 @@ async def handle_bot_mention(message, opted_out):
         import traceback
         traceback.print_exc()
         await message.channel.send(f"Error processing request: {str(e)}")
+
+@bot.command(name='refreshstats')
+@commands.has_permissions(administrator=True)
+async def refresh_stats(ctx):
+    """Manually trigger background stats computation (Admin only)"""
+    await ctx.send("🔄 Manually triggering stats computation...")
+
+    try:
+        # Run the precompute task manually
+        await precompute_stats()
+        await ctx.send("✅ Stats computation complete! Cache refreshed.")
+    except Exception as e:
+        await ctx.send(f"❌ Error computing stats: {str(e)}")
+        print(f"❌ Manual stats refresh error: {e}")
 
 @bot.command(name='analyze')
 @commands.has_permissions(administrator=True)
