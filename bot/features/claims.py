@@ -2,23 +2,34 @@ import discord
 from discord.ext import commands
 import json
 from datetime import datetime
+from features.claim_detector import ClaimDetector
 
 class ClaimsTracker:
     """Tracks user claims and quotes"""
-    
+
     def __init__(self, db, llm):
         self.db = db
         self.llm = llm
         self.wompie_user_id = None  # Will be set from main.py
-    
+        self.claim_detector = ClaimDetector()  # Fast pre-filter
+
     async def analyze_message_for_claim(self, message):
         """Analyze if message contains a trackable claim"""
         try:
             # Skip very short messages
             if len(message.content) < 20:
                 return None
-            
-            print(f"🔍 Analyzing message for claim: {message.content[:50]}...")
+
+            # STAGE 1: Fast keyword pre-filter (FREE, INSTANT)
+            pre_filter_result = self.claim_detector.is_likely_claim(message.content)
+
+            if not pre_filter_result['is_likely']:
+                # Not a claim - skip LLM analysis (SAVES MONEY!)
+                print(f"⏭️  Skipped (not claim-like): {message.content[:50]}... | {pre_filter_result['reasoning']}")
+                return None
+
+            # STAGE 2: LLM verification (PAID, only for likely claims)
+            print(f"🔍 LLM analyzing likely claim: {message.content[:50]}... | Confidence: {pre_filter_result['confidence']:.2f}")
             
             prompt = f"""Analyze this message and determine if it contains a trackable claim.
 
