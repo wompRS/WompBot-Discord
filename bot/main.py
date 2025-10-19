@@ -779,6 +779,16 @@ async def help_slash(interaction: discord.Interaction):
         inline=False
     )
     embed.add_field(
+        name="📊 Chat Statistics",
+        value=(
+            "/stats_server [days|date_range] - Network graph & server stats\n"
+            "/stats_topics [days|date_range] - Trending keywords (TF-IDF)\n"
+            "/stats_primetime [@user] [days|date_range] - Activity heatmap\n"
+            "/stats_engagement [@user] [days|date_range] - Engagement metrics"
+        ),
+        inline=False
+    )
+    embed.add_field(
         name="!leaderboard <type> [days]",
         value="Show top users by: `messages`, `questions`, or `profanity`. Default: 7 days",
         inline=False
