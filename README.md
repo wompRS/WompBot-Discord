@@ -35,6 +35,14 @@ A Discord bot powered by OpenRouter LLMs (Hermes/Dolphin models) with conversati
 - **User Stats**: `/stats [@user]` - View detailed user statistics
 - **Privacy Opt-Out**: Role-based exclusion from data collection
 
+### 📈 Chat Statistics (NEW!)
+- **Network Graphs**: `/stats_server [days]` - Who interacts with whom
+- **Topic Trends**: `/stats_topics [days]` - Trending keywords using TF-IDF
+- **Prime Time**: `/stats_primetime [@user] [days]` - Activity heatmaps by hour/day
+- **Engagement**: `/stats_engagement [@user] [days]` - Response times, patterns
+- **Zero Cost**: Uses machine learning, no LLM needed
+- **Background Updates**: Auto-refreshes every hour
+
 ## Setup Instructions
 
 ### 1. Install Dependencies (WSL2 Debian)
@@ -78,8 +86,8 @@ docker-compose down
 
 ### Conversation
 - **@WompBot** or **"wompbot"**: Chat with the bot (Feyd-Rautha persona)
-- **/ping**: Check bot latency
-- **/help_bot**: Show all available commands
+- **!ping**: Check bot latency
+- **!wompbot help** or **/help**: Show all available commands
 
 ### Claims & Receipts
 - **/receipts [@user] [keyword]**: View tracked claims for a user
@@ -93,11 +101,18 @@ docker-compose down
 - **⚠️ React**: React to any message with ⚠️ emoji to trigger fact-check
 - Bot will search web and analyze claim accuracy
 
-### Statistics & Leaderboards
-- **/stats [@user]**: View user statistics and behavior analysis
-- **/leaderboard <type> [days]**: Show leaderboards (messages/questions/profanity)
-- **/search <query>**: Manually search the web
-- **/analyze [days]**: (Admin) Analyze user behavior patterns
+### Chat Statistics
+- **/stats_server [days|date_range]**: Network graph and interaction stats
+- **/stats_topics [days|date_range]**: Trending keywords (TF-IDF)
+- **/stats_primetime [@user] [days|date_range]**: Activity heatmaps
+- **/stats_engagement [@user] [days|date_range]**: Engagement metrics
+- **!refreshstats**: (Admin) Manually refresh stats cache
+
+### User Analytics & Leaderboards
+- **!stats [@user]**: View user statistics and behavior analysis
+- **!leaderboard <type> [days]**: Show leaderboards (messages/questions/profanity)
+- **!search <query>**: Manually search the web
+- **!analyze [days]**: (Admin) Analyze user behavior patterns
 
 ## Privacy Features
 
@@ -118,6 +133,22 @@ Weekly or on-demand analysis tracks:
 
 Use `/analyze` command to run analysis.
 
+## Documentation
+
+📚 **Comprehensive guides available:**
+
+**Feature Documentation:**
+- [🤖 Conversational AI](docs/features/CONVERSATIONAL_AI.md) - Feyd-Rautha personality, LLM configuration
+- [📋 Claims Tracking](docs/features/CLAIMS_TRACKING.md) - Auto-detection, edit tracking, contradictions
+- [⚠️ Fact-Checking](docs/features/FACT_CHECK.md) - Web search integration, verdict system
+- [☁️ Quotes System](docs/features/QUOTES.md) - Emoji reactions, context preservation
+- [📊 User Analytics](docs/features/USER_ANALYTICS.md) - Behavior analysis, leaderboards
+- [📈 Chat Statistics](docs/features/CHAT_STATISTICS.md) - Network graphs, topics, prime time
+
+**Configuration & Development:**
+- [⚙️ Configuration Guide](docs/CONFIGURATION.md) - All settings, API keys, environment variables
+- [🛠️ Development Guide](docs/DEVELOPMENT.md) - Adding features, database migrations, testing
+
 ## Database Schema
 
 **Tables:**
@@ -129,6 +160,9 @@ Use `/analyze` command to run analysis.
 - `quotes`: Saved quotes with reaction counts
 - `claim_contradictions`: Detected contradictions
 - `fact_checks`: Fact-check results with sources
+- `stats_cache`: Pre-computed statistics (network, topics, primetime, engagement)
+- `message_interactions`: Network graph data
+- `topic_snapshots`: Trending topics over time
 
 ## Costs
 
@@ -183,12 +217,13 @@ WompBot embodies **Feyd-Rautha Harkonnen** from Dune:
 - 🎭 **Roast Mode**: `/roast` command with personality-based roasts
 - ⚔️ **Debate Scorekeeper**: Auto-detect debates, score arguments, track fallacies
 - 🔥 **Hot Takes Leaderboard**: Track controversial opinions and vindication rate
-- 📈 **Chat Statistics**: Network graphs, prime time analysis, topic trends
 - 🏆 **Quote of the Day**: `/qotd` command for daily/weekly/monthly quotes
 - 📅 **Yearly Wrapped**: End-of-year statistics summary
 - ⏰ **Reminders**: Context-aware reminder system
 
 ## Development
+
+**Quick reference:**
 
 Edit bot code:
 ```bash
@@ -205,23 +240,41 @@ View logs:
 docker-compose logs -f bot
 ```
 
+**For detailed development guide, see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)**
+
 ## File Structure
 
 ```
 discord-bot/
-├── bot/
-│   ├── main.py              # Main bot logic, event handlers, commands
-│   ├── llm.py               # OpenRouter LLM client
-│   ├── database.py          # PostgreSQL interface
-│   ├── search.py            # Tavily web search
-│   └── features/
-│       ├── claims.py        # Claims tracking system
-│       └── fact_check.py    # Fact-check feature
-├── sql/
-│   └── init.sql             # Database schema
+├── README.md                # This file
+├── .env                     # Environment variables (API keys)
 ├── docker-compose.yml       # Docker configuration
 ├── Dockerfile               # Bot container setup
-└── .env                     # Environment variables (API keys)
+│
+├── docs/                    # Documentation
+│   ├── features/            # Feature-specific guides
+│   │   ├── CHAT_STATISTICS.md
+│   │   ├── CLAIMS_TRACKING.md
+│   │   ├── FACT_CHECK.md
+│   │   ├── QUOTES.md
+│   │   ├── USER_ANALYTICS.md
+│   │   └── CONVERSATIONAL_AI.md
+│   ├── CONFIGURATION.md     # Configuration guide
+│   └── DEVELOPMENT.md       # Development guide
+│
+├── sql/
+│   └── init.sql             # Database schema
+│
+└── bot/
+    ├── main.py              # Main bot logic, event handlers, commands
+    ├── llm.py               # OpenRouter LLM client
+    ├── database.py          # PostgreSQL interface
+    ├── search.py            # Tavily web search
+    ├── requirements.txt     # Python dependencies
+    └── features/
+        ├── claims.py        # Claims tracking system
+        ├── fact_check.py    # Fact-check feature
+        └── chat_stats.py    # Chat statistics (NEW!)
 ```
 
 ## Support
