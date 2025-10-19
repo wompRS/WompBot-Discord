@@ -712,30 +712,94 @@ async def verify_claim_slash(interaction: discord.Interaction, claim_id: int, st
     if status not in ['true', 'false', 'mixed', 'outdated']:
         await interaction.response.send_message("❌ Status must be: true, false, mixed, or outdated", ephemeral=True)
         return
-    
+
     await interaction.response.defer()
-    
+
     try:
         with db.conn.cursor() as cur:
             cur.execute("""
-                UPDATE claims 
+                UPDATE claims
                 SET verification_status = %s,
                     verification_date = %s,
                     verification_notes = %s
                 WHERE id = %s
                 RETURNING claim_text, username
             """, (status, datetime.now(), notes, claim_id))
-            
+
             result = cur.fetchone()
-            
+
             if result:
                 claim_text, username = result
                 await interaction.followup.send(f"✅ Claim #{claim_id} by {username} marked as **{status}**\n> {claim_text[:200]}")
             else:
                 await interaction.followup.send(f"❌ Claim #{claim_id} not found")
-    
+
     except Exception as e:
         await interaction.followup.send(f"❌ Error verifying claim: {str(e)}")
+
+@bot.tree.command(name="help", description="Show all WompBot commands")
+async def help_slash(interaction: discord.Interaction):
+    """Show bot commands"""
+    embed = discord.Embed(
+        title="🤖 WompBot Commands",
+        description="Here's what I can do:",
+        color=discord.Color.purple()
+    )
+
+    embed.add_field(
+        name="@mention me",
+        value="Tag me in a message to chat. I'll respond with context from the conversation.",
+        inline=False
+    )
+    embed.add_field(
+        name="/stats [@user]",
+        value="View statistics and behavior analysis for yourself or another user.",
+        inline=False
+    )
+    embed.add_field(
+        name="/receipts [@user] [keyword]",
+        value="View tracked claims for a user. Optional keyword filter.",
+        inline=False
+    )
+    embed.add_field(
+        name="/quotes [@user]",
+        value="View saved quotes for a user.",
+        inline=False
+    )
+    embed.add_field(
+        name="☁️ Save Quote",
+        value="React to any message with :cloud: emoji to save it as a quote.",
+        inline=False
+    )
+    embed.add_field(
+        name="⚠️ Fact-Check",
+        value="React to any message with :warning: emoji to trigger an automatic fact-check using web search.",
+        inline=False
+    )
+    embed.add_field(
+        name="!leaderboard <type> [days]",
+        value="Show top users by: `messages`, `questions`, or `profanity`. Default: 7 days",
+        inline=False
+    )
+    embed.add_field(
+        name="!search <query>",
+        value="Manually search the web for information.",
+        inline=False
+    )
+    embed.add_field(
+        name="!analyze [days]",
+        value="(Admin only) Analyze user behavior patterns from the last N days.",
+        inline=False
+    )
+    embed.add_field(
+        name="!ping",
+        value="Check bot latency.",
+        inline=False
+    )
+
+    embed.set_footer(text=f"Opt-out: Get the '{OPT_OUT_ROLE}' role to exclude your data from analysis.")
+
+    await interaction.response.send_message(embed=embed)
 
 # Error handling
 async def leaderboard(ctx, stat_type: str = 'messages', days: int = 7):
