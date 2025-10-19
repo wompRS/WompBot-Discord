@@ -537,15 +537,21 @@ async def ping(ctx):
     """Check bot latency"""
     await ctx.send(f"🏓 Pong! Latency: {round(bot.latency * 1000)}ms")
 
-@bot.command(name='help_bot')
-async def help_command(ctx):
+@bot.group(name='wompbot', invoke_without_command=True)
+async def wompbot_command(ctx):
+    """WompBot command group"""
+    if ctx.invoked_subcommand is None:
+        await ctx.send("Use `!wompbot help` to see available commands.")
+
+@wompbot_command.command(name='help')
+async def wompbot_help(ctx):
     """Show bot commands"""
     embed = discord.Embed(
         title="🤖 WompBot Commands",
         description="Here's what I can do:",
         color=discord.Color.purple()
     )
-    
+
     embed.add_field(
         name="@mention me",
         value="Tag me in a message to chat. I'll respond with context from the conversation.",
@@ -563,12 +569,17 @@ async def help_command(ctx):
     )
     embed.add_field(
         name="/quotes [@user]",
-        value="View saved quotes for a user. React with ☁️ to save quotes.",
+        value="View saved quotes for a user.",
+        inline=False
+    )
+    embed.add_field(
+        name="☁️ Save Quote",
+        value="React to any message with :cloud: emoji to save it as a quote.",
         inline=False
     )
     embed.add_field(
         name="⚠️ Fact-Check",
-        value="React to any message with ⚠️ emoji to trigger an automatic fact-check using web search.",
+        value="React to any message with :warning: emoji to trigger an automatic fact-check using web search.",
         inline=False
     )
     embed.add_field(
@@ -591,9 +602,9 @@ async def help_command(ctx):
         value="Check bot latency.",
         inline=False
     )
-    
+
     embed.set_footer(text=f"Opt-out: Get the '{OPT_OUT_ROLE}' role to exclude your data from analysis.")
-    
+
     await ctx.send(embed=embed)
 
 # SLASH COMMANDS USING APP_COMMANDS
