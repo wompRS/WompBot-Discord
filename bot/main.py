@@ -1,6 +1,6 @@
 import discord
 from discord import app_commands
-from discord.ext import commands
+from discord.ext import commands, tasks
 import os
 from datetime import datetime, timedelta
 from database import Database
@@ -8,6 +8,7 @@ from llm import LLMClient
 from search import SearchEngine
 from features.claims import ClaimsTracker
 from features.fact_check import FactChecker
+from features.chat_stats import ChatStatistics
 
 # Bot setup
 intents = discord.Intents.default()
@@ -26,6 +27,7 @@ search = SearchEngine()
 # Setup feature modules
 claims_tracker = ClaimsTracker(db, llm)
 fact_checker = FactChecker(db, llm, search)
+chat_stats = ChatStatistics(db)
 
 OPT_OUT_ROLE = os.getenv('OPT_OUT_ROLE_NAME', 'NoDataCollection')
 WOMPIE_USERNAME = "Wompie__"
