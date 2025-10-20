@@ -16,6 +16,7 @@ from features.yearly_wrapped import YearlyWrapped
 from features.quote_of_the_day import QuoteOfTheDay
 from features.debate_scorekeeper import DebateScorekeeper
 from features.iracing import iRacingIntegration
+from credential_manager import CredentialManager
 
 # Bot setup
 intents = discord.Intents.default()
@@ -43,15 +44,17 @@ yearly_wrapped = YearlyWrapped(db)
 qotd = QuoteOfTheDay(db)
 debate_scorekeeper = DebateScorekeeper(db, llm)
 
-# iRacing integration (optional - only if credentials provided)
-iracing_email = os.getenv('IRACING_EMAIL')
-iracing_password = os.getenv('IRACING_PASSWORD')
+# iRacing integration (optional - only if encrypted credentials provided)
+credential_manager = CredentialManager()
 iracing = None
-if iracing_email and iracing_password:
+iracing_credentials = credential_manager.get_iracing_credentials()
+if iracing_credentials:
+    iracing_email, iracing_password = iracing_credentials
     iracing = iRacingIntegration(db, iracing_email, iracing_password)
-    print("✅ iRacing integration enabled")
+    print("✅ iRacing integration enabled (using encrypted credentials)")
 else:
-    print("⚠️ iRacing integration disabled (no credentials)")
+    print("⚠️ iRacing integration disabled (no encrypted credentials found)")
+    print("   Run 'python encrypt_credentials.py' to set up credentials")
 
 OPT_OUT_ROLE = os.getenv('OPT_OUT_ROLE_NAME', 'NoDataCollection')
 WOMPIE_USERNAME = "Wompie__"
