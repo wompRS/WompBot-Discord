@@ -94,6 +94,18 @@ A Discord bot powered by OpenRouter LLMs (Hermes/Dolphin models) with conversati
 - **Leaderboards**: See who the best debaters are by wins and scores
 - **Low Cost**: Only uses LLM when debate ends (typically $0.01-0.05 per debate)
 
+### 🏁 iRacing Integration (NEW!)
+- **Driver Profiles**: View any iRacing driver's stats, iRating, and Safety Rating
+- **Account Linking**: Link your Discord account to your iRacing profile
+- **Race Schedule**: View upcoming official races across all series
+- **Series Information**: Browse all active iRacing series and seasons
+- **Recent Results**: Check recent race results and performance
+- **Smart Search**: Automatically finds drivers by name
+- **Live Data**: Direct integration with iRacing's official API
+- **Response Caching**: Intelligent caching to minimize API requests
+- **Optional Feature**: Only enabled if credentials are provided
+- **Zero Cost**: No LLM usage, pure API calls
+
 ## Setup Instructions
 
 ### 1. Install Dependencies (WSL2 Debian)
@@ -185,6 +197,13 @@ docker-compose down
 - **/debate_end**: End debate and show LLM analysis with scores and fallacies
 - **/debate_stats [user]**: View debate statistics and win/loss record
 - **/debate_leaderboard**: Top debaters by wins and average score
+
+### iRacing Integration
+- **/iracing_link <iracing_name>**: Link your Discord account to your iRacing account
+- **/iracing_profile [driver_name]**: View iRacing driver profile (uses linked account if no name provided)
+- **/iracing_schedule [series] [hours]**: View upcoming race schedule (default: next 24 hours)
+- **/iracing_series**: List all active iRacing series and seasons
+- **/iracing_results [driver_name]**: View recent race results (uses linked account if no name provided)
 
 ### User Analytics & Leaderboards
 - **!stats [@user]**: View user statistics and behavior analysis
