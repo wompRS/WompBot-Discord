@@ -103,7 +103,8 @@ class iRacingClient:
                     data = await response.json()
 
                     # Handle link-based responses (cached S3 data)
-                    if isinstance(data, dict) and 'link' in data and len(data) == 1:
+                    # iRacing API returns {"link": "...", "expires": "..."} for cached data
+                    if isinstance(data, dict) and 'link' in data:
                         # Fetch the actual data from the S3 link
                         async with session.get(data['link']) as link_response:
                             if link_response.status == 200:
