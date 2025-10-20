@@ -11,6 +11,7 @@ from features.fact_check import FactChecker
 from features.chat_stats import ChatStatistics
 from features.hot_takes import HotTakesTracker
 from features.reminders import ReminderSystem
+from features.events import EventSystem
 
 # Bot setup
 intents = discord.Intents.default()
@@ -33,6 +34,7 @@ fact_checker = FactChecker(db, llm, search)
 chat_stats = ChatStatistics(db)
 hot_takes_tracker = HotTakesTracker(db, llm)
 reminder_system = ReminderSystem(db)
+event_system = EventSystem(db)
 
 OPT_OUT_ROLE = os.getenv('OPT_OUT_ROLE_NAME', 'NoDataCollection')
 WOMPIE_USERNAME = "Wompie__"
@@ -193,6 +195,86 @@ async def before_check_reminders():
     await bot.wait_until_ready()
     print("⏰ Reminder checker task started")
 
+# Background task for checking event reminders
+@tasks.loop(minutes=5)  # Check every 5 minutes
+async def check_event_reminders():
+    """Check for events that need reminders sent"""
+    try:
+        events_needing_reminders = await event_system.get_events_needing_reminders()
+
+        for event in events_needing_reminders:
+            try:
+                # Get channel
+                channel = bot.get_channel(event['channel_id'])
+
+                if not channel:
+                    print(f"⚠️ Channel {event['channel_id']} not found for event #{event['id']}")
+                    continue
+
+                # Format time until event
+                time_until = event_system.format_time_until(event['event_date'])
+                timestamp = int(event['event_date'].timestamp())
+
+                # Build event reminder embed
+                embed = discord.Embed(
+                    title="📅 Event Reminder",
+                    description=f"**{event['event_name']}**",
+                    color=discord.Color.blue()
+                )
+
+                embed.add_field(
+                    name="When",
+                    value=f"<t:{timestamp}:F>\n<t:{timestamp}:R>",
+                    inline=False
+                )
+
+                if event.get('description'):
+                    embed.add_field(
+                        name="Details",
+                        value=event['description'][:500],
+                        inline=False
+                    )
+
+                embed.add_field(
+                    name="Time Remaining",
+                    value=time_until,
+                    inline=True
+                )
+
+                embed.set_footer(text=f"Event ID: {event['id']}")
+
+                # Send reminder to channel
+                message_content = None
+                if event.get('notify_role_id'):
+                    # Ping the role if specified
+                    message_content = f"<@&{event['notify_role_id']}>"
+
+                if message_content:
+                    await channel.send(content=message_content, embed=embed)
+                else:
+                    await channel.send(embed=embed)
+
+                print(f"📅 Sent '{event['reminder_interval']}' reminder for event '{event['event_name']}' (ID: {event['id']})")
+
+                # Mark this reminder as sent
+                await event_system.mark_reminder_sent(event['id'], event['reminder_interval'])
+
+            except Exception as e:
+                print(f"❌ Error processing event reminder #{event['id']}: {e}")
+                import traceback
+                traceback.print_exc()
+
+    except Exception as e:
+        print(f"❌ Error checking event reminders: {e}")
+        import traceback
+        traceback.print_exc()
+
+@check_event_reminders.before_loop
+async def before_check_event_reminders():
+    """Wait for bot to be ready before starting event reminder checker"""
+    await bot.wait_until_ready()
+    print("📅 Event reminder checker task started")
+
 def user_has_opted_out(member):
     """Check if user has the opt-out role"""
     return any(role.name == OPT_OUT_ROLE for role in member.roles)
@@ -311,6 +393,11 @@ async def on_ready():
     if not check_reminders.is_running():
         check_reminders.start()
         print("⏰ Reminder checking enabled (runs every minute)")
+
+    # Start event reminder checking task
+    if not check_event_reminders.is_running():
+        check_event_reminders.start()
+        print("📅 Event reminder checking enabled (runs every 5 minutes)")
 
 @bot.event
 async def on_message(message):
@@ -1666,6 +1753,171 @@ async def cancel_reminder(interaction: discord.Interaction, reminder_id: int):
     except Exception as e:
         await interaction.followup.send(f"❌ Error cancelling reminder: {str(e)}")
         print(f"❌ Cancel reminder error: {e}")
+        import traceback
+        traceback.print_exc()
+
+# ===== Event Scheduling Commands =====
+@bot.tree.command(name="schedule_event", description="Schedule an event with automatic reminders")
+@app_commands.describe(
+    name="Name of the event",
+    date="When the event happens (e.g., 'tomorrow at 7pm', 'next Friday at 8pm', 'in 3 days')",
+    description="Optional description of the event",
+    reminders="Optional: comma-separated reminder intervals (e.g., '1 week, 1 day, 1 hour')"
+)
+async def schedule_event(
+    interaction: discord.Interaction,
+    name: str,
+    date: str,
+    description: str = None,
+    reminders: str = None
+):
+    """Schedule an event with periodic reminders"""
+    await interaction.response.defer()
+
+    try:
+        # Parse event date
+        event_date = event_system.parse_event_time(date)
+
+        if not event_date:
+            await interaction.followup.send(
+                f"❌ Could not parse time: '{date}'\n\n"
+                "Try formats like:\n"
+                "• `tomorrow at 7pm`\n"
+                "• `next Friday at 8pm`\n"
+                "• `in 3 days at 6pm`\n"
+                "• `Monday at 5pm`"
+            )
+            return
+
+        # Check if event is in the past
+        if event_date < datetime.now():
+            await interaction.followup.send("❌ Event date must be in the future")
+            return
+
+        # Parse reminder intervals
+        reminder_intervals = event_system.parse_reminder_intervals(reminders)
+
+        # Create event
+        event_id = await event_system.create_event(
+            event_name=name,
+            event_date=event_date,
+            created_by_user_id=interaction.user.id,
+            created_by_username=str(interaction.user),
+            channel_id=interaction.channel.id,
+            guild_id=interaction.guild.id,
+            description=description,
+            reminder_intervals=reminder_intervals
+        )
+
+        if event_id:
+            # Format event date for Discord timestamp
+            timestamp = int(event_date.timestamp())
+
+            embed = discord.Embed(
+                title="📅 Event Scheduled",
+                description=f"**{name}**",
+                color=discord.Color.green()
+            )
+
+            embed.add_field(
+                name="When",
+                value=f"<t:{timestamp}:F> (<t:{timestamp}:R>)",
+                inline=False
+            )
+
+            if description:
+                embed.add_field(
+                    name="Description",
+                    value=description,
+                    inline=False
+                )
+
+            embed.add_field(
+                name="Reminders",
+                value=", ".join(reminder_intervals) if reminder_intervals else "None",
+                inline=False
+            )
+
+            embed.set_footer(text=f"Event ID: {event_id} • Created by {interaction.user.display_name}")
+
+            await interaction.followup.send(embed=embed)
+            print(f"📅 Event created: '{name}' at {event_date} (ID: {event_id})")
+        else:
+            await interaction.followup.send("❌ Failed to create event")
+
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error scheduling event: {str(e)}")
+        print(f"❌ Schedule event error: {e}")
+        import traceback
+        traceback.print_exc()
+
+@bot.tree.command(name="events", description="View upcoming scheduled events")
+@app_commands.describe(limit="Maximum number of events to show (default: 10)")
+async def events(interaction: discord.Interaction, limit: int = 10):
+    """List upcoming events"""
+    await interaction.response.defer()
+
+    try:
+        upcoming = await event_system.get_upcoming_events(interaction.guild.id, limit)
+
+        if not upcoming:
+            await interaction.followup.send("📅 No upcoming events scheduled")
+            return
+
+        embed = discord.Embed(
+            title="📅 Upcoming Events",
+            color=discord.Color.blue()
+        )
+
+        for event in upcoming:
+            timestamp = int(event['event_date'].timestamp())
+            time_until = event_system.format_time_until(event['event_date'])
+
+            field_value = f"**When:** <t:{timestamp}:F>\n**Time until:** {time_until}"
+
+            if event.get('description'):
+                field_value += f"\n**Details:** {event['description'][:100]}"
+
+            field_value += f"\n**Created by:** {event['created_by_username']}"
+            field_value += f"\n**ID:** {event['id']}"
+
+            embed.add_field(
+                name=event['event_name'],
+                value=field_value,
+                inline=False
+            )
+
+        embed.set_footer(text=f"Showing {len(upcoming)} event{'s' if len(upcoming) != 1 else ''}")
+
+        await interaction.followup.send(embed=embed)
+
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error getting events: {str(e)}")
+        print(f"❌ Events list error: {e}")
+        import traceback
+        traceback.print_exc()
+
+@bot.tree.command(name="cancel_event", description="Cancel a scheduled event")
+@app_commands.describe(event_id="ID of the event to cancel")
+async def cancel_event(interaction: discord.Interaction, event_id: int):
+    """Cancel an event"""
+    await interaction.response.defer()
+
+    try:
+        success = await event_system.cancel_event(event_id, interaction.user.id)
+
+        if success:
+            await interaction.followup.send(f"✅ Event #{event_id} cancelled")
+            print(f"📅 Event #{event_id} cancelled by {interaction.user}")
+        else:
+            await interaction.followup.send(
+                f"❌ Could not cancel event #{event_id}. "
+                "It may not exist or has already been cancelled."
+            )
+
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error cancelling event: {str(e)}")
+        print(f"❌ Cancel event error: {e}")
         import traceback
         traceback.print_exc()
 

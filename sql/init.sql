@@ -188,6 +188,24 @@ CREATE TABLE IF NOT EXISTS reminders (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Events table (scheduled events with periodic reminders)
+CREATE TABLE IF NOT EXISTS events (
+    id SERIAL PRIMARY KEY,
+    event_name VARCHAR(255) NOT NULL,
+    description TEXT,
+    event_date TIMESTAMP NOT NULL,
+    created_by_user_id BIGINT NOT NULL,
+    created_by_username VARCHAR(255) NOT NULL,
+    channel_id BIGINT NOT NULL, -- Where to announce reminders
+    guild_id BIGINT NOT NULL, -- Discord server ID
+    reminder_intervals JSONB DEFAULT '["1 week", "1 day", "1 hour"]'::JSONB, -- When to send reminders
+    last_reminder_sent VARCHAR(50), -- Track last sent reminder interval
+    notify_role_id BIGINT, -- Optional: role to ping for this event
+    cancelled BOOLEAN DEFAULT FALSE,
+    cancelled_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Create indexes for common queries
 CREATE INDEX IF NOT EXISTS idx_messages_user_id ON messages(user_id);
 CREATE INDEX IF NOT EXISTS idx_messages_channel_id ON messages(channel_id);
@@ -224,3 +242,10 @@ CREATE INDEX IF NOT EXISTS idx_reminders_user_id ON reminders(user_id);
 CREATE INDEX IF NOT EXISTS idx_reminders_remind_at ON reminders(remind_at);
 CREATE INDEX IF NOT EXISTS idx_reminders_completed ON reminders(completed);
 CREATE INDEX IF NOT EXISTS idx_reminders_due ON reminders(remind_at, completed) WHERE completed = FALSE;
+
+-- Indexes for events
+CREATE INDEX IF NOT EXISTS idx_events_event_date ON events(event_date);
+CREATE INDEX IF NOT EXISTS idx_events_channel_id ON events(channel_id);
+CREATE INDEX IF NOT EXISTS idx_events_guild_id ON events(guild_id);
+CREATE INDEX IF NOT EXISTS idx_events_cancelled ON events(cancelled);
+CREATE INDEX IF NOT EXISTS idx_events_upcoming ON events(event_date, cancelled) WHERE cancelled = FALSE;
