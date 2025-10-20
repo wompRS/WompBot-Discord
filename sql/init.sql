@@ -235,6 +235,15 @@ CREATE TABLE IF NOT EXISTS debate_participants (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- iRacing links table (link Discord users to iRacing accounts)
+CREATE TABLE IF NOT EXISTS iracing_links (
+    id SERIAL PRIMARY KEY,
+    discord_user_id BIGINT UNIQUE NOT NULL,
+    iracing_cust_id INT NOT NULL,
+    iracing_name VARCHAR(255) NOT NULL,
+    linked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Create indexes for common queries
 CREATE INDEX IF NOT EXISTS idx_messages_user_id ON messages(user_id);
 CREATE INDEX IF NOT EXISTS idx_messages_channel_id ON messages(channel_id);
@@ -286,3 +295,7 @@ CREATE INDEX IF NOT EXISTS idx_debates_started_at ON debates(started_at);
 CREATE INDEX IF NOT EXISTS idx_debate_participants_debate_id ON debate_participants(debate_id);
 CREATE INDEX IF NOT EXISTS idx_debate_participants_user_id ON debate_participants(user_id);
 CREATE INDEX IF NOT EXISTS idx_debate_participants_winner ON debate_participants(is_winner);
+
+-- Indexes for iRacing links
+CREATE INDEX IF NOT EXISTS idx_iracing_links_discord_user_id ON iracing_links(discord_user_id);
+CREATE INDEX IF NOT EXISTS idx_iracing_links_iracing_cust_id ON iracing_links(iracing_cust_id);

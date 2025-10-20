@@ -15,6 +15,7 @@ from features.events import EventSystem
 from features.yearly_wrapped import YearlyWrapped
 from features.quote_of_the_day import QuoteOfTheDay
 from features.debate_scorekeeper import DebateScorekeeper
+from features.iracing import iRacingIntegration
 
 # Bot setup
 intents = discord.Intents.default()
@@ -41,6 +42,16 @@ event_system = EventSystem(db)
 yearly_wrapped = YearlyWrapped(db)
 qotd = QuoteOfTheDay(db)
 debate_scorekeeper = DebateScorekeeper(db, llm)
+
+# iRacing integration (optional - only if credentials provided)
+iracing_email = os.getenv('IRACING_EMAIL')
+iracing_password = os.getenv('IRACING_PASSWORD')
+iracing = None
+if iracing_email and iracing_password:
+    iracing = iRacingIntegration(db, iracing_email, iracing_password)
+    print("✅ iRacing integration enabled")
+else:
+    print("⚠️ iRacing integration disabled (no credentials)")
 
 OPT_OUT_ROLE = os.getenv('OPT_OUT_ROLE_NAME', 'NoDataCollection')
 WOMPIE_USERNAME = "Wompie__"
@@ -2385,6 +2396,301 @@ async def debate_leaderboard(interaction: discord.Interaction):
     except Exception as e:
         await interaction.followup.send(f"❌ Error getting leaderboard: {str(e)}")
         print(f"❌ Debate leaderboard error: {e}")
+
+# ===== iRacing Integration =====
+@bot.tree.command(name="iracing_link", description="Link your Discord account to your iRacing account")
+@app_commands.describe(iracing_name="Your iRacing display name")
+async def iracing_link(interaction: discord.Interaction, iracing_name: str):
+    """Link Discord account to iRacing"""
+    if not iracing:
+        await interaction.response.send_message("❌ iRacing integration is not configured on this bot")
+        return
+
+    await interaction.response.defer()
+
+    try:
+        # Search for the user on iRacing
+        results = await iracing.search_driver(iracing_name)
+
+        if not results or len(results) == 0:
+            await interaction.followup.send(f"❌ No iRacing driver found with name '{iracing_name}'")
+            return
+
+        # Take first result (exact match preferred)
+        driver = results[0]
+        cust_id = driver.get('cust_id')
+        display_name = driver.get('display_name', iracing_name)
+
+        # Link the account
+        success = await iracing.link_discord_to_iracing(
+            interaction.user.id,
+            cust_id,
+            display_name
+        )
+
+        if success:
+            await interaction.followup.send(
+                f"✅ Linked your Discord account to iRacing driver **{display_name}**\n"
+                f"You can now use `/iracing_profile` without specifying a name!"
+            )
+        else:
+            await interaction.followup.send("❌ Failed to link accounts")
+
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error linking account: {str(e)}")
+        print(f"❌ iRacing link error: {e}")
+
+@bot.tree.command(name="iracing_profile", description="View iRacing driver profile and stats")
+@app_commands.describe(driver_name="iRacing display name (optional if you've linked your account)")
+async def iracing_profile(interaction: discord.Interaction, driver_name: str = None):
+    """View iRacing driver profile"""
+    if not iracing:
+        await interaction.response.send_message("❌ iRacing integration is not configured on this bot")
+        return
+
+    await interaction.response.defer()
+
+    try:
+        cust_id = None
+        display_name = driver_name
+
+        # If no driver name provided, check for linked account
+        if not driver_name:
+            linked = await iracing.get_linked_iracing_id(interaction.user.id)
+            if linked:
+                cust_id, display_name = linked
+            else:
+                await interaction.followup.send(
+                    "❌ No driver name provided and no linked account found.\n"
+                    "Use `/iracing_link` to link your account or provide a driver name."
+                )
+                return
+        else:
+            # Search for driver
+            results = await iracing.search_driver(driver_name)
+            if not results or len(results) == 0:
+                await interaction.followup.send(f"❌ No driver found with name '{driver_name}'")
+                return
+            cust_id = results[0].get('cust_id')
+            display_name = results[0].get('display_name', driver_name)
+
+        # Get profile data
+        profile = await iracing.get_driver_profile(cust_id)
+
+        if not profile:
+            await interaction.followup.send("❌ Failed to retrieve profile data")
+            return
+
+        # Create embed
+        embed = discord.Embed(
+            title=f"🏁 {display_name}",
+            description="iRacing Driver Profile",
+            color=discord.Color.blue()
+        )
+
+        # Extract data (structure depends on actual API response)
+        # This is a simplified version - adjust based on actual API structure
+        member_info = profile.get('member_info', {}) if isinstance(profile, dict) else {}
+
+        if 'irating' in member_info:
+            irating = member_info['irating']
+            embed.add_field(
+                name="iRating",
+                value=iracing.format_irating(irating),
+                inline=True
+            )
+
+        if 'safety_rating' in member_info:
+            sr = member_info['safety_rating']
+            embed.add_field(
+                name="Safety Rating",
+                value=iracing.format_safety_rating(sr),
+                inline=True
+            )
+
+        if 'member_since' in member_info:
+            embed.add_field(
+                name="Member Since",
+                value=member_info['member_since'],
+                inline=True
+            )
+
+        embed.set_footer(text=f"Customer ID: {cust_id}")
+
+        await interaction.followup.send(embed=embed)
+
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error getting profile: {str(e)}")
+        print(f"❌ iRacing profile error: {e}")
+        import traceback
+        traceback.print_exc()
+
+@bot.tree.command(name="iracing_schedule", description="View upcoming iRacing race schedule")
+@app_commands.describe(
+    series="Filter by series name (optional)",
+    hours="Look ahead this many hours (default: 24)"
+)
+async def iracing_schedule(interaction: discord.Interaction, series: str = None, hours: int = 24):
+    """View upcoming race schedule"""
+    if not iracing:
+        await interaction.response.send_message("❌ iRacing integration is not configured on this bot")
+        return
+
+    await interaction.response.defer()
+
+    try:
+        upcoming = await iracing.get_upcoming_schedule(series_name=series, hours=hours)
+
+        if not upcoming or len(upcoming) == 0:
+            msg = f"❌ No upcoming races found"
+            if series:
+                msg += f" for series '{series}'"
+            await interaction.followup.send(msg)
+            return
+
+        # Create embed
+        embed = discord.Embed(
+            title=f"🏁 Upcoming iRacing Schedule",
+            description=f"Next {len(upcoming)} races in the next {hours} hours",
+            color=discord.Color.blue()
+        )
+
+        if series:
+            embed.description = f"Series: **{series}**\n{embed.description}"
+
+        # Add races (limit to 10 to avoid embed size limits)
+        for i, race in enumerate(upcoming[:10]):
+            series_name = race.get('series_name', 'Unknown Series')
+            track_name = race.get('track_name', 'Unknown Track')
+            start_time = race.get('start_time', 'TBD')
+
+            embed.add_field(
+                name=f"{i+1}. {series_name}",
+                value=f"**Track:** {track_name}\n**Time:** {start_time}",
+                inline=False
+            )
+
+        if len(upcoming) > 10:
+            embed.set_footer(text=f"Showing 10 of {len(upcoming)} races")
+
+        await interaction.followup.send(embed=embed)
+
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error getting schedule: {str(e)}")
+        print(f"❌ iRacing schedule error: {e}")
+
+@bot.tree.command(name="iracing_series", description="List all active iRacing series")
+async def iracing_series_list(interaction: discord.Interaction):
+    """List all active iRacing series"""
+    if not iracing:
+        await interaction.response.send_message("❌ iRacing integration is not configured on this bot")
+        return
+
+    await interaction.response.defer()
+
+    try:
+        series = await iracing.get_current_series()
+
+        if not series or len(series) == 0:
+            await interaction.followup.send("❌ No active series found")
+            return
+
+        # Create embed
+        embed = discord.Embed(
+            title="🏁 Active iRacing Series",
+            description=f"Found {len(series)} active series",
+            color=discord.Color.blue()
+        )
+
+        # Group by category if available, or just list them (limit to 25 fields)
+        for i, s in enumerate(series[:25]):
+            series_name = s.get('series_name', 'Unknown')
+            season_id = s.get('season_id', 'N/A')
+            category = s.get('category', 'N/A')
+
+            embed.add_field(
+                name=series_name,
+                value=f"Category: {category}\nSeason ID: {season_id}",
+                inline=True
+            )
+
+        if len(series) > 25:
+            embed.set_footer(text=f"Showing 25 of {len(series)} series")
+
+        await interaction.followup.send(embed=embed)
+
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error getting series list: {str(e)}")
+        print(f"❌ iRacing series error: {e}")
+
+@bot.tree.command(name="iracing_results", description="View recent iRacing race results for a driver")
+@app_commands.describe(driver_name="iRacing display name (optional if you've linked your account)")
+async def iracing_results(interaction: discord.Interaction, driver_name: str = None):
+    """View driver's recent race results"""
+    if not iracing:
+        await interaction.response.send_message("❌ iRacing integration is not configured on this bot")
+        return
+
+    await interaction.response.defer()
+
+    try:
+        cust_id = None
+        display_name = driver_name
+
+        # If no driver name provided, check for linked account
+        if not driver_name:
+            linked = await iracing.get_linked_iracing_id(interaction.user.id)
+            if linked:
+                cust_id, display_name = linked
+            else:
+                await interaction.followup.send(
+                    "❌ No driver name provided and no linked account found.\n"
+                    "Use `/iracing_link` to link your account or provide a driver name."
+                )
+                return
+        else:
+            # Search for driver
+            results = await iracing.search_driver(driver_name)
+            if not results or len(results) == 0:
+                await interaction.followup.send(f"❌ No driver found with name '{driver_name}'")
+                return
+            cust_id = results[0].get('cust_id')
+            display_name = results[0].get('display_name', driver_name)
+
+        # Get recent races
+        races = await iracing.get_driver_recent_races(cust_id, limit=10)
+
+        if not races or len(races) == 0:
+            await interaction.followup.send(f"❌ No recent races found for {display_name}")
+            return
+
+        # Create embed
+        embed = discord.Embed(
+            title=f"🏁 Recent Races - {display_name}",
+            description=f"Last {len(races)} races",
+            color=discord.Color.blue()
+        )
+
+        for i, race in enumerate(races):
+            series_name = race.get('series_name', 'Unknown Series')
+            track_name = race.get('track_name', 'Unknown Track')
+            finish_pos = race.get('finish_position', 'N/A')
+            start_pos = race.get('start_position', 'N/A')
+            incidents = race.get('incidents', 'N/A')
+
+            embed.add_field(
+                name=f"{i+1}. {series_name}",
+                value=f"**Track:** {track_name}\n**Finish:** P{finish_pos} (started P{start_pos})\n**Incidents:** {incidents}",
+                inline=False
+            )
+
+        embed.set_footer(text=f"Customer ID: {cust_id}")
+
+        await interaction.followup.send(embed=embed)
+
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error getting race results: {str(e)}")
+        print(f"❌ iRacing results error: {e}")
 
 # Error handling
 async def leaderboard(ctx, stat_type: str = 'messages', days: int = 7):

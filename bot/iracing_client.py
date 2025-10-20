@@ -1,0 +1,260 @@
+"""
+iRacing API Client
+Handles authentication and API requests to iRacing's data API
+"""
+
+import aiohttp
+import asyncio
+import hashlib
+import base64
+from datetime import datetime, timedelta
+from typing import Dict, Optional, List
+import json
+
+
+class iRacingClient:
+    """Client for interacting with iRacing's data API"""
+
+    BASE_URL = "https://members-ng.iracing.com"
+
+    def __init__(self, email: str, password: str):
+        self.email = email
+        self.password = password
+        self.session = None
+        self.authenticated = False
+        self.auth_expires = None
+
+    async def _get_session(self) -> aiohttp.ClientSession:
+        """Get or create aiohttp session"""
+        if self.session is None or self.session.closed:
+            self.session = aiohttp.ClientSession()
+        return self.session
+
+    async def authenticate(self) -> bool:
+        """
+        Authenticate with iRacing and establish session.
+
+        Returns True if successful, False otherwise.
+        """
+        try:
+            # Encode password
+            password_hash = hashlib.sha256((self.password + self.email.lower()).encode('utf-8')).digest()
+            password_encoded = base64.b64encode(password_hash).decode('utf-8')
+
+            session = await self._get_session()
+
+            # Login request
+            login_data = {
+                "email": self.email,
+                "password": password_encoded
+            }
+
+            async with session.post(
+                f"{self.BASE_URL}/auth",
+                json=login_data,
+                headers={"Content-Type": "application/json"}
+            ) as response:
+                if response.status == 200:
+                    self.authenticated = True
+                    self.auth_expires = datetime.now() + timedelta(hours=1)
+                    print("✅ iRacing authentication successful")
+                    return True
+                else:
+                    print(f"❌ iRacing authentication failed: {response.status}")
+                    return False
+
+        except Exception as e:
+            print(f"❌ iRacing authentication error: {e}")
+            return False
+
+    async def _ensure_authenticated(self):
+        """Ensure we have a valid authentication"""
+        if not self.authenticated or self.auth_expires < datetime.now():
+            await self.authenticate()
+
+    async def _get(self, endpoint: str, params: Optional[Dict] = None) -> Optional[Dict]:
+        """
+        Make GET request to iRacing API.
+
+        Args:
+            endpoint: API endpoint (e.g., "/data/series/seasons")
+            params: Query parameters
+
+        Returns:
+            JSON response or None if failed
+        """
+        await self._ensure_authenticated()
+
+        try:
+            session = await self._get_session()
+            url = f"{self.BASE_URL}{endpoint}"
+
+            async with session.get(url, params=params) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    return data
+                elif response.status == 401:
+                    # Re-authenticate and retry
+                    await self.authenticate()
+                    async with session.get(url, params=params) as retry_response:
+                        if retry_response.status == 200:
+                            return await retry_response.json()
+                else:
+                    print(f"❌ iRacing API error {response.status}: {endpoint}")
+                    return None
+
+        except Exception as e:
+            print(f"❌ iRacing API request error: {e}")
+            return None
+
+    async def get_member_info(self, cust_id: Optional[int] = None) -> Optional[Dict]:
+        """
+        Get member information.
+
+        Args:
+            cust_id: Customer ID (optional, defaults to authenticated user)
+
+        Returns:
+            Member information dict
+        """
+        params = {}
+        if cust_id:
+            params['cust_ids'] = cust_id
+
+        return await self._get("/data/member/info", params)
+
+    async def get_member_recent_races(self, cust_id: Optional[int] = None) -> Optional[List[Dict]]:
+        """
+        Get member's recent race results.
+
+        Args:
+            cust_id: Customer ID (optional, defaults to authenticated user)
+
+        Returns:
+            List of recent races
+        """
+        params = {}
+        if cust_id:
+            params['cust_id'] = cust_id
+
+        response = await self._get("/data/stats/member_recent_races", params)
+        return response.get('races', []) if response else []
+
+    async def get_series_seasons(self) -> Optional[List[Dict]]:
+        """
+        Get all active series and seasons.
+
+        Returns:
+            List of series/season data
+        """
+        response = await self._get("/data/series/seasons")
+        return response if response else []
+
+    async def get_series_race_schedule(self, season_id: int) -> Optional[List[Dict]]:
+        """
+        Get race schedule for a specific season.
+
+        Args:
+            season_id: Season ID
+
+        Returns:
+            List of scheduled races
+        """
+        params = {'season_id': season_id}
+        response = await self._get("/data/series/race_guide", params)
+        return response.get('sessions', []) if response else []
+
+    async def get_current_series(self) -> Optional[List[Dict]]:
+        """
+        Get currently active series (this season).
+
+        Returns:
+            List of current active series
+        """
+        all_series = await self.get_series_seasons()
+        if not all_series:
+            return []
+
+        # Filter to current season series
+        now = datetime.now()
+        current_series = []
+
+        for series in all_series:
+            # Check if series is currently active based on season dates
+            # This is a simplification - actual logic may vary
+            current_series.append(series)
+
+        return current_series
+
+    async def search_member_by_name(self, name: str) -> Optional[List[Dict]]:
+        """
+        Search for members by name.
+
+        Args:
+            name: Display name or part of name
+
+        Returns:
+            List of matching members
+        """
+        params = {'search_term': name}
+        response = await self._get("/data/member/search", params)
+        return response if response else []
+
+    async def get_member_career_stats(self, cust_id: int) -> Optional[Dict]:
+        """
+        Get member's career statistics.
+
+        Args:
+            cust_id: Customer ID
+
+        Returns:
+            Career statistics dict
+        """
+        params = {'cust_id': cust_id}
+        return await self._get("/data/stats/member_career", params)
+
+    async def get_upcoming_races(self, hours_ahead: int = 24) -> Optional[List[Dict]]:
+        """
+        Get upcoming official races within the next X hours.
+
+        Args:
+            hours_ahead: How many hours ahead to look
+
+        Returns:
+            List of upcoming races
+        """
+        # This would need to fetch schedule data and filter by time
+        # Implementation depends on exact API structure
+        series_list = await self.get_current_series()
+
+        if not series_list:
+            return []
+
+        upcoming = []
+        cutoff_time = datetime.now() + timedelta(hours=hours_ahead)
+
+        for series in series_list[:10]:  # Limit to avoid too many requests
+            if 'season_id' in series:
+                schedule = await self.get_series_race_schedule(series['season_id'])
+                if schedule:
+                    # Filter by upcoming times
+                    # This is simplified - actual implementation needs proper time parsing
+                    upcoming.extend(schedule[:3])  # Take first 3 from each series
+
+        return upcoming[:20]  # Return top 20 upcoming races
+
+    async def close(self):
+        """Close the aiohttp session"""
+        if self.session and not self.session.closed:
+            await self.session.close()
+            self.session = None
+            self.authenticated = False
+
+    async def __aenter__(self):
+        """Context manager entry"""
+        await self.authenticate()
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit"""
+        await self.close()
