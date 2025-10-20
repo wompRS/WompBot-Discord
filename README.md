@@ -52,13 +52,22 @@ A Discord bot powered by OpenRouter LLMs (Hermes/Dolphin models) with conversati
 - **Smart Hybrid**: Three-stage system keeps costs under $1/month
 - **Track Record**: See who has the best/worst prediction accuracy
 
-### ⏰ Context-Aware Reminders (NEW!)
+### ⏰ Context-Aware Reminders
 - **Natural Language**: "in 5 minutes", "tomorrow at 3pm", "next Monday"
 - **Context Links**: Jump back to original message
 - **Flexible Delivery**: DM or channel mention
 - **Recurring Support**: Daily, weekly, or custom intervals
 - **Zero Cost**: Pure time parsing, no LLM needed
 - **Background Checker**: Runs every minute for precise delivery
+
+### 📅 Event Scheduling (NEW!)
+- **Scheduled Events**: Create events with automatic periodic reminders
+- **Natural Language**: "Friday at 8pm", "in 3 days", "next Monday at 7pm"
+- **Periodic Reminders**: Configurable intervals (default: 1 week, 1 day, 1 hour before)
+- **Channel Announcements**: Public event notifications with Discord timestamps
+- **Event Management**: List upcoming events, cancel events by ID
+- **Zero Cost**: No LLM needed, pure time parsing
+- **Background Checker**: Runs every 5 minutes for reminder delivery
 
 ## Setup Instructions
 
@@ -135,6 +144,11 @@ docker-compose down
 - **/reminders**: View all your active reminders
 - **/cancel_reminder <id>**: Cancel one of your reminders
 
+### Event Scheduling
+- **/schedule_event <name> <date> [description] [reminders]**: Schedule an event with automatic reminders
+- **/events [limit]**: View upcoming scheduled events
+- **/cancel_event <id>**: Cancel a scheduled event
+
 ### User Analytics & Leaderboards
 - **!stats [@user]**: View user statistics and behavior analysis
 - **!leaderboard <type> [days]**: Show leaderboards (messages/questions/profanity)
@@ -173,6 +187,7 @@ Use `/analyze` command to run analysis.
 - [📈 Chat Statistics](docs/features/CHAT_STATISTICS.md) - Network graphs, topics, prime time
 - [🔥 Hot Takes Leaderboard](docs/features/HOT_TAKES.md) - Controversy detection, vindication tracking
 - [⏰ Reminders](docs/features/REMINDERS.md) - Natural language time parsing, context preservation
+- [📅 Event Scheduling](docs/features/EVENTS.md) - Scheduled events with periodic reminders
 
 **Configuration & Development:**
 - [⚙️ Configuration Guide](docs/CONFIGURATION.md) - All settings, API keys, environment variables
@@ -192,6 +207,7 @@ Use `/analyze` command to run analysis.
 - `claim_contradictions`: Detected contradictions
 - `fact_checks`: Fact-check results with sources
 - `reminders`: Context-aware reminders with natural language parsing
+- `events`: Scheduled events with periodic reminders and channel notifications
 - `stats_cache`: Pre-computed statistics (network, topics, primetime, engagement)
 - `message_interactions`: Network graph data
 - `topic_snapshots`: Trending topics over time
@@ -285,10 +301,13 @@ discord-bot/
 │   ├── features/            # Feature-specific guides
 │   │   ├── CHAT_STATISTICS.md
 │   │   ├── CLAIMS_TRACKING.md
+│   │   ├── CONVERSATIONAL_AI.md
+│   │   ├── EVENTS.md
 │   │   ├── FACT_CHECK.md
+│   │   ├── HOT_TAKES.md
 │   │   ├── QUOTES.md
-│   │   ├── USER_ANALYTICS.md
-│   │   └── CONVERSATIONAL_AI.md
+│   │   ├── REMINDERS.md
+│   │   └── USER_ANALYTICS.md
 │   ├── CONFIGURATION.md     # Configuration guide
 │   └── DEVELOPMENT.md       # Development guide
 │
@@ -304,7 +323,10 @@ discord-bot/
     └── features/
         ├── claims.py        # Claims tracking system
         ├── fact_check.py    # Fact-check feature
-        └── chat_stats.py    # Chat statistics (NEW!)
+        ├── chat_stats.py    # Chat statistics
+        ├── hot_takes.py     # Hot takes leaderboard
+        ├── reminders.py     # Context-aware reminders
+        └── events.py        # Event scheduling (NEW!)
 ```
 
 ## Support
