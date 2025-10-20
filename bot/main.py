@@ -10,6 +10,7 @@ from features.claims import ClaimsTracker
 from features.fact_check import FactChecker
 from features.chat_stats import ChatStatistics
 from features.hot_takes import HotTakesTracker
+from features.reminders import ReminderSystem
 
 # Bot setup
 intents = discord.Intents.default()
@@ -31,6 +32,7 @@ claims_tracker = ClaimsTracker(db, llm)
 fact_checker = FactChecker(db, llm, search)
 chat_stats = ChatStatistics(db)
 hot_takes_tracker = HotTakesTracker(db, llm)
+reminder_system = ReminderSystem(db)
 
 OPT_OUT_ROLE = os.getenv('OPT_OUT_ROLE_NAME', 'NoDataCollection')
 WOMPIE_USERNAME = "Wompie__"
@@ -109,6 +111,87 @@ async def before_precompute_stats():
     """Wait for bot to be ready before starting background task"""
     await bot.wait_until_ready()
     print("🚀 Background stats computation task started")
+
+# Background task for checking reminders
+@tasks.loop(minutes=1)  # Check every minute
+async def check_reminders():
+    """Check for due reminders and send notifications"""
+    try:
+        due_reminders = await reminder_system.get_due_reminders()
+
+        for reminder in due_reminders:
+            try:
+                # Get user and channel
+                user = await bot.fetch_user(reminder['user_id'])
+                channel = bot.get_channel(reminder['channel_id'])
+
+                if not user:
+                    print(f"⚠️ User {reminder['user_id']} not found for reminder #{reminder['id']}")
+                    await reminder_system.mark_completed(reminder['id'])
+                    continue
+
+                # Build reminder message
+                embed = discord.Embed(
+                    title="⏰ Reminder",
+                    description=reminder['reminder_text'],
+                    color=discord.Color.blue(),
+                    timestamp=reminder['remind_at']
+                )
+
+                embed.add_field(
+                    name="Set",
+                    value=f"<t:{int(reminder['remind_at'].timestamp())}:R>",
+                    inline=True
+                )
+
+                # Add context link if available
+                if reminder['message_id'] and channel:
+                    try:
+                        message_url = f"https://discord.com/channels/{channel.guild.id}/{channel.id}/{reminder['message_id']}"
+                        embed.add_field(
+                            name="Context",
+                            value=f"[Jump to message]({message_url})",
+                            inline=True
+                        )
+                    except:
+                        pass
+
+                embed.set_footer(text=f"Reminder ID: {reminder['id']}")
+
+                # Send reminder (try DM first, then mention in channel)
+                try:
+                    await user.send(embed=embed)
+                    print(f"✅ Sent reminder #{reminder['id']} to {reminder['username']} via DM")
+                except discord.Forbidden:
+                    # Can't DM user, mention in channel instead
+                    if channel:
+                        await channel.send(f"{user.mention}", embed=embed)
+                        print(f"✅ Sent reminder #{reminder['id']} to {reminder['username']} in channel")
+                    else:
+                        print(f"⚠️ Could not send reminder #{reminder['id']} - no DM or channel access")
+
+                # Mark as completed
+                await reminder_system.mark_completed(reminder['id'])
+
+                # Reschedule if recurring
+                if reminder['recurring']:
+                    await reminder_system.reschedule_recurring(reminder)
+
+            except Exception as e:
+                print(f"❌ Error processing reminder #{reminder['id']}: {e}")
+                # Mark as completed to avoid getting stuck
+                await reminder_system.mark_completed(reminder['id'])
+
+    except Exception as e:
+        print(f"❌ Error checking reminders: {e}")
+        import traceback
+        traceback.print_exc()
+
+@check_reminders.before_loop
+async def before_check_reminders():
+    """Wait for bot to be ready before starting reminder checker"""
+    await bot.wait_until_ready()
+    print("⏰ Reminder checker task started")
 
 def user_has_opted_out(member):
     """Check if user has the opt-out role"""
@@ -205,10 +288,17 @@ async def on_ready():
             print(f'👑 Wompie identified: {member.id}')
             break
     
-    # Sync slash commands with Discord
+    # Sync slash commands with Discord (guild-specific for instant updates)
     try:
-        synced = await bot.tree.sync()
-        print(f"✅ Synced {len(synced)} slash commands")
+        # Guild-specific sync for instant command updates
+        guild = discord.Object(id=1206079936331259954)  # Your server ID
+        bot.tree.copy_global_to(guild=guild)
+        synced = await bot.tree.sync(guild=guild)
+        print(f"✅ Synced {len(synced)} slash commands to guild (instant)")
+
+        # Also sync globally for other servers (takes up to 1 hour)
+        await bot.tree.sync()
+        print(f"✅ Global sync initiated")
     except Exception as e:
         print(f"❌ Failed to sync commands: {e}")
 
@@ -216,6 +306,11 @@ async def on_ready():
     if not precompute_stats.is_running():
         precompute_stats.start()
         print("🔄 Background stats pre-computation enabled (runs every hour)")
+
+    # Start reminder checking task
+    if not check_reminders.is_running():
+        check_reminders.start()
+        print("⏰ Reminder checking enabled (runs every minute)")
 
 @bot.event
 async def on_message(message):
@@ -387,6 +482,22 @@ async def on_reaction_add(reaction, user):
             await thinking_msg.delete()
             await reaction.message.channel.send(f"❌ Error during fact-check: {str(e)}")
             print(f"❌ Fact-check error: {e}")
+
+    # Check for fire emoji 🔥 - Manually mark as hot take
+    is_fire = (
+        str(reaction.emoji) == "🔥" or
+        (hasattr(reaction.emoji, 'name') and reaction.emoji.name == 'fire')
+    )
+
+    if is_fire:
+        try:
+            hot_take_id = await hot_takes_tracker.create_hot_take_from_message(reaction.message, user)
+            if hot_take_id:
+                # React with checkmark to confirm
+                await reaction.message.add_reaction("✅")
+                print(f"🔥 Hot take manually created from fire emoji: ID {hot_take_id}")
+        except Exception as e:
+            print(f"❌ Error creating hot take from fire emoji: {e}")
 
     # Track reactions for hot takes (update community engagement)
     try:
@@ -1436,6 +1547,125 @@ async def vindicate(interaction: discord.Interaction, hot_take_id: int, status: 
     except Exception as e:
         await interaction.followup.send(f"❌ Error vindicating hot take: {str(e)}")
         print(f"❌ Vindication error: {e}")
+        import traceback
+        traceback.print_exc()
+
+# =============== REMINDER COMMANDS ===============
+
+@bot.tree.command(name="remind", description="Set a reminder with natural language time")
+@app_commands.describe(
+    time="When to remind (e.g., 'in 5 minutes', 'tomorrow at 3pm', 'next Monday')",
+    message="What to remind you about",
+    recurring="Make this a recurring reminder (optional)"
+)
+async def remind(interaction: discord.Interaction, time: str, message: str, recurring: bool = False):
+    """Set a reminder"""
+    await interaction.response.defer()
+
+    try:
+        # Parse and create reminder
+        result = await reminder_system.create_reminder(
+            user_id=interaction.user.id,
+            username=str(interaction.user),
+            channel_id=interaction.channel.id,
+            message_id=None,  # Slash commands don't have a message to link back to
+            reminder_text=message,
+            time_string=time,
+            recurring=recurring,
+            recurring_interval=time if recurring else None
+        )
+
+        if not result:
+            await interaction.followup.send(
+                f"❌ Could not parse time '{time}'. Try formats like:\n"
+                "• `in 5 minutes`\n"
+                "• `in 2 hours`\n"
+                "• `tomorrow at 3pm`\n"
+                "• `next Monday`\n"
+                "• `at 15:00`"
+            )
+            return
+
+        reminder_id, remind_at = result
+
+        # Format confirmation
+        timestamp = int(remind_at.timestamp())
+        await interaction.followup.send(
+            f"✅ Reminder set! I'll remind you <t:{timestamp}:R> (at <t:{timestamp}:f>)\n"
+            f"**Message:** {message}\n"
+            f"{'🔄 **Recurring:** Yes' if recurring else ''}\n"
+            f"_Reminder ID: {reminder_id}_"
+        )
+
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error setting reminder: {str(e)}")
+        print(f"❌ Reminder error: {e}")
+        import traceback
+        traceback.print_exc()
+
+@bot.tree.command(name="reminders", description="View your active reminders")
+async def reminders(interaction: discord.Interaction):
+    """View active reminders"""
+    await interaction.response.defer()
+
+    try:
+        user_reminders = await reminder_system.get_user_reminders(interaction.user.id)
+
+        if not user_reminders:
+            await interaction.followup.send("You have no active reminders.")
+            return
+
+        embed = discord.Embed(
+            title=f"⏰ {interaction.user.display_name}'s Reminders",
+            color=discord.Color.blue()
+        )
+
+        for reminder in user_reminders[:10]:  # Limit to 10
+            timestamp = int(reminder['remind_at'].timestamp())
+            time_remaining = reminder_system.format_time_remaining(reminder['remind_at'])
+
+            value = f"**Message:** {reminder['reminder_text'][:100]}\n"
+            value += f"**When:** <t:{timestamp}:R> (<t:{timestamp}:f>)\n"
+            value += f"**Time left:** {time_remaining}\n"
+            value += f"{'🔄 Recurring' if reminder['recurring'] else ''}"
+
+            embed.add_field(
+                name=f"ID: {reminder['id']}",
+                value=value,
+                inline=False
+            )
+
+        if len(user_reminders) > 10:
+            embed.set_footer(text=f"Showing 10 of {len(user_reminders)} reminders")
+
+        await interaction.followup.send(embed=embed)
+
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error fetching reminders: {str(e)}")
+        print(f"❌ Reminders fetch error: {e}")
+        import traceback
+        traceback.print_exc()
+
+@bot.tree.command(name="cancel_reminder", description="Cancel one of your reminders")
+@app_commands.describe(reminder_id="ID of the reminder to cancel")
+async def cancel_reminder(interaction: discord.Interaction, reminder_id: int):
+    """Cancel a reminder"""
+    await interaction.response.defer()
+
+    try:
+        success = await reminder_system.cancel_reminder(reminder_id, interaction.user.id)
+
+        if success:
+            await interaction.followup.send(f"✅ Reminder #{reminder_id} cancelled")
+        else:
+            await interaction.followup.send(
+                f"❌ Could not cancel reminder #{reminder_id}. "
+                "It may not exist or you don't own it."
+            )
+
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error cancelling reminder: {str(e)}")
+        print(f"❌ Cancel reminder error: {e}")
         import traceback
         traceback.print_exc()
 

@@ -30,6 +30,12 @@ class HotTakesTracker:
             r'\b(everyone is wrong|y\'all are wrong|you\'re all wrong)\b',
             r'\b(change my mind|prove me wrong)\b',
             r'\b(objectively|factually)\b.*\b(better|worse|best|worst)\b',
+            # Strong negative "are/is a X" patterns
+            r'\b(is|are)\s+a\s+(shit|shitty|terrible|awful|horrible|trash|garbage|bad|worst)\b',
+            r'\b(is|are)\s+(shit|shitty|terrible|awful|horrible|trash|garbage|bad|the worst)\b',
+            # Absolute statements
+            r'\b(always|never)\s+(was|were|has been|have been)\b',
+            r'\b(completely|totally|utterly)\s+(trash|garbage|terrible|awful|wrong)\b',
         ]
 
         # Sensitive topics that generate controversy (without being political)
@@ -269,6 +275,92 @@ Respond with ONLY a number 0-10 and brief explanation:
 
         except Exception as e:
             print(f"❌ Error creating hot take: {e}")
+            return None
+
+    async def create_hot_take_from_message(self, message, added_by_user):
+        """
+        Manually create a hot take from any message (fire emoji trigger).
+        Creates claim first if needed, then hot take.
+        """
+        try:
+            # First, check if this message already has a claim
+            with self.db.conn.cursor() as cur:
+                cur.execute("SELECT id FROM claims WHERE message_id = %s", (message.id,))
+                result = cur.fetchone()
+
+                if result:
+                    claim_id = result[0]
+                    print(f"📝 Found existing claim #{claim_id} for message")
+                else:
+                    # Create a claim for this message
+                    # Get context (3 messages before)
+                    context_messages = self.db.get_recent_messages(message.channel.id, limit=4)
+                    context = "\n".join([f"{m['username']}: {m['content']}" for m in context_messages[:-1]])
+
+                    cur.execute("""
+                        INSERT INTO claims
+                        (user_id, username, message_id, channel_id, channel_name,
+                         claim_text, claim_type, confidence_level, context, timestamp)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        ON CONFLICT (message_id) DO NOTHING
+                        RETURNING id
+                    """, (
+                        message.author.id,
+                        str(message.author),
+                        message.id,
+                        message.channel.id,
+                        message.channel.name,
+                        message.content,
+                        'opinion',  # Default type for manual hot takes
+                        'certain',
+                        context,
+                        message.created_at
+                    ))
+
+                    result = cur.fetchone()
+                    if result:
+                        claim_id = result[0]
+                        print(f"📝 Created claim #{claim_id} from manual hot take")
+                    else:
+                        return None
+
+                # Check if hot take already exists
+                cur.execute("SELECT id FROM hot_takes WHERE claim_id = %s", (claim_id,))
+                if cur.fetchone():
+                    print(f"🔥 Hot take already exists for claim #{claim_id}")
+                    return None
+
+                # Create hot take
+                community_data = await self.track_community_reaction(message.id, message.channel.id)
+
+                cur.execute("""
+                    INSERT INTO hot_takes
+                    (claim_id, controversy_score, community_score,
+                     total_reactions, reaction_diversity, reply_count,
+                     vindication_status, created_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id
+                """, (
+                    claim_id,
+                    5.0,  # Default manual hot takes to moderate controversy
+                    community_data['community_score'],
+                    community_data['total_reactions'],
+                    community_data['reaction_diversity'],
+                    community_data['reply_count'],
+                    'pending',
+                    datetime.now()
+                ))
+
+                result = cur.fetchone()
+                if result:
+                    hot_take_id = result[0]
+                    print(f"🔥 Manual hot take #{hot_take_id} created by {added_by_user}")
+                    return hot_take_id
+
+            return None
+
+        except Exception as e:
+            print(f"❌ Error creating manual hot take: {e}")
             return None
 
     async def check_and_score_high_engagement(self, hot_take_id: int, message):
