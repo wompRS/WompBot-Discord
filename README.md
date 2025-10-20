@@ -127,15 +127,16 @@ Replace these values:
 - `POSTGRES_PASSWORD`: Choose a secure password
 
 **Optional - iRacing Integration:**
-To enable iRacing features, you must first enable Legacy Authentication in your iRacing account:
-1. Log into [iRacing.com](https://www.iracing.com)
-2. Go to **Account Settings → Security**
-3. Enable **"Legacy Read Only Authentication"**
-4. Uncomment and fill in these values in `.env`:
-   - `IRACING_EMAIL`: Your iRacing account email
-   - `IRACING_PASSWORD`: Your iRacing account password
+To enable iRacing features securely with encrypted credentials:
+1. See **[CREDENTIALS_SETUP.md](CREDENTIALS_SETUP.md)** for detailed instructions
+2. Quick start:
+   ```bash
+   docker-compose build bot  # Install encryption library
+   docker-compose run --rm bot python encrypt_credentials.py  # Encrypt credentials
+   docker-compose up -d bot  # Restart with encrypted credentials
+   ```
 
-**Note**: Your credentials are only used to authenticate with iRacing's API and are never shared or stored elsewhere.
+**Note**: Credentials are encrypted using Fernet symmetric encryption and never stored in plaintext.
 
 ### 3. Start the Bot
 

@@ -8,6 +8,12 @@ __pycache__/
 .env
 *.env
 
+# Encrypted Credentials
+.encryption_key
+.iracing_credentials
+bot/.encryption_key
+bot/.iracing_credentials
+
 # Docker
 postgres_data/
 
