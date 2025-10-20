@@ -13,6 +13,7 @@ from features.hot_takes import HotTakesTracker
 from features.reminders import ReminderSystem
 from features.events import EventSystem
 from features.yearly_wrapped import YearlyWrapped
+from features.quote_of_the_day import QuoteOfTheDay
 
 # Bot setup
 intents = discord.Intents.default()
@@ -37,6 +38,7 @@ hot_takes_tracker = HotTakesTracker(db, llm)
 reminder_system = ReminderSystem(db)
 event_system = EventSystem(db)
 yearly_wrapped = YearlyWrapped(db)
+qotd = QuoteOfTheDay(db)
 
 OPT_OUT_ROLE = os.getenv('OPT_OUT_ROLE_NAME', 'NoDataCollection')
 WOMPIE_USERNAME = "Wompie__"
@@ -2081,6 +2083,115 @@ async def wrapped(interaction: discord.Interaction, year: int = None, user: disc
     except Exception as e:
         await interaction.followup.send(f"❌ Error generating wrapped: {str(e)}")
         print(f"❌ Wrapped error: {e}")
+        import traceback
+        traceback.print_exc()
+
+# ===== Quote of the Day =====
+@bot.tree.command(name="qotd", description="View featured quotes from different time periods")
+@app_commands.describe(
+    mode="Time period: daily, weekly, monthly, alltime, or random"
+)
+@app_commands.choices(mode=[
+    app_commands.Choice(name="Daily (last 24 hours)", value="daily"),
+    app_commands.Choice(name="Weekly (last 7 days)", value="weekly"),
+    app_commands.Choice(name="Monthly (last 30 days)", value="monthly"),
+    app_commands.Choice(name="All-Time Great", value="alltime"),
+    app_commands.Choice(name="Random", value="random")
+])
+async def quote_of_the_day(interaction: discord.Interaction, mode: app_commands.Choice[str] = None):
+    """Display featured quote of the day/week/month"""
+    await interaction.response.defer()
+
+    try:
+        # Default to daily if no mode specified
+        selected_mode = mode.value if mode else 'daily'
+
+        # Get the quote
+        quote = await qotd.get_quote(selected_mode)
+
+        if not quote:
+            await interaction.followup.send(
+                f"❌ No quotes found for {selected_mode} period. Try a different time range!"
+            )
+            return
+
+        # Create beautiful embed
+        title = qotd.get_mode_title(selected_mode)
+        description = qotd.get_mode_description(selected_mode)
+
+        embed = discord.Embed(
+            title=title,
+            description=description,
+            color=discord.Color.purple()
+        )
+
+        # The quote itself - make it stand out
+        quote_text = f"*\"{quote['quote_text']}\"*"
+        embed.add_field(
+            name="💬 Quote",
+            value=quote_text,
+            inline=False
+        )
+
+        # Attribution
+        timestamp = int(quote['timestamp'].timestamp())
+        attribution = f"— **{quote['username']}**\n"
+        attribution += f"<t:{timestamp}:D> (<t:{timestamp}:R>)"
+
+        embed.add_field(
+            name="👤 Said By",
+            value=attribution,
+            inline=True
+        )
+
+        # Who saved it
+        if quote['added_by_username']:
+            saved_text = f"**{quote['added_by_username']}**"
+            if quote['reaction_count'] > 1:
+                saved_text += f"\n☁️ {quote['reaction_count']} reactions"
+            embed.add_field(
+                name="💾 Saved By",
+                value=saved_text,
+                inline=True
+            )
+
+        # Context if available
+        if quote['context']:
+            context_text = quote['context'][:200]
+            if len(quote['context']) > 200:
+                context_text += "..."
+            embed.add_field(
+                name="📝 Context",
+                value=f"```{context_text}```",
+                inline=False
+            )
+
+        # Category badge
+        if quote['category']:
+            category_emojis = {
+                'funny': '😂',
+                'crazy': '🤪',
+                'wise': '🧠',
+                'wtf': '😳',
+                'savage': '🔥'
+            }
+            emoji = category_emojis.get(quote['category'], '💬')
+            embed.add_field(
+                name="🏷️ Category",
+                value=f"{emoji} {quote['category'].title()}",
+                inline=True
+            )
+
+        # Footer with ID
+        embed.set_footer(text=f"Quote #{quote['id']}")
+        embed.timestamp = datetime.now()
+
+        await interaction.followup.send(embed=embed)
+        print(f"💬 Displayed {selected_mode} quote: #{quote['id']}")
+
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error fetching quote: {str(e)}")
+        print(f"❌ QOTD error: {e}")
         import traceback
         traceback.print_exc()
 
