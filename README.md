@@ -43,7 +43,7 @@ A Discord bot powered by OpenRouter LLMs (Hermes/Dolphin models) with conversati
 - **Zero Cost**: Uses machine learning, no LLM needed
 - **Background Updates**: Auto-refreshes every hour
 
-### 🔥 Hot Takes Leaderboard (NEW!)
+### 🔥 Hot Takes Leaderboard
 - **Auto Detection**: Identifies controversial claims using pattern matching
 - **Community Tracking**: Monitors reactions and replies automatically
 - **Multiple Leaderboards**: Controversial, Vindicated, Worst, Community Favorites, Combined
@@ -51,6 +51,14 @@ A Discord bot powered by OpenRouter LLMs (Hermes/Dolphin models) with conversati
 - **User Stats**: `/mystats_hottakes` - Your personal controversy metrics
 - **Smart Hybrid**: Three-stage system keeps costs under $1/month
 - **Track Record**: See who has the best/worst prediction accuracy
+
+### ⏰ Context-Aware Reminders (NEW!)
+- **Natural Language**: "in 5 minutes", "tomorrow at 3pm", "next Monday"
+- **Context Links**: Jump back to original message
+- **Flexible Delivery**: DM or channel mention
+- **Recurring Support**: Daily, weekly, or custom intervals
+- **Zero Cost**: Pure time parsing, no LLM needed
+- **Background Checker**: Runs every minute for precise delivery
 
 ## Setup Instructions
 
@@ -122,6 +130,11 @@ docker-compose down
 - **/mystats_hottakes**: View your personal hot takes statistics
 - **/vindicate <id> <status> [notes]**: (Admin) Mark a hot take as vindicated/proven wrong
 
+### Reminders
+- **/remind <time> <message> [recurring]**: Set a reminder with natural language time
+- **/reminders**: View all your active reminders
+- **/cancel_reminder <id>**: Cancel one of your reminders
+
 ### User Analytics & Leaderboards
 - **!stats [@user]**: View user statistics and behavior analysis
 - **!leaderboard <type> [days]**: Show leaderboards (messages/questions/profanity)
@@ -159,6 +172,7 @@ Use `/analyze` command to run analysis.
 - [📊 User Analytics](docs/features/USER_ANALYTICS.md) - Behavior analysis, leaderboards
 - [📈 Chat Statistics](docs/features/CHAT_STATISTICS.md) - Network graphs, topics, prime time
 - [🔥 Hot Takes Leaderboard](docs/features/HOT_TAKES.md) - Controversy detection, vindication tracking
+- [⏰ Reminders](docs/features/REMINDERS.md) - Natural language time parsing, context preservation
 
 **Configuration & Development:**
 - [⚙️ Configuration Guide](docs/CONFIGURATION.md) - All settings, API keys, environment variables
@@ -177,6 +191,7 @@ Use `/analyze` command to run analysis.
 - `quotes`: Saved quotes with reaction counts
 - `claim_contradictions`: Detected contradictions
 - `fact_checks`: Fact-check results with sources
+- `reminders`: Context-aware reminders with natural language parsing
 - `stats_cache`: Pre-computed statistics (network, topics, primetime, engagement)
 - `message_interactions`: Network graph data
 - `topic_snapshots`: Trending topics over time
@@ -235,7 +250,6 @@ WompBot embodies **Feyd-Rautha Harkonnen** from Dune:
 - ⚔️ **Debate Scorekeeper**: Auto-detect debates, score arguments, track fallacies
 - 🏆 **Quote of the Day**: `/qotd` command for daily/weekly/monthly quotes
 - 📅 **Yearly Wrapped**: End-of-year statistics summary
-- ⏰ **Reminders**: Context-aware reminder system
 
 ## Development
 

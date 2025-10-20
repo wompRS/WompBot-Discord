@@ -171,6 +171,23 @@ CREATE TABLE IF NOT EXISTS topic_snapshots (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Reminders table (context-aware reminder system)
+CREATE TABLE IF NOT EXISTS reminders (
+    id SERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+    username VARCHAR(255) NOT NULL,
+    channel_id BIGINT NOT NULL,
+    message_id BIGINT, -- Original message for context
+    reminder_text TEXT NOT NULL,
+    time_string VARCHAR(255) NOT NULL, -- Original input: "in 5 minutes", "tomorrow at 3pm"
+    remind_at TIMESTAMP NOT NULL,
+    recurring BOOLEAN DEFAULT FALSE,
+    recurring_interval VARCHAR(255), -- "daily", "weekly", "in 1 hour"
+    completed BOOLEAN DEFAULT FALSE,
+    completed_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Create indexes for common queries
 CREATE INDEX IF NOT EXISTS idx_messages_user_id ON messages(user_id);
 CREATE INDEX IF NOT EXISTS idx_messages_channel_id ON messages(channel_id);
@@ -201,3 +218,9 @@ CREATE INDEX IF NOT EXISTS idx_hot_takes_controversy ON hot_takes(controversy_sc
 CREATE INDEX IF NOT EXISTS idx_hot_takes_community ON hot_takes(community_score);
 CREATE INDEX IF NOT EXISTS idx_hot_takes_vindication ON hot_takes(vindication_status);
 CREATE INDEX IF NOT EXISTS idx_hot_takes_created_at ON hot_takes(created_at);
+
+-- Indexes for reminders
+CREATE INDEX IF NOT EXISTS idx_reminders_user_id ON reminders(user_id);
+CREATE INDEX IF NOT EXISTS idx_reminders_remind_at ON reminders(remind_at);
+CREATE INDEX IF NOT EXISTS idx_reminders_completed ON reminders(completed);
+CREATE INDEX IF NOT EXISTS idx_reminders_due ON reminders(remind_at, completed) WHERE completed = FALSE;
