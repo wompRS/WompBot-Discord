@@ -126,6 +126,17 @@ Replace these values:
 - `TAVILY_API_KEY`: Your Tavily API key
 - `POSTGRES_PASSWORD`: Choose a secure password
 
+**Optional - iRacing Integration:**
+To enable iRacing features, you must first enable Legacy Authentication in your iRacing account:
+1. Log into [iRacing.com](https://www.iracing.com)
+2. Go to **Account Settings → Security**
+3. Enable **"Legacy Read Only Authentication"**
+4. Uncomment and fill in these values in `.env`:
+   - `IRACING_EMAIL`: Your iRacing account email
+   - `IRACING_PASSWORD`: Your iRacing account password
+
+**Note**: Your credentials are only used to authenticate with iRacing's API and are never shared or stored elsewhere.
+
 ### 3. Start the Bot
 
 ```bash

@@ -25,9 +25,12 @@ class iRacingClient:
         self.auth_expires = None
 
     async def _get_session(self) -> aiohttp.ClientSession:
-        """Get or create aiohttp session"""
+        """Get or create aiohttp session with cookie jar"""
         if self.session is None or self.session.closed:
-            self.session = aiohttp.ClientSession()
+            # Enable cookie jar to store auth cookies
+            self.session = aiohttp.ClientSession(
+                cookie_jar=aiohttp.CookieJar()
+            )
         return self.session
 
     async def authenticate(self) -> bool:
@@ -90,21 +93,60 @@ class iRacingClient:
             url = f"{self.BASE_URL}{endpoint}"
 
             async with session.get(url, params=params) as response:
+                # Check rate limiting headers
+                if 'x-ratelimit-remaining' in response.headers:
+                    remaining = response.headers.get('x-ratelimit-remaining')
+                    if int(remaining) < 10:
+                        print(f"⚠️ iRacing API rate limit low: {remaining} remaining")
+
                 if response.status == 200:
                     data = await response.json()
+
+                    # Handle link-based responses (cached S3 data)
+                    if isinstance(data, dict) and 'link' in data and len(data) == 1:
+                        # Fetch the actual data from the S3 link
+                        async with session.get(data['link']) as link_response:
+                            if link_response.status == 200:
+                                return await link_response.json()
+                            else:
+                                print(f"❌ Failed to fetch cached data: {link_response.status}")
+                                return None
+
                     return data
+
                 elif response.status == 401:
-                    # Re-authenticate and retry
+                    # Re-authenticate and retry once
+                    print("⚠️ Session expired, re-authenticating...")
                     await self.authenticate()
                     async with session.get(url, params=params) as retry_response:
                         if retry_response.status == 200:
-                            return await retry_response.json()
+                            data = await retry_response.json()
+                            # Handle link in retry too
+                            if isinstance(data, dict) and 'link' in data and len(data) == 1:
+                                async with session.get(data['link']) as link_response:
+                                    if link_response.status == 200:
+                                        return await link_response.json()
+                            return data
+                        else:
+                            print(f"❌ Re-auth failed with status {retry_response.status}")
+                            return None
+
+                elif response.status == 429:
+                    print("❌ Rate limited by iRacing API")
+                    return None
+
+                elif response.status == 503:
+                    print("❌ iRacing API is in maintenance")
+                    return None
+
                 else:
                     print(f"❌ iRacing API error {response.status}: {endpoint}")
                     return None
 
         except Exception as e:
             print(f"❌ iRacing API request error: {e}")
+            import traceback
+            traceback.print_exc()
             return None
 
     async def get_member_info(self, cust_id: Optional[int] = None) -> Optional[Dict]:
