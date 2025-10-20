@@ -123,7 +123,7 @@ class iRacingClient:
                         if retry_response.status == 200:
                             data = await retry_response.json()
                             # Handle link in retry too
-                            if isinstance(data, dict) and 'link' in data and len(data) == 1:
+                            if isinstance(data, dict) and 'link' in data:
                                 async with session.get(data['link']) as link_response:
                                     if link_response.status == 200:
                                         return await link_response.json()
