@@ -60,14 +60,39 @@ A Discord bot powered by OpenRouter LLMs (Hermes/Dolphin models) with conversati
 - **Zero Cost**: Pure time parsing, no LLM needed
 - **Background Checker**: Runs every minute for precise delivery
 
-### 📅 Event Scheduling (NEW!)
+### 📅 Event Scheduling
 - **Scheduled Events**: Create events with automatic periodic reminders
-- **Natural Language**: "Friday at 8pm", "in 3 days", "next Monday at 7pm"
+- **Natural Language**: "Friday at 8pm", "in 3 days", "next Monday at 7pm", "october 20"
 - **Periodic Reminders**: Configurable intervals (default: 1 week, 1 day, 1 hour before)
 - **Channel Announcements**: Public event notifications with Discord timestamps
 - **Event Management**: List upcoming events, cancel events by ID
 - **Zero Cost**: No LLM needed, pure time parsing
 - **Background Checker**: Runs every 5 minutes for reminder delivery
+
+### 📊 Yearly Wrapped (NEW!)
+- **Year-End Summary**: Spotify-style statistics for your Discord activity
+- **Comprehensive Stats**: Messages, social network, claims, quotes, personality insights
+- **Achievements**: Earn badges like Night Owl, Early Bird, Debate Champion, Quote Machine
+- **Compare Years**: View any year (2020-present) or compare users
+- **Beautiful Embeds**: Gold-themed cards with your profile picture
+- **Zero Cost**: Pure database queries, no LLM needed
+
+### 🏆 Quote of the Day (NEW!)
+- **Featured Quotes**: Highlight the best quotes from your server
+- **Multiple Modes**: Daily, Weekly, Monthly, All-Time Greats, or Random
+- **Smart Selection**: Top quotes by reaction count from each time period
+- **Beautiful Display**: Purple embeds with context, attribution, and category badges
+- **Zero Cost**: Pure database queries, no LLM needed
+
+### ⚔️ Debate Scorekeeper (NEW!)
+- **Track Debates**: Start/end debates with `/debate_start` and `/debate_end`
+- **LLM Analysis**: Automatic scoring of arguments and detection of logical fallacies
+- **Winner Determination**: AI judges declare winners and explain why
+- **Individual Scores**: Each participant gets scored 0-10 on argument quality
+- **Fallacy Detection**: Identifies ad hominem, strawman, and other logical fallacies
+- **Debate History**: Track your wins, losses, average score, and favorite topics
+- **Leaderboards**: See who the best debaters are by wins and scores
+- **Low Cost**: Only uses LLM when debate ends (typically $0.01-0.05 per debate)
 
 ## Setup Instructions
 
@@ -149,6 +174,18 @@ docker-compose down
 - **/events [limit]**: View upcoming scheduled events
 - **/cancel_event <id>**: Cancel a scheduled event
 
+### Yearly Wrapped
+- **/wrapped [year] [user]**: View your yearly activity summary (Spotify Wrapped for Discord!)
+
+### Quote of the Day
+- **/qotd [mode]**: View featured quotes (daily/weekly/monthly/alltime/random)
+
+### Debate Scorekeeper
+- **/debate_start <topic>**: Start tracking a debate in the current channel
+- **/debate_end**: End debate and show LLM analysis with scores and fallacies
+- **/debate_stats [user]**: View debate statistics and win/loss record
+- **/debate_leaderboard**: Top debaters by wins and average score
+
 ### User Analytics & Leaderboards
 - **!stats [@user]**: View user statistics and behavior analysis
 - **!leaderboard <type> [days]**: Show leaderboards (messages/questions/profanity)
@@ -208,15 +245,27 @@ Use `/analyze` command to run analysis.
 - `fact_checks`: Fact-check results with sources
 - `reminders`: Context-aware reminders with natural language parsing
 - `events`: Scheduled events with periodic reminders and channel notifications
+- `debates`: Tracked debates with LLM analysis and scores
+- `debate_participants`: Individual debate participant records and statistics
 - `stats_cache`: Pre-computed statistics (network, topics, primetime, engagement)
 - `message_interactions`: Network graph data
 - `topic_snapshots`: Trending topics over time
 
 ## Costs
 
-- **OpenRouter (Dolphin 70B)**: ~$10-15/month for moderate usage
+- **OpenRouter (Dolphin 70B)**: ~$10-20/month for moderate usage
+  - Conversation AI: ~$0.001-0.005 per message
+  - Debate Analysis: ~$0.01-0.05 per debate
+  - Hot Takes Scoring: ~$0.005 per analysis (only for high-engagement claims)
 - **Tavily Search**: Free up to 1000 searches/month
 - **Server**: Free (local Docker)
+
+**Cost Optimization:**
+- Hot Takes use hybrid detection (pattern matching first, LLM only for high engagement)
+- Debate Scorekeeper only uses LLM when ending debates
+- Event Scheduling and Reminders use zero LLM (pure time parsing)
+- Quote of the Day uses zero LLM (pure database queries)
+- Yearly Wrapped uses zero LLM (pure database aggregation)
 
 ## Troubleshooting
 
@@ -262,10 +311,11 @@ WompBot embodies **Feyd-Rautha Harkonnen** from Dune:
 
 ## Upcoming Features
 
-- 🎭 **Roast Mode**: `/roast` command with personality-based roasts
-- ⚔️ **Debate Scorekeeper**: Auto-detect debates, score arguments, track fallacies
-- 🏆 **Quote of the Day**: `/qotd` command for daily/weekly/monthly quotes
-- 📅 **Yearly Wrapped**: End-of-year statistics summary
+- 🎲 **Polls & Voting**: Create polls with slash commands and reaction tracking
+- 🎂 **Birthday Tracking**: Automatic birthday reminders and celebrations
+- 🎮 **Trivia Games**: Quiz system with categories and leaderboards
+- 📊 **Voice Channel Stats**: Track time spent in voice channels
+- 🎯 **Custom Commands**: User-created text commands and responses
 
 ## Development
 
