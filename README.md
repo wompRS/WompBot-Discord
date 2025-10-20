@@ -35,13 +35,22 @@ A Discord bot powered by OpenRouter LLMs (Hermes/Dolphin models) with conversati
 - **User Stats**: `/stats [@user]` - View detailed user statistics
 - **Privacy Opt-Out**: Role-based exclusion from data collection
 
-### 📈 Chat Statistics (NEW!)
+### 📈 Chat Statistics
 - **Network Graphs**: `/stats_server [days]` - Who interacts with whom
 - **Topic Trends**: `/stats_topics [days]` - Trending keywords using TF-IDF
 - **Prime Time**: `/stats_primetime [@user] [days]` - Activity heatmaps by hour/day
 - **Engagement**: `/stats_engagement [@user] [days]` - Response times, patterns
 - **Zero Cost**: Uses machine learning, no LLM needed
 - **Background Updates**: Auto-refreshes every hour
+
+### 🔥 Hot Takes Leaderboard (NEW!)
+- **Auto Detection**: Identifies controversial claims using pattern matching
+- **Community Tracking**: Monitors reactions and replies automatically
+- **Multiple Leaderboards**: Controversial, Vindicated, Worst, Community Favorites, Combined
+- **Vindication System**: Track which hot takes aged well or poorly
+- **User Stats**: `/mystats_hottakes` - Your personal controversy metrics
+- **Smart Hybrid**: Three-stage system keeps costs under $1/month
+- **Track Record**: See who has the best/worst prediction accuracy
 
 ## Setup Instructions
 
@@ -108,6 +117,11 @@ docker-compose down
 - **/stats_engagement [@user] [days|date_range]**: Engagement metrics
 - **!refreshstats**: (Admin) Manually refresh stats cache
 
+### Hot Takes Leaderboard
+- **/hottakes [type] [days]**: View hot takes leaderboards (controversial/vindicated/worst/community/combined)
+- **/mystats_hottakes**: View your personal hot takes statistics
+- **/vindicate <id> <status> [notes]**: (Admin) Mark a hot take as vindicated/proven wrong
+
 ### User Analytics & Leaderboards
 - **!stats [@user]**: View user statistics and behavior analysis
 - **!leaderboard <type> [days]**: Show leaderboards (messages/questions/profanity)
@@ -144,10 +158,12 @@ Use `/analyze` command to run analysis.
 - [☁️ Quotes System](docs/features/QUOTES.md) - Emoji reactions, context preservation
 - [📊 User Analytics](docs/features/USER_ANALYTICS.md) - Behavior analysis, leaderboards
 - [📈 Chat Statistics](docs/features/CHAT_STATISTICS.md) - Network graphs, topics, prime time
+- [🔥 Hot Takes Leaderboard](docs/features/HOT_TAKES.md) - Controversy detection, vindication tracking
 
 **Configuration & Development:**
 - [⚙️ Configuration Guide](docs/CONFIGURATION.md) - All settings, API keys, environment variables
 - [🛠️ Development Guide](docs/DEVELOPMENT.md) - Adding features, database migrations, testing
+- [💰 Cost Optimization](docs/COST_OPTIMIZATION.md) - Two-stage hybrid detection for claims
 
 ## Database Schema
 
@@ -157,6 +173,7 @@ Use `/analyze` command to run analysis.
 - `user_behavior`: Analysis results (profanity, tone, patterns)
 - `search_logs`: Web search history
 - `claims`: Tracked claims with edit/delete history
+- `hot_takes`: Controversial claims with community tracking and vindication
 - `quotes`: Saved quotes with reaction counts
 - `claim_contradictions`: Detected contradictions
 - `fact_checks`: Fact-check results with sources
@@ -216,7 +233,6 @@ WompBot embodies **Feyd-Rautha Harkonnen** from Dune:
 
 - 🎭 **Roast Mode**: `/roast` command with personality-based roasts
 - ⚔️ **Debate Scorekeeper**: Auto-detect debates, score arguments, track fallacies
-- 🔥 **Hot Takes Leaderboard**: Track controversial opinions and vindication rate
 - 🏆 **Quote of the Day**: `/qotd` command for daily/weekly/monthly quotes
 - 📅 **Yearly Wrapped**: End-of-year statistics summary
 - ⏰ **Reminders**: Context-aware reminder system

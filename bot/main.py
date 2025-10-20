@@ -9,6 +9,7 @@ from search import SearchEngine
 from features.claims import ClaimsTracker
 from features.fact_check import FactChecker
 from features.chat_stats import ChatStatistics
+from features.hot_takes import HotTakesTracker
 
 # Bot setup
 intents = discord.Intents.default()
@@ -16,6 +17,7 @@ intents.message_content = True
 intents.members = True
 intents.guilds = True
 intents.message_content = True
+intents.reactions = True  # Need for hot takes reaction tracking
 
 bot = commands.Bot(command_prefix='!', intents=intents)  # Prefix won't be used for slash commands
 
@@ -28,6 +30,7 @@ search = SearchEngine()
 claims_tracker = ClaimsTracker(db, llm)
 fact_checker = FactChecker(db, llm, search)
 chat_stats = ChatStatistics(db)
+hot_takes_tracker = HotTakesTracker(db, llm)
 
 OPT_OUT_ROLE = os.getenv('OPT_OUT_ROLE_NAME', 'NoDataCollection')
 WOMPIE_USERNAME = "Wompie__"
@@ -247,7 +250,7 @@ async def on_message(message):
         claim_data = await claims_tracker.analyze_message_for_claim(message)
         if claim_data:
             claim_id = await claims_tracker.store_claim(message, claim_data)
-            
+
             # Check for contradictions
             if claim_id:
                 contradiction = await claims_tracker.check_contradiction(claim_data, message.author.id)
@@ -274,6 +277,13 @@ async def on_message(message):
                             inline=False
                         )
                         await message.channel.send(embed=embed)
+
+                # Check if claim is a hot take (controversial)
+                controversy_data = hot_takes_tracker.detect_controversy_patterns(message.content)
+                if controversy_data['is_controversial']:
+                    hot_take_id = await hot_takes_tracker.create_hot_take(claim_id, message, controversy_data)
+                    if hot_take_id:
+                        print(f"🔥 Hot take detected! ID: {hot_take_id}, Confidence: {controversy_data['confidence']:.2f}")
     
     if should_respond:
         await handle_bot_mention(message, opted_out)
@@ -377,6 +387,50 @@ async def on_reaction_add(reaction, user):
             await thinking_msg.delete()
             await reaction.message.channel.send(f"❌ Error during fact-check: {str(e)}")
             print(f"❌ Fact-check error: {e}")
+
+    # Track reactions for hot takes (update community engagement)
+    try:
+        with db.conn.cursor() as cur:
+            # Check if this message has a hot take
+            cur.execute("""
+                SELECT ht.id
+                FROM hot_takes ht
+                JOIN claims c ON c.id = ht.claim_id
+                WHERE c.message_id = %s
+            """, (reaction.message.id,))
+
+            result = cur.fetchone()
+            if result:
+                hot_take_id = result[0]
+                await hot_takes_tracker.update_reaction_metrics(reaction.message, hot_take_id)
+
+                # Check if now meets threshold for LLM scoring
+                await hot_takes_tracker.check_and_score_high_engagement(hot_take_id, reaction.message)
+    except Exception as e:
+        print(f"❌ Error tracking hot take reaction: {e}")
+
+@bot.event
+async def on_reaction_remove(reaction, user):
+    """Update hot takes metrics when reactions are removed"""
+    if user == bot.user:
+        return
+
+    # Update hot takes reaction metrics
+    try:
+        with db.conn.cursor() as cur:
+            cur.execute("""
+                SELECT ht.id
+                FROM hot_takes ht
+                JOIN claims c ON c.id = ht.claim_id
+                WHERE c.message_id = %s
+            """, (reaction.message.id,))
+
+            result = cur.fetchone()
+            if result:
+                hot_take_id = result[0]
+                await hot_takes_tracker.update_reaction_metrics(reaction.message, hot_take_id)
+    except Exception as e:
+        print(f"❌ Error updating hot take reaction removal: {e}")
 
 async def handle_bot_mention(message, opted_out):
     """Handle when bot is mentioned/tagged"""
@@ -1229,6 +1283,159 @@ async def stats_engagement(interaction: discord.Interaction, user: discord.Membe
     except Exception as e:
         await interaction.followup.send(f"❌ Error generating engagement stats: {str(e)}")
         print(f"❌ Engagement error: {e}")
+        import traceback
+        traceback.print_exc()
+
+# =============== HOT TAKES COMMANDS ===============
+
+@bot.tree.command(name="hottakes", description="Show hot takes leaderboard")
+@app_commands.describe(
+    leaderboard_type="Type of leaderboard (controversial/vindicated/worst/community/combined)",
+    days="Number of days to look back (default: 30)"
+)
+@app_commands.choices(leaderboard_type=[
+    app_commands.Choice(name="Most Controversial", value="controversial"),
+    app_commands.Choice(name="Best Vindicated", value="vindicated"),
+    app_commands.Choice(name="Worst Takes", value="worst"),
+    app_commands.Choice(name="Community Favorite", value="community"),
+    app_commands.Choice(name="Hot Take Kings", value="combined"),
+])
+async def hottakes(interaction: discord.Interaction, leaderboard_type: str = "controversial", days: int = 30):
+    """Show hot takes leaderboard"""
+    await interaction.response.defer()
+
+    try:
+        results = await hot_takes_tracker.get_leaderboard(leaderboard_type, days=days, limit=10)
+
+        if not results:
+            await interaction.followup.send(f"No hot takes found in the last {days} days.")
+            return
+
+        # Format embed based on leaderboard type
+        title_map = {
+            'controversial': '🔥 Most Controversial Takes',
+            'vindicated': '✅ Best Vindicated Takes',
+            'worst': '❌ Worst Takes',
+            'community': '⭐ Community Favorites',
+            'combined': '👑 Hot Take Kings'
+        }
+
+        embed = discord.Embed(
+            title=title_map.get(leaderboard_type, '🔥 Hot Takes'),
+            description=f"Last {days} days",
+            color=discord.Color.red()
+        )
+
+        for i, take in enumerate(results, 1):
+            username = take['username']
+            claim_text = take['claim_text'][:150] + ('...' if len(take['claim_text']) > 150 else '')
+
+            if leaderboard_type == 'controversial':
+                score_text = f"🔥 Controversy: {take['controversy_score']:.1f}/10"
+            elif leaderboard_type == 'vindicated':
+                score_text = f"✅ Aged like fine wine: {take['age_score']:.1f}/10"
+            elif leaderboard_type == 'worst':
+                score_text = f"❌ Aged like milk: {take['age_score']:.1f}/10"
+            elif leaderboard_type == 'community':
+                score_text = f"⭐ Community: {take['community_score']:.1f}/10 | 👍 {take['total_reactions']} reactions"
+            else:  # combined
+                score_text = f"👑 Combined: {take['combined_score']:.1f} | 🔥 {take['controversy_score']:.1f} | ✅ {take.get('age_score', 'N/A')}"
+
+            embed.add_field(
+                name=f"#{i} - {username}",
+                value=f"> {claim_text}\n\n{score_text}",
+                inline=False
+            )
+
+        await interaction.followup.send(embed=embed)
+
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error fetching hot takes: {str(e)}")
+        print(f"❌ Hot takes error: {e}")
+        import traceback
+        traceback.print_exc()
+
+@bot.tree.command(name="mystats_hottakes", description="View your personal hot takes statistics")
+async def mystats_hottakes(interaction: discord.Interaction):
+    """Show user's personal hot takes stats"""
+    await interaction.response.defer()
+
+    try:
+        stats = await hot_takes_tracker.get_user_hot_takes_stats(interaction.user.id)
+
+        if not stats or stats.get('total_hot_takes', 0) == 0:
+            await interaction.followup.send("You haven't made any hot takes yet. Time to get controversial! 🔥")
+            return
+
+        embed = discord.Embed(
+            title=f"🔥 {interaction.user.display_name}'s Hot Takes Stats",
+            color=discord.Color.red()
+        )
+
+        embed.add_field(name="Total Hot Takes", value=f"{stats['total_hot_takes']}", inline=True)
+        embed.add_field(name="Spiciest Take", value=f"{stats['spiciest_take']:.1f}/10", inline=True)
+        embed.add_field(name="Avg Controversy", value=f"{stats['avg_controversy']:.1f}/10", inline=True)
+        embed.add_field(name="Vindicated", value=f"✅ {stats['vindicated_count']}", inline=True)
+        embed.add_field(name="Proven Wrong", value=f"❌ {stats['failed_count']}", inline=True)
+        embed.add_field(name="Avg Community Score", value=f"{stats['avg_community']:.1f}/10", inline=True)
+
+        # Calculate win rate
+        total_resolved = stats['vindicated_count'] + stats['failed_count']
+        if total_resolved > 0:
+            win_rate = (stats['vindicated_count'] / total_resolved) * 100
+            embed.add_field(name="Win Rate", value=f"{win_rate:.1f}%", inline=True)
+
+        await interaction.followup.send(embed=embed)
+
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error fetching your stats: {str(e)}")
+        print(f"❌ User hot takes stats error: {e}")
+        import traceback
+        traceback.print_exc()
+
+@bot.tree.command(name="vindicate", description="Mark a hot take as vindicated or proven wrong (Admin only)")
+@app_commands.describe(
+    hot_take_id="ID of the hot take",
+    status="Vindication status (won/lost/mixed/pending)",
+    notes="Optional notes about the vindication"
+)
+@app_commands.choices(status=[
+    app_commands.Choice(name="Won (Proven Right)", value="won"),
+    app_commands.Choice(name="Lost (Proven Wrong)", value="lost"),
+    app_commands.Choice(name="Mixed (Partially Right)", value="mixed"),
+    app_commands.Choice(name="Pending", value="pending"),
+])
+async def vindicate(interaction: discord.Interaction, hot_take_id: int, status: str, notes: str = None):
+    """Vindicate a hot take (admin only)"""
+    # Check if user is admin
+    if not interaction.user.guild_permissions.administrator:
+        await interaction.response.send_message("❌ Only administrators can vindicate hot takes.", ephemeral=True)
+        return
+
+    await interaction.response.defer()
+
+    try:
+        success = await hot_takes_tracker.vindicate_hot_take(hot_take_id, status, notes)
+
+        if success:
+            status_emoji = {
+                'won': '✅',
+                'lost': '❌',
+                'mixed': '🔀',
+                'pending': '⏳'
+            }
+            emoji = status_emoji.get(status, '✅')
+
+            await interaction.followup.send(
+                f"{emoji} Hot take #{hot_take_id} marked as **{status.upper()}**" +
+                (f"\n\nNotes: {notes}" if notes else "")
+            )
+        else:
+            await interaction.followup.send(f"❌ Failed to vindicate hot take #{hot_take_id}. It may not exist.")
+
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error vindicating hot take: {str(e)}")
+        print(f"❌ Vindication error: {e}")
         import traceback
         traceback.print_exc()
 
