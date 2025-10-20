@@ -206,6 +206,35 @@ CREATE TABLE IF NOT EXISTS events (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Debates table (tracked debates with LLM analysis)
+CREATE TABLE IF NOT EXISTS debates (
+    id SERIAL PRIMARY KEY,
+    topic VARCHAR(255) NOT NULL,
+    guild_id BIGINT NOT NULL,
+    channel_id BIGINT NOT NULL,
+    started_by_user_id BIGINT NOT NULL,
+    started_by_username VARCHAR(255) NOT NULL,
+    started_at TIMESTAMP NOT NULL,
+    ended_at TIMESTAMP NOT NULL,
+    participant_count INT DEFAULT 0,
+    message_count INT DEFAULT 0,
+    transcript JSONB, -- Full debate messages
+    analysis JSONB, -- LLM analysis results
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Debate participants table (individual participant records)
+CREATE TABLE IF NOT EXISTS debate_participants (
+    id SERIAL PRIMARY KEY,
+    debate_id INT REFERENCES debates(id) ON DELETE CASCADE,
+    user_id BIGINT NOT NULL,
+    username VARCHAR(255) NOT NULL,
+    message_count INT DEFAULT 0,
+    score FLOAT, -- LLM-assigned score 0-10
+    is_winner BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Create indexes for common queries
 CREATE INDEX IF NOT EXISTS idx_messages_user_id ON messages(user_id);
 CREATE INDEX IF NOT EXISTS idx_messages_channel_id ON messages(channel_id);
@@ -249,3 +278,11 @@ CREATE INDEX IF NOT EXISTS idx_events_channel_id ON events(channel_id);
 CREATE INDEX IF NOT EXISTS idx_events_guild_id ON events(guild_id);
 CREATE INDEX IF NOT EXISTS idx_events_cancelled ON events(cancelled);
 CREATE INDEX IF NOT EXISTS idx_events_upcoming ON events(event_date, cancelled) WHERE cancelled = FALSE;
+
+-- Indexes for debates
+CREATE INDEX IF NOT EXISTS idx_debates_guild_id ON debates(guild_id);
+CREATE INDEX IF NOT EXISTS idx_debates_channel_id ON debates(channel_id);
+CREATE INDEX IF NOT EXISTS idx_debates_started_at ON debates(started_at);
+CREATE INDEX IF NOT EXISTS idx_debate_participants_debate_id ON debate_participants(debate_id);
+CREATE INDEX IF NOT EXISTS idx_debate_participants_user_id ON debate_participants(user_id);
+CREATE INDEX IF NOT EXISTS idx_debate_participants_winner ON debate_participants(is_winner);

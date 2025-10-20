@@ -14,6 +14,7 @@ from features.reminders import ReminderSystem
 from features.events import EventSystem
 from features.yearly_wrapped import YearlyWrapped
 from features.quote_of_the_day import QuoteOfTheDay
+from features.debate_scorekeeper import DebateScorekeeper
 
 # Bot setup
 intents = discord.Intents.default()
@@ -39,6 +40,7 @@ reminder_system = ReminderSystem(db)
 event_system = EventSystem(db)
 yearly_wrapped = YearlyWrapped(db)
 qotd = QuoteOfTheDay(db)
+debate_scorekeeper = DebateScorekeeper(db, llm)
 
 OPT_OUT_ROLE = os.getenv('OPT_OUT_ROLE_NAME', 'NoDataCollection')
 WOMPIE_USERNAME = "Wompie__"
@@ -414,7 +416,17 @@ async def on_message(message):
     
     # Store ALL messages (even if opted out, we flag them)
     db.store_message(message, opted_out=opted_out)
-    
+
+    # Track messages for active debates
+    if debate_scorekeeper.is_debate_active(message.channel.id):
+        debate_scorekeeper.add_debate_message(
+            message.channel.id,
+            message.author.id,
+            str(message.author),
+            message.content,
+            message.id
+        )
+
     # Check if bot should respond first
     should_respond = False
     is_addressing_bot = False
@@ -2194,6 +2206,185 @@ async def quote_of_the_day(interaction: discord.Interaction, mode: app_commands.
         print(f"❌ QOTD error: {e}")
         import traceback
         traceback.print_exc()
+
+# ===== Debate Scorekeeper =====
+@bot.tree.command(name="debate_start", description="Start tracking a debate")
+@app_commands.describe(topic="What's being debated?")
+async def debate_start(interaction: discord.Interaction, topic: str):
+    """Start tracking a debate in this channel"""
+    success = await debate_scorekeeper.start_debate(
+        interaction.channel.id,
+        interaction.guild.id,
+        topic,
+        interaction.user.id,
+        str(interaction.user)
+    )
+
+    if success:
+        await interaction.response.send_message(
+            f"⚔️ **Debate Started!**\n"
+            f"Topic: **{topic}**\n\n"
+            f"All messages in this channel are now being tracked.\n"
+            f"Use `/debate_end` when finished to see analysis and results!"
+        )
+    else:
+        await interaction.response.send_message(
+            "❌ There's already an active debate in this channel!\n"
+            f"Current topic: **{debate_scorekeeper.get_active_debate_topic(interaction.channel.id)}**"
+        )
+
+@bot.tree.command(name="debate_end", description="End debate and show LLM analysis")
+async def debate_end(interaction: discord.Interaction):
+    """End debate and analyze with LLM"""
+    await interaction.response.defer()
+
+    try:
+        result = await debate_scorekeeper.end_debate(interaction.channel.id)
+
+        if not result:
+            await interaction.followup.send("❌ No active debate in this channel!")
+            return
+
+        if 'error' in result:
+            await interaction.followup.send(f"❌ {result['message']}")
+            return
+
+        # Create results embed
+        embed = discord.Embed(
+            title=f"⚔️ Debate Results: {result['topic']}",
+            description=result['analysis'].get('summary', 'Debate concluded'),
+            color=discord.Color.red()
+        )
+
+        duration_mins = int(result['duration_minutes'])
+        embed.add_field(
+            name="📊 Stats",
+            value=f"Duration: {duration_mins} min\nParticipants: {result['participant_count']}\nMessages: {result['message_count']}",
+            inline=True
+        )
+
+        # Winner
+        if 'winner' in result['analysis']:
+            winner = result['analysis']['winner']
+            reason = result['analysis'].get('winner_reason', 'Superior arguments')
+            embed.add_field(
+                name="🏆 Winner",
+                value=f"**{winner}**\n{reason[:100]}",
+                inline=True
+            )
+
+        # Participant scores
+        if 'participants' in result['analysis']:
+            for username, data in result['analysis']['participants'].items():
+                score = data.get('score', '?')
+                strengths = data.get('strengths', 'N/A')[:150]
+                fallacies = data.get('fallacies', [])
+
+                field_value = f"**Score:** {score}/10\n**Strengths:** {strengths}"
+                if fallacies:
+                    field_value += f"\n**Fallacies:** {', '.join(fallacies[:2])}"
+
+                embed.add_field(
+                    name=f"👤 {username}",
+                    value=field_value,
+                    inline=False
+                )
+
+        embed.set_footer(text=f"Debate #{result['debate_id']}")
+        await interaction.followup.send(embed=embed)
+
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error ending debate: {str(e)}")
+        print(f"❌ Debate end error: {e}")
+        import traceback
+        traceback.print_exc()
+
+@bot.tree.command(name="debate_stats", description="View your debate statistics")
+@app_commands.describe(user="User to view stats for (defaults to yourself)")
+async def debate_stats(interaction: discord.Interaction, user: discord.Member = None):
+    """View debate statistics for a user"""
+    await interaction.response.defer()
+
+    try:
+        target_user = user if user else interaction.user
+        stats = await debate_scorekeeper.get_debate_stats(target_user.id)
+
+        if not stats:
+            await interaction.followup.send(
+                f"📊 {target_user.display_name} hasn't participated in any debates yet!"
+            )
+            return
+
+        embed = discord.Embed(
+            title=f"⚔️ Debate Stats: {target_user.display_name}",
+            color=discord.Color.blue()
+        )
+        embed.set_thumbnail(url=target_user.display_avatar.url)
+
+        embed.add_field(
+            name="📊 Record",
+            value=f"**{stats['wins']}W - {stats['losses']}L**\nWin Rate: {stats['win_rate']}%",
+            inline=True
+        )
+
+        if stats['avg_score']:
+            embed.add_field(
+                name="⭐ Average Score",
+                value=f"**{stats['avg_score']}/10**",
+                inline=True
+            )
+
+        embed.add_field(
+            name="💬 Total Debates",
+            value=f"**{stats['total_debates']}**",
+            inline=True
+        )
+
+        if stats['favorite_topic']:
+            embed.add_field(
+                name="🎯 Favorite Topic",
+                value=stats['favorite_topic'][:100],
+                inline=False
+            )
+
+        await interaction.followup.send(embed=embed)
+
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error getting stats: {str(e)}")
+        print(f"❌ Debate stats error: {e}")
+
+@bot.tree.command(name="debate_leaderboard", description="Top debaters leaderboard")
+async def debate_leaderboard(interaction: discord.Interaction):
+    """Show debate leaderboard"""
+    await interaction.response.defer()
+
+    try:
+        leaderboard = await debate_scorekeeper.get_leaderboard(interaction.guild.id)
+
+        if not leaderboard:
+            await interaction.followup.send("📊 No debate data yet! Start a debate with `/debate_start`")
+            return
+
+        embed = discord.Embed(
+            title="🏆 Debate Leaderboard",
+            description="Top debaters by wins and average score",
+            color=discord.Color.gold()
+        )
+
+        for i, entry in enumerate(leaderboard[:10], 1):
+            medal = {1: '🥇', 2: '🥈', 3: '🥉'}.get(i, f'{i}.')
+            value = f"**{entry['wins']}W** ({entry['win_rate']}%) • Avg: {entry['avg_score']}/10 • {entry['total_debates']} debates"
+            embed.add_field(
+                name=f"{medal} {entry['username']}",
+                value=value,
+                inline=False
+            )
+
+        await interaction.followup.send(embed=embed)
+
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error getting leaderboard: {str(e)}")
+        print(f"❌ Debate leaderboard error: {e}")
 
 # Error handling
 async def leaderboard(ctx, stat_type: str = 'messages', days: int = 7):
