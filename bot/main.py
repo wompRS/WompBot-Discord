@@ -2402,8 +2402,8 @@ async def debate_leaderboard(interaction: discord.Interaction):
 
 # ===== iRacing Integration =====
 @bot.tree.command(name="iracing_link", description="Link your Discord account to your iRacing account")
-@app_commands.describe(iracing_name="Your iRacing display name")
-async def iracing_link(interaction: discord.Interaction, iracing_name: str):
+@app_commands.describe(iracing_id_or_name="Your iRacing Customer ID (numeric) or display name")
+async def iracing_link(interaction: discord.Interaction, iracing_id_or_name: str):
     """Link Discord account to iRacing"""
     if not iracing:
         await interaction.response.send_message("❌ iRacing integration is not configured on this bot")
@@ -2412,17 +2412,48 @@ async def iracing_link(interaction: discord.Interaction, iracing_name: str):
     await interaction.response.defer()
 
     try:
-        # Search for the user on iRacing
-        results = await iracing.search_driver(iracing_name)
+        cust_id = None
+        display_name = None
 
-        if not results or len(results) == 0:
-            await interaction.followup.send(f"❌ No iRacing driver found with name '{iracing_name}'")
-            return
+        # Check if input is a customer ID (all digits)
+        if iracing_id_or_name.strip().isdigit():
+            cust_id = int(iracing_id_or_name.strip())
 
-        # Take first result (exact match preferred)
-        driver = results[0]
-        cust_id = driver.get('cust_id')
-        display_name = driver.get('display_name', iracing_name)
+            # Get profile to verify customer ID and get display name
+            profile = await iracing.get_driver_profile(cust_id)
+
+            if profile:
+                # Try to extract display name from profile
+                # The structure may vary, try different locations
+                if isinstance(profile, dict):
+                    display_name = (profile.get('display_name') or
+                                  profile.get('name') or
+                                  profile.get('member_info', {}).get('display_name') or
+                                  f"Driver {cust_id}")
+                else:
+                    display_name = f"Driver {cust_id}"
+            else:
+                await interaction.followup.send(
+                    f"❌ Could not find iRacing profile for customer ID {cust_id}\n"
+                    f"Make sure the ID is correct."
+                )
+                return
+        else:
+            # Search by name
+            results = await iracing.search_driver(iracing_id_or_name)
+
+            if not results or len(results) == 0:
+                await interaction.followup.send(
+                    f"❌ No iRacing driver found with name '{iracing_id_or_name}'\n"
+                    f"💡 **Tip**: Try using your iRacing Customer ID instead (just the numbers)\n"
+                    f"Find it at: https://members.iracing.com/membersite/member/Home.do"
+                )
+                return
+
+            # Take first result (exact match preferred)
+            driver = results[0]
+            cust_id = driver.get('cust_id')
+            display_name = driver.get('display_name', iracing_id_or_name)
 
         # Link the account
         success = await iracing.link_discord_to_iracing(
@@ -2433,7 +2464,7 @@ async def iracing_link(interaction: discord.Interaction, iracing_name: str):
 
         if success:
             await interaction.followup.send(
-                f"✅ Linked your Discord account to iRacing driver **{display_name}**\n"
+                f"✅ Linked your Discord account to iRacing driver **{display_name}** (ID: {cust_id})\n"
                 f"You can now use `/iracing_profile` without specifying a name!"
             )
         else:
@@ -2442,6 +2473,8 @@ async def iracing_link(interaction: discord.Interaction, iracing_name: str):
     except Exception as e:
         await interaction.followup.send(f"❌ Error linking account: {str(e)}")
         print(f"❌ iRacing link error: {e}")
+        import traceback
+        traceback.print_exc()
 
 @bot.tree.command(name="iracing_profile", description="View iRacing driver profile and stats")
 @app_commands.describe(driver_name="iRacing display name (optional if you've linked your account)")
@@ -2484,6 +2517,14 @@ async def iracing_profile(interaction: discord.Interaction, driver_name: str = N
             await interaction.followup.send("❌ Failed to retrieve profile data")
             return
 
+        # DEBUG: Print the actual response structure
+        print(f"\n{'='*60}")
+        print(f"iRacing API Response for Customer ID {cust_id}:")
+        print(f"{'='*60}")
+        import json
+        print(json.dumps(profile, indent=2, default=str))
+        print(f"{'='*60}\n")
+
         # Create embed
         embed = discord.Embed(
             title=f"🏁 {display_name}",
@@ -2491,32 +2532,38 @@ async def iracing_profile(interaction: discord.Interaction, driver_name: str = N
             color=discord.Color.blue()
         )
 
-        # Extract data (structure depends on actual API response)
-        # This is a simplified version - adjust based on actual API structure
-        member_info = profile.get('member_info', {}) if isinstance(profile, dict) else {}
+        # Extract data - need to see actual structure first
+        # The response might be nested differently than we expected
+        if isinstance(profile, dict):
+            # Try to find the actual member data
+            # It could be at the root level or nested
+            data = profile
 
-        if 'irating' in member_info:
-            irating = member_info['irating']
-            embed.add_field(
-                name="iRating",
-                value=iracing.format_irating(irating),
-                inline=True
-            )
+            # Common iRacing API patterns:
+            # Option 1: Direct at root
+            # Option 2: Nested in 'data' key
+            # Option 3: Nested in 'member_info' or 'members' array
+            if 'members' in data and isinstance(data['members'], list) and len(data['members']) > 0:
+                member_info = data['members'][0]
+            elif 'member_info' in data:
+                member_info = data['member_info']
+            elif 'data' in data:
+                member_info = data['data']
+            else:
+                member_info = data
 
-        if 'safety_rating' in member_info:
-            sr = member_info['safety_rating']
-            embed.add_field(
-                name="Safety Rating",
-                value=iracing.format_safety_rating(sr),
-                inline=True
-            )
-
-        if 'member_since' in member_info:
-            embed.add_field(
-                name="Member Since",
-                value=member_info['member_since'],
-                inline=True
-            )
+            # Add all available fields to embed for debugging
+            field_count = 0
+            for key, value in member_info.items():
+                if field_count >= 25:  # Discord embed limit
+                    break
+                if not isinstance(value, (dict, list)):  # Skip complex nested objects
+                    embed.add_field(
+                        name=str(key).replace('_', ' ').title(),
+                        value=str(value)[:1024],  # Discord field value limit
+                        inline=True
+                    )
+                    field_count += 1
 
         embed.set_footer(text=f"Customer ID: {cust_id}")
 
