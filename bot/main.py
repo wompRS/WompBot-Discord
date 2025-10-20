@@ -12,6 +12,7 @@ from features.chat_stats import ChatStatistics
 from features.hot_takes import HotTakesTracker
 from features.reminders import ReminderSystem
 from features.events import EventSystem
+from features.yearly_wrapped import YearlyWrapped
 
 # Bot setup
 intents = discord.Intents.default()
@@ -35,6 +36,7 @@ chat_stats = ChatStatistics(db)
 hot_takes_tracker = HotTakesTracker(db, llm)
 reminder_system = ReminderSystem(db)
 event_system = EventSystem(db)
+yearly_wrapped = YearlyWrapped(db)
 
 OPT_OUT_ROLE = os.getenv('OPT_OUT_ROLE_NAME', 'NoDataCollection')
 WOMPIE_USERNAME = "Wompie__"
@@ -1918,6 +1920,167 @@ async def cancel_event(interaction: discord.Interaction, event_id: int):
     except Exception as e:
         await interaction.followup.send(f"❌ Error cancelling event: {str(e)}")
         print(f"❌ Cancel event error: {e}")
+        import traceback
+        traceback.print_exc()
+
+# ===== Yearly Wrapped =====
+@bot.tree.command(name="wrapped", description="View your yearly activity summary (Spotify Wrapped for Discord!)")
+@app_commands.describe(
+    year="Year to get wrapped for (defaults to current year)",
+    user="User to view wrapped for (defaults to yourself)"
+)
+async def wrapped(interaction: discord.Interaction, year: int = None, user: discord.Member = None):
+    """Generate yearly wrapped statistics"""
+    await interaction.response.defer()
+
+    try:
+        target_user = user if user else interaction.user
+        target_year = year if year else datetime.now().year
+
+        # Validate year
+        current_year = datetime.now().year
+        if target_year < 2020 or target_year > current_year:
+            await interaction.followup.send(f"❌ Please choose a year between 2020 and {current_year}")
+            return
+
+        # Generate wrapped data
+        wrapped_data = await yearly_wrapped.generate_wrapped(target_user.id, target_year)
+
+        if not wrapped_data:
+            await interaction.followup.send(
+                f"📊 No data found for {target_user.display_name} in {target_year}"
+            )
+            return
+
+        # Create beautiful embed
+        embed = discord.Embed(
+            title=f"📊 {target_year} Wrapped",
+            description=f"**{target_user.display_name}'s Year in Review**",
+            color=discord.Color.gold()
+        )
+
+        # Set thumbnail
+        embed.set_thumbnail(url=target_user.display_avatar.url)
+
+        # Message Activity
+        msg_stats = wrapped_data['message_stats']
+        activity_text = f"**{msg_stats['total_messages']:,}** messages sent"
+        if msg_stats['server_rank']:
+            activity_text += f"\n🏆 **Rank #{msg_stats['server_rank']}** in server"
+        if msg_stats['most_active_month']:
+            month_name = yearly_wrapped.format_month_name(msg_stats['most_active_month'])
+            activity_text += f"\n📅 Most active: **{month_name}**"
+        if msg_stats['most_active_day_of_week'] is not None:
+            day_name = yearly_wrapped.format_day_name(msg_stats['most_active_day_of_week'])
+            activity_text += f"\n📆 Favorite day: **{day_name}**"
+        if msg_stats['most_active_hour'] is not None:
+            hour = msg_stats['most_active_hour']
+            period = 'AM' if hour < 12 else 'PM'
+            display_hour = hour if hour <= 12 else hour - 12
+            display_hour = 12 if display_hour == 0 else display_hour
+            activity_text += f"\n⏰ Peak hour: **{display_hour} {period}**"
+
+        embed.add_field(
+            name="💬 Message Activity",
+            value=activity_text,
+            inline=False
+        )
+
+        # Social Stats
+        social_stats = wrapped_data['social_stats']
+        if social_stats['top_conversation_partner'] or social_stats['replies_sent'] > 0:
+            social_text = ""
+            if social_stats['replies_sent'] > 0:
+                social_text += f"**{social_stats['replies_sent']}** replies sent\n"
+            if social_stats['replies_received'] > 0:
+                social_text += f"**{social_stats['replies_received']}** replies received\n"
+            if social_stats['top_conversation_partner']:
+                social_text += f"🗣️ Top buddy: <@{social_stats['top_conversation_partner']}> ({social_stats['top_partner_count']} replies)"
+
+            if social_text:
+                embed.add_field(
+                    name="👥 Social Network",
+                    value=social_text,
+                    inline=False
+                )
+
+        # Claims & Hot Takes
+        claims_stats = wrapped_data['claims_stats']
+        if claims_stats['total_claims'] > 0 or claims_stats['hot_take_count'] > 0:
+            claims_text = ""
+            if claims_stats['total_claims'] > 0:
+                claims_text += f"📋 **{claims_stats['total_claims']}** claims tracked\n"
+            if claims_stats['hot_take_count'] > 0:
+                claims_text += f"🔥 **{claims_stats['hot_take_count']}** hot takes\n"
+                if claims_stats['avg_controversy_score'] > 0:
+                    claims_text += f"⚡ Controversy: **{claims_stats['avg_controversy_score']}/10**\n"
+                if claims_stats['vindicated'] > 0:
+                    claims_text += f"✅ Vindicated: **{claims_stats['vindicated']}**\n"
+                if claims_stats['wrong'] > 0:
+                    claims_text += f"❌ Wrong: **{claims_stats['wrong']}**"
+
+            if claims_text:
+                embed.add_field(
+                    name="🔥 Claims & Hot Takes",
+                    value=claims_text,
+                    inline=True
+                )
+
+        # Quotes
+        quotes_stats = wrapped_data['quotes_stats']
+        if quotes_stats['quotes_received'] > 0 or quotes_stats['quotes_saved'] > 0:
+            quotes_text = ""
+            if quotes_stats['quotes_received'] > 0:
+                quotes_text += f"☁️ **{quotes_stats['quotes_received']}** times quoted\n"
+            if quotes_stats['quotes_saved'] > 0:
+                quotes_text += f"💾 **{quotes_stats['quotes_saved']}** quotes saved\n"
+            if quotes_stats['most_quoted_person']:
+                quotes_text += f"⭐ Favorite quotee: <@{quotes_stats['most_quoted_person']}>"
+
+            if quotes_text:
+                embed.add_field(
+                    name="☁️ Quotes",
+                    value=quotes_text,
+                    inline=True
+                )
+
+        # Personality Insights
+        personality = wrapped_data['personality']
+        if personality['question_rate'] > 0 or personality['fact_checks_requested'] > 0:
+            personality_text = ""
+            if personality['question_rate'] > 0:
+                personality_text += f"❓ Question rate: **{personality['question_rate']}%**\n"
+            if personality['profanity_score'] > 0:
+                personality_text += f"🤬 Profanity: **{personality['profanity_score']}/10**\n"
+            if personality['fact_checks_requested'] > 0:
+                personality_text += f"⚠️ Fact checks: **{personality['fact_checks_requested']}**"
+
+            if personality_text:
+                embed.add_field(
+                    name="🎭 Personality",
+                    value=personality_text,
+                    inline=False
+                )
+
+        # Achievements
+        achievements = wrapped_data['achievements']
+        if achievements:
+            embed.add_field(
+                name="🏆 Achievements",
+                value=" ".join(achievements),
+                inline=False
+            )
+
+        # Footer
+        embed.set_footer(text=f"Your {target_year} wrapped • Generated with ❤️")
+        embed.timestamp = datetime.now()
+
+        await interaction.followup.send(embed=embed)
+        print(f"📊 Generated {target_year} wrapped for {target_user.display_name}")
+
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error generating wrapped: {str(e)}")
+        print(f"❌ Wrapped error: {e}")
         import traceback
         traceback.print_exc()
 
