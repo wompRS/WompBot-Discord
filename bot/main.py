@@ -422,6 +422,26 @@ async def on_ready():
     # Start reminder checking task
     if not check_reminders.is_running():
         check_reminders.start()
+
+    # Pre-warm series autocomplete cache (runs in background)
+    if iracing:
+        async def warm_series_cache():
+            global _series_autocomplete_cache, _series_cache_time
+            try:
+                print("🏎️ Pre-warming iRacing series cache...")
+                import time
+                series = await iracing.get_current_series()
+                if series:
+                    _series_autocomplete_cache = series
+                    _series_cache_time = time.time()
+                    print(f"✅ Series cache ready ({len(series)} series loaded)")
+                else:
+                    print("⚠️ Failed to pre-warm series cache")
+            except Exception as e:
+                print(f"⚠️ Error pre-warming series cache: {e}")
+
+        # Run in background so it doesn't block bot startup
+        bot.loop.create_task(warm_series_cache())
         print("⏰ Reminder checking enabled (runs every minute)")
 
     # Start event reminder checking task
@@ -2714,25 +2734,47 @@ async def iracing_series_list(interaction: discord.Interaction):
         await interaction.followup.send(f"❌ Error getting series list: {str(e)}")
         print(f"❌ iRacing series error: {e}")
 
+# Cache for series autocomplete to prevent repeated API calls
+_series_autocomplete_cache = None
+_series_cache_time = None
+
 async def series_autocomplete(
     interaction: discord.Interaction,
     current: str,
 ) -> list[app_commands.Choice[str]]:
     """Autocomplete function for series names"""
+    global _series_autocomplete_cache, _series_cache_time
+
     if not iracing:
         print("⚠️ Series autocomplete: iRacing integration not available")
         return []
 
     try:
-        # Get all series with timeout protection
         import asyncio
-        all_series = await asyncio.wait_for(iracing.get_current_series(), timeout=2.5)
+        import time
 
-        if not all_series:
-            print(f"⚠️ Series autocomplete: No series data returned")
-            return []
+        # Use cached data if less than 5 minutes old
+        current_time = time.time()
+        if _series_autocomplete_cache and _series_cache_time and (current_time - _series_cache_time) < 300:
+            all_series = _series_autocomplete_cache
+            print(f"✅ Series autocomplete: Using cached data ({len(all_series)} series)")
+        else:
+            # Get all series with increased timeout (API can take 10+ seconds)
+            all_series = await asyncio.wait_for(iracing.get_current_series(), timeout=15.0)
 
-        print(f"✅ Series autocomplete: Loaded {len(all_series)} series")
+            if not all_series:
+                print(f"⚠️ Series autocomplete: No series data returned")
+                # Use old cache if available
+                if _series_autocomplete_cache:
+                    all_series = _series_autocomplete_cache
+                    print(f"⚠️ Using stale cache as fallback")
+                else:
+                    return []
+            else:
+                # Update cache
+                _series_autocomplete_cache = all_series
+                _series_cache_time = current_time
+                print(f"✅ Series autocomplete: Loaded {len(all_series)} series (cache updated)")
 
         # Filter by current input
         current_lower = current.lower()
@@ -2760,6 +2802,25 @@ async def series_autocomplete(
 
     except asyncio.TimeoutError:
         print(f"⚠️ Series autocomplete: Timeout fetching series data")
+        # Use cached data if available
+        if _series_autocomplete_cache:
+            print(f"⚠️ Using cached data as timeout fallback ({len(_series_autocomplete_cache)} series)")
+            all_series = _series_autocomplete_cache
+
+            # Filter by current input
+            current_lower = current.lower()
+            if not current_lower:
+                matches = all_series[:25]
+            else:
+                matches = [s for s in all_series if current_lower in s.get('series_name', '').lower()]
+
+            return [
+                app_commands.Choice(
+                    name=s.get('series_name', 'Unknown')[:100],
+                    value=s.get('series_name', 'Unknown')[:100]
+                )
+                for s in matches[:25]
+            ]
         return []
     except Exception as e:
         print(f"❌ Series autocomplete error: {type(e).__name__}: {e}")
