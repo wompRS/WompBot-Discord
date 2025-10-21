@@ -286,6 +286,81 @@ class iRacingClient:
 
         return upcoming[:20]  # Return top 20 upcoming races
 
+    async def get_series_stats(self, season_id: int, car_class_id: int, race_week_num: Optional[int] = None) -> Optional[Dict]:
+        """
+        Get statistics for a specific series season.
+
+        Args:
+            season_id: Season ID
+            car_class_id: Car class ID
+            race_week_num: Optional specific week number (defaults to current week)
+
+        Returns:
+            Series statistics including lap times, iRatings, etc.
+        """
+        params = {
+            'season_id': season_id,
+            'car_class_id': car_class_id
+        }
+        if race_week_num is not None:
+            params['race_week_num'] = race_week_num
+
+        return await self._get("/data/stats/season_driver_standings", params)
+
+    async def get_time_attack_results(self, season_id: int, car_class_id: int, race_week_num: int) -> Optional[Dict]:
+        """
+        Get time attack/time trial results for a specific week.
+
+        Args:
+            season_id: Season ID
+            car_class_id: Car class ID
+            race_week_num: Week number
+
+        Returns:
+            Time attack leaderboard data
+        """
+        params = {
+            'season_id': season_id,
+            'car_class_id': car_class_id,
+            'race_week_num': race_week_num
+        }
+        return await self._get("/data/results/season_tt_results", params)
+
+    async def get_season_results(self, season_id: int, race_week_num: Optional[int] = None) -> Optional[Dict]:
+        """
+        Get race results for a specific season and week.
+
+        Args:
+            season_id: Season ID
+            race_week_num: Optional week number (defaults to current week)
+
+        Returns:
+            Season results data
+        """
+        params = {'season_id': season_id}
+        if race_week_num is not None:
+            params['race_week_num'] = race_week_num
+
+        return await self._get("/data/results/season_results", params)
+
+    async def get_cars(self) -> Optional[List[Dict]]:
+        """
+        Get list of all cars available in iRacing.
+
+        Returns:
+            List of car data
+        """
+        return await self._get("/data/car/get")
+
+    async def get_tracks(self) -> Optional[List[Dict]]:
+        """
+        Get list of all tracks available in iRacing.
+
+        Returns:
+            List of track data
+        """
+        return await self._get("/data/track/get")
+
     async def close(self):
         """Close the aiohttp session"""
         if self.session and not self.session.closed:
