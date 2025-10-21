@@ -2436,12 +2436,19 @@ async def iracing_link(interaction: discord.Interaction, iracing_id_or_name: str
                 # Try to extract display name from profile
                 # The structure may vary, try different locations
                 if isinstance(profile, dict):
-                    display_name = (profile.get('display_name') or
-                                  profile.get('name') or
-                                  profile.get('member_info', {}).get('display_name') or
-                                  f"Driver {cust_id}")
+                    display_name = (
+                        profile.get('display_name') or
+                        profile.get('name') or
+                        profile.get('member_info', {}).get('display_name') or
+                        f"Driver {cust_id}"
+                    )
+                    # Log what we extracted for debugging
+                    print(f"🔍 Link: Extracted display_name='{display_name}' from profile for cust_id={cust_id}")
+                    print(f"   profile.get('display_name')='{profile.get('display_name')}'")
+                    print(f"   profile.get('name')='{profile.get('name')}'")
                 else:
                     display_name = f"Driver {cust_id}"
+                    print(f"⚠️ Link: Profile is not a dict, using fallback: {display_name}")
             else:
                 await interaction.followup.send(
                     f"❌ Could not find iRacing profile for customer ID {cust_id}\n"
@@ -2528,7 +2535,24 @@ async def iracing_profile(interaction: discord.Interaction, driver_name: str = N
             return
 
         # Extract actual display name from profile (not customer ID, not first/last name)
-        display_name = profile.get('display_name', display_name)
+        # Prioritize fresh API data over cached database value
+        fresh_display_name = (
+            profile.get('display_name') or
+            profile.get('name') or
+            display_name or
+            f"Driver {cust_id}"
+        )
+
+        # Update display_name for use in visualizations and embeds
+        display_name = fresh_display_name
+
+        # Update database if user has linked account and name differs
+        if display_name and display_name != f"Driver {cust_id}":
+            # Attempt to update linked account with fresh display name
+            try:
+                await iracing.link_discord_to_iracing(interaction.user.id, cust_id, display_name)
+            except:
+                pass  # Not critical if update fails
 
         if not iracing_viz:
             # Fallback to simple embed if visualizer failed to load
@@ -2696,28 +2720,51 @@ async def series_autocomplete(
 ) -> list[app_commands.Choice[str]]:
     """Autocomplete function for series names"""
     if not iracing:
+        print("⚠️ Series autocomplete: iRacing integration not available")
         return []
 
     try:
-        # Get all series
-        all_series = await iracing.get_current_series()
+        # Get all series with timeout protection
+        import asyncio
+        all_series = await asyncio.wait_for(iracing.get_current_series(), timeout=2.5)
+
         if not all_series:
+            print(f"⚠️ Series autocomplete: No series data returned")
             return []
+
+        print(f"✅ Series autocomplete: Loaded {len(all_series)} series")
 
         # Filter by current input
         current_lower = current.lower()
-        matches = [
-            s for s in all_series
-            if current_lower in s.get('series_name', '').lower()
-        ]
+
+        # If no input yet, return top 25 series
+        if not current_lower:
+            matches = all_series[:25]
+        else:
+            matches = [
+                s for s in all_series
+                if current_lower in s.get('series_name', '').lower()
+            ]
 
         # Return up to 25 choices (Discord limit)
-        return [
-            app_commands.Choice(name=s.get('series_name', 'Unknown'), value=s.get('series_name', 'Unknown'))
+        choices = [
+            app_commands.Choice(
+                name=s.get('series_name', 'Unknown')[:100],  # Discord limit is 100 chars
+                value=s.get('series_name', 'Unknown')[:100]
+            )
             for s in matches[:25]
         ]
+
+        print(f"✅ Series autocomplete: Returning {len(choices)} choices for '{current}'")
+        return choices
+
+    except asyncio.TimeoutError:
+        print(f"⚠️ Series autocomplete: Timeout fetching series data")
+        return []
     except Exception as e:
-        print(f"❌ Autocomplete error: {e}")
+        print(f"❌ Series autocomplete error: {type(e).__name__}: {e}")
+        import traceback
+        traceback.print_exc()
         return []
 
 @bot.tree.command(name="iracing_meta", description="View meta analysis for an iRacing series")

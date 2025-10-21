@@ -212,21 +212,42 @@ class iRacingClient:
         Get currently active series (this season).
 
         Returns:
-            List of current active series
+            List of current active series with series_name extracted
         """
-        all_series = await self.get_series_seasons()
-        if not all_series:
+        all_seasons = await self.get_series_seasons()
+        if not all_seasons:
             return []
 
-        # Filter to current season series
-        now = datetime.now()
-        current_series = []
+        # Extract unique series from seasons
+        # The API returns seasons, but we need to extract series_name from schedules
+        series_map = {}
 
-        for series in all_series:
-            # Check if series is currently active based on season dates
-            # This is a simplification - actual logic may vary
-            current_series.append(series)
+        for season in all_seasons:
+            # Get series info from the schedules array
+            schedules = season.get('schedules', [])
+            if not schedules:
+                continue
 
+            # Get series_name and series_id from first schedule
+            first_schedule = schedules[0]
+            series_id = first_schedule.get('series_id')
+            series_name = first_schedule.get('series_name')
+
+            if not series_id or not series_name:
+                continue
+
+            # Only add unique series (avoid duplicates from multiple seasons)
+            if series_id not in series_map:
+                series_map[series_id] = {
+                    'series_id': series_id,
+                    'series_name': series_name,
+                    'season_id': season.get('season_id'),
+                    'season_name': season.get('season_name'),
+                    'active': season.get('active', False)
+                }
+
+        # Return list of unique series, sorted by name
+        current_series = sorted(series_map.values(), key=lambda x: x['series_name'])
         return current_series
 
     async def search_member_by_name(self, name: str) -> Optional[List[Dict]]:
