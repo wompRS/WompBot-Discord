@@ -312,71 +312,110 @@ class iRacingIntegration:
 
     async def get_meta_chart_data(self, series_name: str, season_id: Optional[int] = None, week_num: Optional[int] = None) -> Optional[Dict]:
         """
-        Get meta chart data for a series showing best cars.
+        Get meta chart data for a series showing available cars.
 
         Args:
             series_name: Name of the series
             season_id: Optional specific season ID
-            week_num: Optional specific week number
+            week_num: Optional specific week number (defaults to current week)
 
         Returns:
-            Dict with series info and car performance data
+            Dict with series info and car data
         """
         try:
             client = await self._get_client()
 
-            # Find the series
-            series = await self.get_series_by_name(series_name)
-            if not series:
+            # Get full series seasons data
+            series_seasons = await client.get_series_seasons()
+            if not series_seasons:
+                print(f"❌ Failed to get series seasons data")
                 return None
 
-            # Get season ID
-            if not season_id:
-                season_id = series.get('season_id')
+            # Find the matching series/season
+            target_season = None
+            for season in series_seasons:
+                schedules = season.get('schedules', [])
+                if not schedules:
+                    continue
 
-            if not season_id:
-                print(f"❌ No season ID found for series: {series_name}")
+                # Check if any schedule matches the series name
+                for schedule in schedules:
+                    if series_name.lower() in schedule.get('series_name', '').lower():
+                        target_season = season
+                        break
+
+                if target_season:
+                    break
+
+            if not target_season:
+                print(f"❌ Series not found: {series_name}")
                 return None
 
-            # Get car class ID
-            car_class_id = series.get('car_class_id', series.get('car_class_ids', [None])[0])
+            # Get season info
+            season_id = target_season.get('season_id')
+            schedules = target_season.get('schedules', [])
 
-            # Get results data - try different endpoints
-            results = None
-
-            # Try time trial results first
-            if week_num is not None:
-                results = await client.get_time_attack_results(season_id, car_class_id, week_num)
-
-            # If no time trial results, try season results
-            if not results:
-                results = await client.get_season_results(season_id, week_num)
-
-            if not results or not results.get('chunk_info'):
-                print(f"❌ No results data found for {series_name}")
+            if not schedules:
+                print(f"❌ No schedules found for season")
                 return None
 
-            # Process results to group by car
-            car_stats = {}
+            # Get current or specified week
+            target_week = week_num if week_num is not None else target_season.get('race_week', 0)
 
-            # Get chunk data URL from results
-            chunk_info = results.get('chunk_info', {})
-            chunk_file_names = chunk_info.get('chunk_file_names', [])
-            base_download_url = chunk_info.get('base_download_url', '')
+            # Find the schedule for the target week
+            target_schedule = None
+            for schedule in schedules:
+                if schedule.get('race_week_num') == target_week:
+                    target_schedule = schedule
+                    break
 
-            # Fetch chunk data if available
-            for chunk_file in chunk_file_names[:1]:  # Just process first chunk for now
-                chunk_url = f"{base_download_url}{chunk_file}"
-                # Fetch chunk data
-                # This is simplified - in reality you'd need to download and process the chunk
+            # If no specific week found, use first schedule
+            if not target_schedule:
+                target_schedule = schedules[0]
 
-            # For now, return series info so we can at least test the command
+            # Extract car IDs from car_restrictions
+            car_restrictions = target_schedule.get('car_restrictions', [])
+            if not car_restrictions:
+                print(f"⚠️ No car restrictions found, series may allow all cars in class")
+                return {
+                    'series_name': target_schedule.get('series_name', series_name),
+                    'series_id': target_schedule.get('series_id'),
+                    'season_id': season_id,
+                    'track_name': target_schedule.get('track', {}).get('track_name'),
+                    'track_config': target_schedule.get('track', {}).get('config_name'),
+                    'week': target_week,
+                    'cars': [],
+                    'message': 'This series allows all cars in the class. Car restrictions not specified.'
+                }
+
+            # Get all car details
+            all_cars = await self.get_all_cars()
+            car_dict = {car['car_id']: car for car in all_cars}
+
+            # Build car list with details
+            cars = []
+            for car_rest in car_restrictions:
+                car_id = car_rest.get('car_id')
+                if car_id and car_id in car_dict:
+                    car_info = car_dict[car_id]
+                    cars.append({
+                        'car_id': car_id,
+                        'car_name': car_info.get('car_name', f'Car {car_id}'),
+                        'logo_url': car_info.get('logo', ''),
+                        'max_dry_tire_sets': car_rest.get('max_dry_tire_sets'),
+                        'power_adjust_pct': car_rest.get('power_adjust_pct', 0),
+                        'weight_penalty_kg': car_rest.get('weight_penalty_kg', 0)
+                    })
+
             return {
-                'series_name': series.get('series_name'),
-                'series_id': series.get('series_id'),
+                'series_name': target_schedule.get('series_name', series_name),
+                'series_id': target_schedule.get('series_id'),
                 'season_id': season_id,
-                'car_class_id': car_class_id,
-                'cars': []  # Will be populated when we process chunk data
+                'track_name': target_schedule.get('track', {}).get('track_name'),
+                'track_config': target_schedule.get('track', {}).get('config_name'),
+                'week': target_week,
+                'cars': cars,
+                'message': f'Week {target_week} at {target_schedule.get("track", {}).get("track_name")} - {len(cars)} cars available'
             }
 
         except Exception as e:

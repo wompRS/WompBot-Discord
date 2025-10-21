@@ -2767,13 +2767,209 @@ async def series_autocomplete(
         traceback.print_exc()
         return []
 
+async def week_autocomplete(
+    interaction: discord.Interaction,
+    current: str,
+) -> list[app_commands.Choice[int]]:
+    """Autocomplete function for week numbers with track names"""
+    if not iracing:
+        return [app_commands.Choice(name=f"Week {w}", value=w) for w in range(0, 13)]
+
+    try:
+        # Get namespace to access series parameter
+        namespace = interaction.namespace
+        series_name = getattr(namespace, 'series', None)
+
+        if series_name:
+            # Try to get actual week schedules for the series
+            import asyncio
+            client = await asyncio.wait_for(iracing._get_client(), timeout=2.0)
+            if client:
+                series_seasons = await client.get_series_seasons()
+
+                # Find matching series
+                for season in series_seasons:
+                    schedules = season.get('schedules', [])
+                    if not schedules:
+                        continue
+
+                    # Check if this season matches the selected series
+                    first_schedule = schedules[0]
+                    if series_name.lower() in first_schedule.get('series_name', '').lower():
+                        # Build week choices with track names
+                        week_choices = []
+
+                        for week_schedule in schedules[:13]:  # Max 13 weeks
+                            week_num = week_schedule.get('race_week_num')
+                            track = week_schedule.get('track', {})
+                            track_name = track.get('track_name', '')
+                            track_config = track.get('config_name', '')
+
+                            # Format: "Week 0: Daytona" or "Week 1: Spa - Grand Prix"
+                            if track_config and track_config not in track_name:
+                                name = f"Week {week_num}: {track_name} - {track_config}"
+                            else:
+                                name = f"Week {week_num}: {track_name}"
+
+                            # Truncate if too long (Discord limit is 100 chars)
+                            if len(name) > 100:
+                                name = name[:97] + "..."
+
+                            week_choices.append(app_commands.Choice(name=name, value=week_num))
+
+                        if week_choices:
+                            # Filter by current input
+                            if current:
+                                try:
+                                    current_int = int(current)
+                                    week_choices = [w for w in week_choices if w.value == current_int or str(current_int) in str(w.value)]
+                                except ValueError:
+                                    # Search by track name
+                                    week_choices = [w for w in week_choices if current.lower() in w.name.lower()]
+
+                            return week_choices[:25]
+
+                        break
+
+    except Exception as e:
+        print(f"⚠️ Week autocomplete error: {e}")
+
+    # Fallback to simple week numbers
+    weeks = list(range(0, 13))
+    if current:
+        try:
+            current_int = int(current)
+            weeks = [w for w in weeks if str(w).startswith(str(current_int))]
+        except ValueError:
+            pass
+
+    return [
+        app_commands.Choice(name=f"Week {w}", value=w)
+        for w in weeks[:25]
+    ]
+
+def season_id_to_year_quarter(season_id: int) -> str:
+    """
+    Convert iRacing season ID to year and quarter format.
+    iRacing runs 4 seasons per year (quarters).
+
+    Args:
+        season_id: iRacing season ID
+
+    Returns:
+        String like "2025 S1" or "2024 S4"
+    """
+    # Reference point: Season 5760 started in late 2024 (2025 Season 1)
+    # iRacing increments by 1 each quarter (4 per year)
+    reference_season = 5760
+    reference_year = 2025
+    reference_quarter = 1
+
+    # Calculate offset from reference
+    offset = season_id - reference_season
+
+    # Calculate year and quarter
+    total_quarters = (reference_year - 2015) * 4 + reference_quarter + offset
+    year = 2015 + (total_quarters - 1) // 4
+    quarter = ((total_quarters - 1) % 4) + 1
+
+    return f"{year} S{quarter}"
+
+async def season_autocomplete(
+    interaction: discord.Interaction,
+    current: str,
+) -> list[app_commands.Choice[int]]:
+    """Autocomplete function for season numbers with year/quarter"""
+    if not iracing:
+        return []
+
+    try:
+        # Get namespace to access other parameters
+        namespace = interaction.namespace
+        series_name = getattr(namespace, 'series', None)
+
+        season_choices = []
+
+        if series_name:
+            # Try to get seasons for the specific series
+            import asyncio
+            client = await asyncio.wait_for(iracing._get_client(), timeout=2.0)
+            if client:
+                seasons_data = await client.get_series_seasons()
+
+                # Find matching series and extract unique season info
+                seen_seasons = set()
+                for season in seasons_data:
+                    season_id = season.get('season_id')
+                    if season_id in seen_seasons:
+                        continue
+
+                    schedules = season.get('schedules', [])
+                    for schedule in schedules:
+                        if series_name.lower() in schedule.get('series_name', '').lower():
+                            seen_seasons.add(season_id)
+
+                            # Format: "2025 S1 (Active)" or "2024 S4"
+                            year_quarter = season_id_to_year_quarter(season_id)
+                            is_active = season.get('active', False)
+                            name = f"{year_quarter}{' (Active)' if is_active else ''}"
+
+                            season_choices.append(app_commands.Choice(name=name, value=season_id))
+                            break
+
+                if season_choices:
+                    # Sort by season ID descending (most recent first)
+                    season_choices.sort(key=lambda x: x.value, reverse=True)
+
+                    # Filter by current input
+                    if current:
+                        season_choices = [
+                            s for s in season_choices
+                            if current.lower() in s.name.lower() or current in str(s.value)
+                        ]
+
+                    return season_choices[:25]
+
+        # Fallback: provide recent season IDs with year/quarter
+        # Current season around 5760 (2025 S1), go back 20 seasons (5 years)
+        base = 5760
+        for season_id in range(base, base - 20, -1):
+            year_quarter = season_id_to_year_quarter(season_id)
+            is_current = (season_id == base)
+            name = f"{year_quarter}{' (Current)' if is_current else ''}"
+            season_choices.append(app_commands.Choice(name=name, value=season_id))
+
+        # Filter by current input if provided
+        if current:
+            season_choices = [
+                s for s in season_choices
+                if current.lower() in s.name.lower() or current in str(s.value)
+            ]
+
+        return season_choices[:25]
+
+    except Exception as e:
+        print(f"❌ Season autocomplete error: {e}")
+        # Fallback to basic season list with year/quarter
+        base = 5760
+        season_choices = []
+        for season_id in range(base, base - 12, -1):  # 3 years worth
+            year_quarter = season_id_to_year_quarter(season_id)
+            season_choices.append(app_commands.Choice(name=year_quarter, value=season_id))
+
+        return season_choices[:10]
+
 @bot.tree.command(name="iracing_meta", description="View meta analysis for an iRacing series")
 @app_commands.describe(
     series="Series name to analyze",
     season="Season number (optional, defaults to current)",
     week="Week number (optional, defaults to current)"
 )
-@app_commands.autocomplete(series=series_autocomplete)
+@app_commands.autocomplete(
+    series=series_autocomplete,
+    week=week_autocomplete,
+    season=season_autocomplete
+)
 async def iracing_meta(interaction: discord.Interaction, series: str, season: int = None, week: int = None):
     """View meta chart showing best cars for a series"""
     if not iracing:
@@ -2793,28 +2989,62 @@ async def iracing_meta(interaction: discord.Interaction, series: str, season: in
         series_name = meta_data.get('series_name', series)
         series_id = meta_data.get('series_id')
         car_data = meta_data.get('cars', [])
+        track_name = meta_data.get('track_name')
+        track_config = meta_data.get('track_config')
+        week_num = meta_data.get('week', week or 'Current')
+        message = meta_data.get('message', '')
 
-        # If we don't have car data yet (API limitations), show a placeholder message
-        if not car_data:
-            await interaction.followup.send(
-                f"📊 **{series_name}**\n\n"
-                f"Meta chart data is being collected. This feature requires processing race results data.\n"
-                f"Series ID: {series_id}\n"
-                f"Season: {season or 'Current'}\n"
-                f"Week: {week or 'Current'}\n\n"
-                f"_Note: Full meta analysis with car logos and statistics coming soon!_"
-            )
-            return
-
-        # Generate meta chart image
-        image_buffer = await iracing_graphics.create_meta_chart(series_name, series_id, car_data)
-
-        # Send as Discord file attachment
-        file = discord.File(fp=image_buffer, filename=f"meta_chart_{series_id}.png")
-        await interaction.followup.send(
-            f"📊 **{series_name}** - Meta Analysis",
-            file=file
+        # Create embed with car information
+        embed = discord.Embed(
+            title=f"🏎️ {series_name}",
+            description=message,
+            color=discord.Color.blue()
         )
+
+        if track_name:
+            track_text = f"{track_name}"
+            if track_config and track_config not in track_name:
+                track_text += f" - {track_config}"
+            embed.add_field(name="📍 Track", value=track_text, inline=False)
+
+        if car_data:
+            # Group cars into chunks of 10 for readability
+            car_list = []
+            for idx, car in enumerate(car_data, 1):
+                car_name = car.get('car_name', 'Unknown')
+
+                # Add BOP info if present
+                bop_info = []
+                if car.get('power_adjust_pct', 0) != 0:
+                    bop_info.append(f"Pwr: {car.get('power_adjust_pct'):+d}%")
+                if car.get('weight_penalty_kg', 0) != 0:
+                    bop_info.append(f"Wgt: {car.get('weight_penalty_kg'):+d}kg")
+
+                if bop_info:
+                    car_list.append(f"{idx}. {car_name} ({', '.join(bop_info)})")
+                else:
+                    car_list.append(f"{idx}. {car_name}")
+
+            # Split into multiple fields if needed
+            chunk_size = 15
+            for i in range(0, len(car_list), chunk_size):
+                chunk = car_list[i:i+chunk_size]
+                field_name = "🚗 Available Cars" if i == 0 else "🚗 Available Cars (cont.)"
+                embed.add_field(
+                    name=field_name,
+                    value="\n".join(chunk),
+                    inline=False
+                )
+
+            embed.set_footer(text=f"💡 Performance data (lap times, win rates) requires additional API integration")
+        else:
+            embed.add_field(
+                name="ℹ️ Note",
+                value="This series may allow all cars in the class, or car restrictions are not specified for this week.",
+                inline=False
+            )
+
+        await interaction.followup.send(embed=embed)
 
     except Exception as e:
         await interaction.followup.send(f"❌ Error getting meta data: {str(e)}")
