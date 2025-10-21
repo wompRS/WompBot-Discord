@@ -17,6 +17,7 @@ from features.quote_of_the_day import QuoteOfTheDay
 from features.debate_scorekeeper import DebateScorekeeper
 from features.iracing import iRacingIntegration
 from credential_manager import CredentialManager
+from iracing_graphics import iRacingGraphics
 
 # Bot setup
 intents = discord.Intents.default()
@@ -47,6 +48,15 @@ debate_scorekeeper = DebateScorekeeper(db, llm)
 # iRacing integration (optional - only if encrypted credentials provided)
 credential_manager = CredentialManager()
 iracing = None
+iracing_viz = None
+
+try:
+    from iracing_viz import iRacingVisualizer
+    iracing_viz = iRacingVisualizer()
+    print("✅ iRacing visualizer loaded")
+except Exception as e:
+    print(f"⚠️ Failed to load iRacing visualizer: {e}")
+
 iracing_credentials = credential_manager.get_iracing_credentials()
 if iracing_credentials:
     iracing_email, iracing_password = iracing_credentials
@@ -2517,57 +2527,64 @@ async def iracing_profile(interaction: discord.Interaction, driver_name: str = N
             await interaction.followup.send("❌ Failed to retrieve profile data")
             return
 
-        # DEBUG: Print the actual response structure
-        print(f"\n{'='*60}")
-        print(f"iRacing API Response for Customer ID {cust_id}:")
-        print(f"{'='*60}")
-        import json
-        print(json.dumps(profile, indent=2, default=str))
-        print(f"{'='*60}\n")
+        # Extract actual display name from profile (not customer ID, not first/last name)
+        display_name = profile.get('display_name', display_name)
 
-        # Create embed
+        if not iracing_viz:
+            # Fallback to simple embed if visualizer failed to load
+            embed = discord.Embed(
+                title=f"🏁 {display_name}",
+                description=f"Member since {profile.get('member_since', 'Unknown')}",
+                color=discord.Color.blue()
+            )
+
+            licenses = profile.get('licenses', {})
+            for key, name in [('oval', '🏁 Oval'), ('sports_car', '🏎️ Road')]:
+                if key in licenses:
+                    lic = licenses[key]
+                    irating = lic.get('irating', 0)
+                    sr = lic.get('safety_rating', 0.0)
+                    embed.add_field(name=name, value=f"iR: {irating}\nSR: {sr:.2f}", inline=True)
+
+            await interaction.followup.send(embed=embed)
+            return
+
+        # Get licenses data
+        licenses = profile.get('licenses', {})
+
+        if not licenses:
+            await interaction.followup.send("❌ No license data found")
+            return
+
+        # Generate professional license overview showing all 5 categories
+        image_buffer = iracing_viz.create_driver_license_overview(display_name, licenses)
+
+        # Send as Discord file attachment
+        file = discord.File(fp=image_buffer, filename=f"licenses_{cust_id}.png")
+
+        # Also fetch and display career stats
+        career_stats = await iracing.get_driver_career_stats(cust_id)
+
         embed = discord.Embed(
             title=f"🏁 {display_name}",
-            description="iRacing Driver Profile",
+            description=f"Member since {profile.get('member_since', 'Unknown')}",
             color=discord.Color.blue()
         )
 
-        # Extract data - need to see actual structure first
-        # The response might be nested differently than we expected
-        if isinstance(profile, dict):
-            # Try to find the actual member data
-            # It could be at the root level or nested
-            data = profile
+        if career_stats:
+            # Add career stats summary
+            stats = career_stats.get('stats', [])
+            if stats:
+                total_starts = sum(s.get('starts', 0) for s in stats)
+                total_wins = sum(s.get('wins', 0) for s in stats)
+                total_podiums = sum(s.get('top3', 0) for s in stats)
+                total_poles = sum(s.get('poles', 0) for s in stats)
 
-            # Common iRacing API patterns:
-            # Option 1: Direct at root
-            # Option 2: Nested in 'data' key
-            # Option 3: Nested in 'member_info' or 'members' array
-            if 'members' in data and isinstance(data['members'], list) and len(data['members']) > 0:
-                member_info = data['members'][0]
-            elif 'member_info' in data:
-                member_info = data['member_info']
-            elif 'data' in data:
-                member_info = data['data']
-            else:
-                member_info = data
+                embed.add_field(name="Career Stats",
+                              value=f"**Starts:** {total_starts}\n**Wins:** {total_wins}\n**Podiums:** {total_podiums}\n**Poles:** {total_poles}",
+                              inline=True)
 
-            # Add all available fields to embed for debugging
-            field_count = 0
-            for key, value in member_info.items():
-                if field_count >= 25:  # Discord embed limit
-                    break
-                if not isinstance(value, (dict, list)):  # Skip complex nested objects
-                    embed.add_field(
-                        name=str(key).replace('_', ' ').title(),
-                        value=str(value)[:1024],  # Discord field value limit
-                        inline=True
-                    )
-                    field_count += 1
-
-        embed.set_footer(text=f"Customer ID: {cust_id}")
-
-        await interaction.followup.send(embed=embed)
+        await interaction.followup.send(embed=embed, file=file)
 
     except Exception as e:
         await interaction.followup.send(f"❌ Error getting profile: {str(e)}")
@@ -2672,6 +2689,91 @@ async def iracing_series_list(interaction: discord.Interaction):
     except Exception as e:
         await interaction.followup.send(f"❌ Error getting series list: {str(e)}")
         print(f"❌ iRacing series error: {e}")
+
+async def series_autocomplete(
+    interaction: discord.Interaction,
+    current: str,
+) -> list[app_commands.Choice[str]]:
+    """Autocomplete function for series names"""
+    if not iracing:
+        return []
+
+    try:
+        # Get all series
+        all_series = await iracing.get_current_series()
+        if not all_series:
+            return []
+
+        # Filter by current input
+        current_lower = current.lower()
+        matches = [
+            s for s in all_series
+            if current_lower in s.get('series_name', '').lower()
+        ]
+
+        # Return up to 25 choices (Discord limit)
+        return [
+            app_commands.Choice(name=s.get('series_name', 'Unknown'), value=s.get('series_name', 'Unknown'))
+            for s in matches[:25]
+        ]
+    except Exception as e:
+        print(f"❌ Autocomplete error: {e}")
+        return []
+
+@bot.tree.command(name="iracing_meta", description="View meta analysis for an iRacing series")
+@app_commands.describe(
+    series="Series name to analyze",
+    season="Season number (optional, defaults to current)",
+    week="Week number (optional, defaults to current)"
+)
+@app_commands.autocomplete(series=series_autocomplete)
+async def iracing_meta(interaction: discord.Interaction, series: str, season: int = None, week: int = None):
+    """View meta chart showing best cars for a series"""
+    if not iracing:
+        await interaction.response.send_message("❌ iRacing integration is not configured on this bot")
+        return
+
+    await interaction.response.defer()
+
+    try:
+        # Get meta chart data
+        meta_data = await iracing.get_meta_chart_data(series, season_id=season, week_num=week)
+
+        if not meta_data:
+            await interaction.followup.send(f"❌ Could not find series '{series}' or no data available")
+            return
+
+        series_name = meta_data.get('series_name', series)
+        series_id = meta_data.get('series_id')
+        car_data = meta_data.get('cars', [])
+
+        # If we don't have car data yet (API limitations), show a placeholder message
+        if not car_data:
+            await interaction.followup.send(
+                f"📊 **{series_name}**\n\n"
+                f"Meta chart data is being collected. This feature requires processing race results data.\n"
+                f"Series ID: {series_id}\n"
+                f"Season: {season or 'Current'}\n"
+                f"Week: {week or 'Current'}\n\n"
+                f"_Note: Full meta analysis with car logos and statistics coming soon!_"
+            )
+            return
+
+        # Generate meta chart image
+        image_buffer = await iracing_graphics.create_meta_chart(series_name, series_id, car_data)
+
+        # Send as Discord file attachment
+        file = discord.File(fp=image_buffer, filename=f"meta_chart_{series_id}.png")
+        await interaction.followup.send(
+            f"📊 **{series_name}** - Meta Analysis",
+            file=file
+        )
+
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error getting meta data: {str(e)}")
+        print(f"❌ iRacing meta error: {e}")
+        import traceback
+        traceback.print_exc()
 
 @bot.tree.command(name="iracing_results", description="View recent iRacing race results for a driver")
 @app_commands.describe(driver_name="iRacing display name (optional if you've linked your account)")

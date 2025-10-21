@@ -21,6 +21,11 @@ class iRacingIntegration:
         self._cache = {}
         self._cache_expiry = {}
 
+        # Asset caches with logo URLs
+        self._cars_cache = None
+        self._series_cache = None
+        self._tracks_cache = None
+
     async def _get_client(self) -> iRacingClient:
         """Get or create iRacing client"""
         if self.client is None:
@@ -274,6 +279,166 @@ class iRacingIntegration:
         class_letter = classes[min(sr_class, 4)]
 
         return f"{class_letter} {sr_value:.2f}"
+
+    async def get_series_by_name(self, series_name: str) -> Optional[Dict]:
+        """
+        Find a series by name (fuzzy match).
+
+        Args:
+            series_name: Series name to search for
+
+        Returns:
+            Series dict or None if not found
+        """
+        try:
+            all_series = await self.get_current_series()
+
+            # Try exact match first
+            for series in all_series:
+                if series.get('series_name', '').lower() == series_name.lower():
+                    return series
+
+            # Try partial match
+            series_name_lower = series_name.lower()
+            for series in all_series:
+                if series_name_lower in series.get('series_name', '').lower():
+                    return series
+
+            return None
+
+        except Exception as e:
+            print(f"❌ Error finding series: {e}")
+            return None
+
+    async def get_meta_chart_data(self, series_name: str, season_id: Optional[int] = None, week_num: Optional[int] = None) -> Optional[Dict]:
+        """
+        Get meta chart data for a series showing best cars.
+
+        Args:
+            series_name: Name of the series
+            season_id: Optional specific season ID
+            week_num: Optional specific week number
+
+        Returns:
+            Dict with series info and car performance data
+        """
+        try:
+            client = await self._get_client()
+
+            # Find the series
+            series = await self.get_series_by_name(series_name)
+            if not series:
+                return None
+
+            # Get season ID
+            if not season_id:
+                season_id = series.get('season_id')
+
+            if not season_id:
+                print(f"❌ No season ID found for series: {series_name}")
+                return None
+
+            # Get car class ID
+            car_class_id = series.get('car_class_id', series.get('car_class_ids', [None])[0])
+
+            # Get results data - try different endpoints
+            results = None
+
+            # Try time trial results first
+            if week_num is not None:
+                results = await client.get_time_attack_results(season_id, car_class_id, week_num)
+
+            # If no time trial results, try season results
+            if not results:
+                results = await client.get_season_results(season_id, week_num)
+
+            if not results or not results.get('chunk_info'):
+                print(f"❌ No results data found for {series_name}")
+                return None
+
+            # Process results to group by car
+            car_stats = {}
+
+            # Get chunk data URL from results
+            chunk_info = results.get('chunk_info', {})
+            chunk_file_names = chunk_info.get('chunk_file_names', [])
+            base_download_url = chunk_info.get('base_download_url', '')
+
+            # Fetch chunk data if available
+            for chunk_file in chunk_file_names[:1]:  # Just process first chunk for now
+                chunk_url = f"{base_download_url}{chunk_file}"
+                # Fetch chunk data
+                # This is simplified - in reality you'd need to download and process the chunk
+
+            # For now, return series info so we can at least test the command
+            return {
+                'series_name': series.get('series_name'),
+                'series_id': series.get('series_id'),
+                'season_id': season_id,
+                'car_class_id': car_class_id,
+                'cars': []  # Will be populated when we process chunk data
+            }
+
+        except Exception as e:
+            print(f"❌ Error getting meta chart data: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
+
+    async def get_all_cars(self) -> List[Dict]:
+        """
+        Get all cars with logo URLs cached.
+
+        Returns:
+            List of car dicts with car_id, car_name, logo path
+        """
+        if self._cars_cache:
+            return self._cars_cache
+
+        try:
+            client = await self._get_client()
+            cars = await client.get_cars()
+
+            if cars:
+                # Convert to list if it's a dict
+                if isinstance(cars, dict):
+                    cars = list(cars.values()) if cars else []
+
+                self._cars_cache = cars
+                return cars
+
+            return []
+
+        except Exception as e:
+            print(f"❌ Error getting cars: {e}")
+            return []
+
+    async def get_all_tracks(self) -> List[Dict]:
+        """
+        Get all tracks cached.
+
+        Returns:
+            List of track dicts
+        """
+        if self._tracks_cache:
+            return self._tracks_cache
+
+        try:
+            client = await self._get_client()
+            tracks = await client.get_tracks()
+
+            if tracks:
+                if isinstance(tracks, dict):
+                    tracks = list(tracks.values()) if tracks else []
+
+                self._tracks_cache = tracks
+                return tracks
+
+            return []
+
+        except Exception as e:
+            print(f"❌ Error getting tracks: {e}")
+            return []
 
     async def close(self):
         """Close iRacing client"""
