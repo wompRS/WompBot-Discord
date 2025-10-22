@@ -442,7 +442,7 @@ class iRacingIntegration:
                 series_id_num,
                 season_id,
                 target_week,
-                max_results=None,  # Analyze ALL races for this week
+                max_results=300,  # Limit to 300 races to prevent Discord timeout (15min token expiry)
                 track_id=track_id_filter  # Filter to specific track if provided
             )
 
@@ -463,7 +463,7 @@ class iRacingIntegration:
                             series_id_num,
                             previous_season_id,
                             target_week,
-                            max_results=None,  # Analyze ALL races
+                            max_results=300,  # Limit to prevent timeout
                             track_id=track_id_filter
                         )
 
@@ -496,7 +496,9 @@ class iRacingIntegration:
                                 'win_rate': stats.get('win_rate'),
                                 'podium_rate': stats.get('podium_rate'),
                                 'total_races': stats.get('total_races'),
-                                'meta_score': stats.get('meta_score')
+                                'meta_score': stats.get('meta_score'),
+                                'avg_irating': stats.get('avg_irating', 0),
+                                'unique_drivers': stats.get('unique_drivers', 0)
                             })
                 else:
                     # Merge stats into existing cars list
@@ -511,6 +513,8 @@ class iRacingIntegration:
                             car['podium_rate'] = stats.get('podium_rate')
                             car['total_races'] = stats.get('total_races')
                             car['meta_score'] = stats.get('meta_score')
+                            car['avg_irating'] = stats.get('avg_irating', 0)
+                            car['unique_drivers'] = stats.get('unique_drivers', 0)
 
                 # Sort cars by meta score (best performing first)
                 cars.sort(key=lambda x: x.get('meta_score', 999999))

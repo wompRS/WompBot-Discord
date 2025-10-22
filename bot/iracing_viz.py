@@ -747,8 +747,8 @@ class iRacingVisualizer:
         # Extract key identifiers
         words = name.split()
         if len(words) >= 2:
-            # Use first letters of first two words + any numbers
-            abbrev = words[0][0] + ''.join(c for c in words[1] if c.isdigit() or c.isalpha()[:3])
+            # Use first letters of first two words + any numbers or letters
+            abbrev = words[0][0] + ''.join(c for c in words[1] if c.isdigit() or c.isalpha())
             return abbrev[:6]  # Max 6 characters
 
         return car_name[:6]  # Fallback
@@ -769,71 +769,79 @@ class iRacingVisualizer:
         Returns:
             BytesIO containing the PNG image
         """
-        # Compact sizing matching iRacing Reports style
+        # Clean iRacing Reports style sizing
         num_cars = len(car_data)
-        row_height = 0.55
-        header_space = 3.5
-        chart_height = max(5, header_space + (num_cars * row_height))
+        row_height = 0.7
+        chart_height = max(8, 4 + (num_cars * row_height))
 
-        # Narrower width - more compact like iRacing Reports
-        fig = plt.figure(figsize=(10, chart_height), facecolor=self.COLORS['bg_dark'])
+        # Standard width for readability
+        fig = plt.figure(figsize=(12, chart_height), facecolor=self.COLORS['bg_dark'])
 
         ax = fig.add_subplot(111)
         ax.axis('off')
-        ax.set_xlim(0, 10)
-        ax.set_ylim(0, num_cars + 3.5)
+        ax.set_xlim(0, 12)
 
-        # Large series logo on the left
+        # Calculate total height for proper positioning
+        total_height = num_cars + 4
+        ax.set_ylim(0, total_height)
+
+        # Series logo - large on the left, positioned at the top
         series_logo_path = self.logo_matcher.get_series_logo(series_name)
+        logo_height_ratio = 0.12  # 12% of figure height
+        logo_width_ratio = 0.18   # 18% of figure width
+        logo_top = 0.88           # Position from bottom (88% = near top)
+
         if series_logo_path and series_logo_path.exists():
             try:
                 logo_img = Image.open(series_logo_path)
                 if logo_img.mode != 'RGBA':
                     logo_img = logo_img.convert('RGBA')
 
-                # Large logo on left side
-                logo_ax = fig.add_axes([0.05, 0.80, 0.20, 0.15])
+                # Add series logo at top left
+                logo_ax = fig.add_axes([0.05, logo_top, logo_width_ratio, logo_height_ratio])
                 logo_ax.imshow(logo_img)
                 logo_ax.axis('off')
             except Exception as e:
                 print(f"⚠️ Failed to load series logo: {e}")
 
-        # Title on the right - simple and clean
-        title_y = num_cars + 2.8
-        ax.text(5.5, title_y, "Best Average Lap Time",
-               ha='left', fontsize=18, fontweight='bold', color=self.COLORS['text_white'])
+        # Title and info - positioned to the right of logo
+        title_y = total_height - 0.8
+        ax.text(3.5, title_y, "Best Average Lap Time",
+               ha='left', fontsize=20, fontweight='bold', color=self.COLORS['text_white'])
 
-        # Track name
-        ax.text(5.5, title_y - 0.6, track_name,
-               ha='left', fontsize=14, color=self.COLORS['text_gray'])
+        # Track name (centered below title)
+        ax.text(6, title_y - 0.7, track_name,
+               ha='center', fontsize=15, color=self.COLORS['text_gray'])
 
         # Unique drivers count
         if unique_drivers > 0:
-            ax.text(5.5, title_y - 1.1, f"{unique_drivers:,} unique drivers",
-                   ha='left', fontsize=11, color=self.COLORS['text_gray'])
+            ax.text(6, title_y - 1.3, f"{unique_drivers:,} unique drivers",
+                   ha='center', fontsize=12, color=self.COLORS['text_gray'])
 
-        # Column headers - just Lap Time and iRating
-        headers_y = num_cars + 0.8
-        ax.text(4.5, headers_y, "Lap Time", fontsize=12, color=self.COLORS['accent_blue'], fontweight='bold')
-        ax.text(8.5, headers_y, "iRating", fontsize=12, color=self.COLORS['accent_blue'], fontweight='bold')
+        # Column headers - clean alignment
+        headers_y = total_height - 3.0
+        ax.text(5.5, headers_y, "Lap Time", fontsize=13, color=self.COLORS['accent_blue'],
+               fontweight='bold', ha='center')
+        ax.text(10, headers_y, "iRating", fontsize=13, color=self.COLORS['accent_blue'],
+               fontweight='bold', ha='center')
 
         # Draw car rows - clean and simple
-        y_pos = num_cars - 0.5
+        y_pos = headers_y - 1.0
 
         for idx, car in enumerate(car_data):
-            # Highlight top 3 with gold border (like iRacing Reports)
+            # Highlight top 3 with gold border
             if idx < 3:
-                rect = plt.Rectangle((0.3, y_pos - 0.25), 9.4, 0.5,
+                rect = plt.Rectangle((0.4, y_pos - 0.35), 11.2, 0.65,
                                     facecolor='none', edgecolor=self.COLORS['accent_yellow'],
-                                    linewidth=2)
+                                    linewidth=2.5)
                 ax.add_patch(rect)
 
-            # Rank number (clean, no medals)
+            # Rank number
             rank_text = f"{idx + 1}st" if idx == 0 else f"{idx + 1}nd" if idx == 1 else f"{idx + 1}rd" if idx == 2 else f"{idx + 1}th"
-            ax.text(0.6, y_pos, rank_text,
-                   fontsize=11, color=self.COLORS['text_white'], va='center', fontweight='bold')
+            ax.text(0.8, y_pos, rank_text,
+                   fontsize=12, color=self.COLORS['text_white'], va='center', fontweight='bold')
 
-            # Car logo (small, clean)
+            # Car logo - properly positioned
             car_name = car.get('car_name', '')
             logo_path = self.logo_matcher.get_car_logo(car_name, size='thumb')
 
@@ -843,52 +851,55 @@ class iRacingVisualizer:
                     if car_logo.mode != 'RGBA':
                         car_logo = car_logo.convert('RGBA')
 
-                    # Position logo precisely
-                    logo_x_fig = 1.4 / 10.0
-                    logo_y_fig = y_pos / (num_cars + 3.5)
-                    logo_size = 0.035
+                    # Convert axis position to figure coordinates
+                    trans = ax.transData.transform
+                    inv_trans = fig.transFigure.inverted().transform
+                    logo_center = inv_trans(trans([1.8, y_pos]))
 
-                    logo_ax = fig.add_axes([logo_x_fig - logo_size/2, logo_y_fig - logo_size/2, logo_size, logo_size])
+                    logo_size = 0.04
+                    logo_ax = fig.add_axes([logo_center[0] - logo_size/2, logo_center[1] - logo_size/2,
+                                          logo_size, logo_size])
                     logo_ax.imshow(car_logo)
                     logo_ax.axis('off')
                 except Exception as e:
-                    print(f"⚠️ Failed to load logo for {car_name}: {e}")
+                    pass  # Silently skip if logo fails
 
             # Abbreviated car name
             car_abbrev = self._abbreviate_car_name(car_name)
-            ax.text(2.0, y_pos, car_abbrev,
-                   fontsize=13, color=self.COLORS['text_white'], va='center', fontweight='bold')
+            ax.text(2.8, y_pos, car_abbrev,
+                   fontsize=14, color=self.COLORS['text_white'], va='center', fontweight='bold')
 
-            # Lap time (simple format like "2:03.000")
+            # Lap time - centered under header
             avg_lap_time = car.get('avg_lap_time')
             if avg_lap_time:
                 minutes = int(avg_lap_time // 60)
                 seconds = avg_lap_time % 60
                 lap_time_str = f"{minutes}:{seconds:06.3f}"
 
-                ax.text(4.5, y_pos, lap_time_str,
-                       fontsize=13, color=self.COLORS['accent_blue'], va='center', fontweight='bold')
+                ax.text(5.5, y_pos, lap_time_str,
+                       fontsize=14, color=self.COLORS['accent_blue'], va='center',
+                       fontweight='bold', ha='center')
             else:
-                ax.text(4.5, y_pos, "N/A",
-                       fontsize=11, color=self.COLORS['text_gray'], va='center')
+                ax.text(5.5, y_pos, "N/A",
+                       fontsize=12, color=self.COLORS['text_gray'], va='center', ha='center')
 
-            # iRating (average iRating from this car's drivers)
+            # iRating - centered under header
             avg_irating = car.get('avg_irating', 0)
             if avg_irating > 0:
                 irating_str = f"{avg_irating:,}"
-                ax.text(8.5, y_pos, irating_str,
-                       fontsize=13, color=self.COLORS['text_white'], va='center')
+                ax.text(10, y_pos, irating_str,
+                       fontsize=14, color=self.COLORS['text_white'], va='center', ha='center')
             else:
-                ax.text(8.5, y_pos, "N/A",
-                       fontsize=11, color=self.COLORS['text_gray'], va='center')
+                ax.text(10, y_pos, "N/A",
+                       fontsize=12, color=self.COLORS['text_gray'], va='center', ha='center')
 
-            y_pos -= 0.75
+            y_pos -= row_height
 
-        # Footer - minimal like iRacing Reports
-        ax.text(5, -0.5, "iracingreports.com",
-               ha='center', fontsize=9, color=self.COLORS['text_gray'], style='italic')
+        # Footer - minimal
+        ax.text(6, 0.3, "iracingreports.com",
+               ha='center', fontsize=10, color=self.COLORS['text_gray'], style='italic')
 
-        plt.tight_layout()
+        # No tight_layout - it breaks with add_axes
 
         buffer = BytesIO()
         plt.savefig(buffer, format='png', dpi=150, facecolor=self.COLORS['bg_dark'], bbox_inches='tight')

@@ -2920,19 +2920,32 @@ def season_id_to_year_quarter(season_id: int) -> str:
     Returns:
         String like "2025 S1" or "2024 S4"
     """
-    # Reference point: Season 5760 started in late 2024 (2025 Season 1)
-    # iRacing increments by 1 each quarter (4 per year)
+    # Reference point: Season 5760 = 2025 Season 1
+    # Each season is +1, 4 seasons per year
     reference_season = 5760
     reference_year = 2025
     reference_quarter = 1
 
-    # Calculate offset from reference
+    # Calculate offset from reference (negative = past, positive = future)
     offset = season_id - reference_season
 
+    # Calculate total quarters from reference point
+    total_quarters = reference_quarter + offset
+
     # Calculate year and quarter
-    total_quarters = (reference_year - 2015) * 4 + reference_quarter + offset
-    year = 2015 + (total_quarters - 1) // 4
-    quarter = ((total_quarters - 1) % 4) + 1
+    # If offset is negative, we go backwards in time
+    years_offset = 0
+    quarter = total_quarters
+
+    while quarter <= 0:
+        years_offset -= 1
+        quarter += 4
+
+    while quarter > 4:
+        years_offset += 1
+        quarter -= 4
+
+    year = reference_year + years_offset
 
     return f"{year} S{quarter}"
 
@@ -3164,11 +3177,8 @@ async def iracing_meta(interaction: discord.Interaction, series: str, season: in
             total_races = meta_data.get('total_races_analyzed', 0)
 
             # Calculate total unique drivers across all cars
-            all_unique_drivers = set()
-            for car in car_data:
-                if 'unique_drivers' in car:
-                    all_unique_drivers.add(car.get('unique_drivers', 0))
-            unique_drivers_count = len(all_unique_drivers) if all_unique_drivers else sum(car.get('unique_drivers', 0) for car in car_data)
+            # Just sum up the unique drivers per car (they're already counted)
+            unique_drivers_count = sum(car.get('unique_drivers', 0) for car in car_data)
 
             # Create the meta chart
             chart_image = await viz.create_meta_chart(
