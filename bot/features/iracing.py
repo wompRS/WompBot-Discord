@@ -442,7 +442,7 @@ class iRacingIntegration:
                 series_id_num,
                 season_id,
                 target_week,
-                max_results=100,  # Analyze up to 100 recent races
+                max_results=None,  # Analyze ALL races for this week
                 track_id=track_id_filter  # Filter to specific track if provided
             )
 
@@ -463,7 +463,7 @@ class iRacingIntegration:
                             series_id_num,
                             previous_season_id,
                             target_week,
-                            max_results=100,
+                            max_results=None,  # Analyze ALL races
                             track_id=track_id_filter
                         )
 

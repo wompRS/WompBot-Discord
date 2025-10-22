@@ -3163,13 +3163,21 @@ async def iracing_meta(interaction: discord.Interaction, series: str, season: in
             # Get total races analyzed
             total_races = meta_data.get('total_races_analyzed', 0)
 
+            # Calculate total unique drivers across all cars
+            all_unique_drivers = set()
+            for car in car_data:
+                if 'unique_drivers' in car:
+                    all_unique_drivers.add(car.get('unique_drivers', 0))
+            unique_drivers_count = len(all_unique_drivers) if all_unique_drivers else sum(car.get('unique_drivers', 0) for car in car_data)
+
             # Create the meta chart
             chart_image = await viz.create_meta_chart(
                 series_name=series_name,
                 track_name=display_track,
                 week_num=week_num,
                 car_data=car_data,
-                total_races=total_races
+                total_races=total_races,
+                unique_drivers=unique_drivers_count
             )
 
             # Send as file attachment
