@@ -55,6 +55,10 @@ class iRacingVisualizer:
         self.cache_dir = Path('/app/.image_cache')
         self.cache_dir.mkdir(exist_ok=True)
 
+        # Import logo matcher for car and series logos
+        from logo_matcher import LogoMatcher
+        self.logo_matcher = LogoMatcher()
+
     async def download_logo(self, url: str, cache_name: str) -> Optional[Image.Image]:
         """Download and cache a logo image"""
         cache_path = self.cache_dir / cache_name
@@ -690,6 +694,222 @@ class iRacingVisualizer:
         ax.spines['right'].set_visible(False)
         ax.spines['top'].set_visible(False)
         ax.spines['bottom'].set_color(self.COLORS['text_gray'])
+
+        plt.tight_layout()
+
+        buffer = BytesIO()
+        plt.savefig(buffer, format='png', dpi=150, facecolor=self.COLORS['bg_dark'], bbox_inches='tight')
+        plt.close()
+        buffer.seek(0)
+
+        return buffer
+
+    async def create_meta_chart(self, series_name: str, track_name: str, week_num: int,
+                               car_data: List[Dict], total_races: int = 0) -> BytesIO:
+        """
+        Create professional meta chart showing car performance rankings with logos.
+
+        Args:
+            series_name: Name of the series
+            track_name: Track name (or "All Tracks" if analyzing all)
+            week_num: Week number
+            car_data: List of {car_name, avg_lap_time, win_rate, podium_rate, total_races, meta_score}
+            total_races: Total number of races analyzed
+
+        Returns:
+            BytesIO containing the PNG image
+        """
+        # Dynamic sizing based on number of cars - more compact
+        num_cars = len(car_data)
+        row_height = 0.6  # Reduced from 0.8 for more compact layout
+        base_height = 4  # Header and footer space
+        chart_height = max(6, base_height + (num_cars * row_height))  # Minimum 6", not 12"
+
+        fig = plt.figure(figsize=(14, chart_height), facecolor=self.COLORS['bg_dark'])
+
+        # Create main axes
+        ax = fig.add_subplot(111)
+        ax.axis('off')
+        ax.set_xlim(0, 14)
+
+        # Adjust y-limits for more compact layout
+        total_height = 3 + num_cars  # Reduced padding
+        ax.set_ylim(0, total_height)
+
+        # Get series logo if available
+        series_logo_path = self.logo_matcher.get_series_logo(series_name)
+
+        # Title area
+        title_y = total_height - 0.5
+
+        # Add series logo if available
+        if series_logo_path and series_logo_path.exists():
+            try:
+                logo_img = Image.open(series_logo_path)
+                # Convert to RGBA if not already
+                if logo_img.mode != 'RGBA':
+                    logo_img = logo_img.convert('RGBA')
+
+                # Create axes for logo (top left)
+                logo_ax = fig.add_axes([0.05, 0.92, 0.1, 0.06])
+                logo_ax.imshow(logo_img)
+                logo_ax.axis('off')
+            except Exception as e:
+                print(f"⚠️ Failed to load series logo: {e}")
+
+        # Title
+        ax.text(7, title_y, series_name,
+               ha='center', fontsize=22, fontweight='bold', color=self.COLORS['text_white'])
+
+        # Subtitle with track and week
+        subtitle = f"Meta Analysis • Week {week_num}"
+        if track_name and track_name != "All Tracks":
+            subtitle += f" • {track_name}"
+        ax.text(7, title_y - 0.6, subtitle,
+               ha='center', fontsize=14, color=self.COLORS['text_gray'])
+
+        # Stats summary
+        if total_races > 0:
+            ax.text(7, title_y - 1.2, f"Based on {total_races:,} race sessions",
+                   ha='center', fontsize=11, color=self.COLORS['text_gray'], style='italic')
+
+        # Headers
+        headers_y = total_height - 2.5
+        ax.text(0.5, headers_y, "Rank", fontsize=11, color=self.COLORS['accent_blue'], fontweight='bold')
+        ax.text(2.2, headers_y, "Car", fontsize=11, color=self.COLORS['accent_blue'], fontweight='bold')
+        ax.text(8, headers_y, "Avg Lap Time", fontsize=11, color=self.COLORS['accent_blue'], fontweight='bold')
+        ax.text(10, headers_y, "Win %", fontsize=11, color=self.COLORS['accent_blue'], fontweight='bold')
+        ax.text(11.5, headers_y, "Podium %", fontsize=11, color=self.COLORS['accent_blue'], fontweight='bold')
+        ax.text(13, headers_y, "Races", fontsize=11, color=self.COLORS['accent_blue'], fontweight='bold')
+
+        # Draw car rows
+        y_pos = headers_y - 0.9
+
+        for idx, car in enumerate(car_data):
+            # Alternate row backgrounds
+            if idx % 2 == 0:
+                rect = plt.Rectangle((0.2, y_pos - 0.35), 13.6, 0.7,
+                                    facecolor=self.COLORS['bg_card'], alpha=0.3)
+                ax.add_patch(rect)
+
+            # Highlight top 3 cars with colored borders
+            if idx < 3:
+                border_colors = [self.COLORS['accent_yellow'], '#C0C0C0', '#CD7F32']  # Gold, Silver, Bronze
+                rect = plt.Rectangle((0.2, y_pos - 0.35), 13.6, 0.7,
+                                    facecolor='none', edgecolor=border_colors[idx],
+                                    linewidth=2.5)
+                ax.add_patch(rect)
+
+            # Rank with medal icons for top 3
+            rank_color = self.COLORS['accent_yellow'] if idx < 3 else self.COLORS['text_white']
+            rank_text = f"{idx + 1}"
+            if idx == 0:
+                rank_text = "🥇"
+            elif idx == 1:
+                rank_text = "🥈"
+            elif idx == 2:
+                rank_text = "🥉"
+
+            ax.text(0.5, y_pos, rank_text,
+                   fontsize=14 if idx < 3 else 12, color=rank_color, fontweight='bold', va='center')
+
+            # Car logo (if available)
+            car_name = car.get('car_name', '')
+            logo_path = self.logo_matcher.get_car_logo(car_name, size='thumb')
+
+            if logo_path and logo_path.exists():
+                try:
+                    car_logo = Image.open(logo_path)
+                    if car_logo.mode != 'RGBA':
+                        car_logo = car_logo.convert('RGBA')
+
+                    # Calculate logo position in figure coordinates
+                    # Fixed positioning: use axis transformation for consistent placement
+                    trans = ax.transData.transform
+                    inv_trans = fig.transFigure.inverted().transform
+
+                    # Logo center at x=1.5 in axis coords, y=y_pos in axis coords
+                    logo_center_axis = [1.5, y_pos]
+                    logo_center_fig = inv_trans(trans(logo_center_axis))
+
+                    # Logo size in figure coordinates (slightly larger for visibility)
+                    logo_width = 0.035
+                    logo_height = 0.035
+
+                    # Calculate bottom-left corner for axes
+                    logo_x = logo_center_fig[0] - logo_width / 2
+                    logo_y = logo_center_fig[1] - logo_height / 2
+
+                    # Add logo axes
+                    logo_ax = fig.add_axes([logo_x, logo_y, logo_width, logo_height])
+                    logo_ax.imshow(car_logo)
+                    logo_ax.axis('off')
+                except Exception as e:
+                    print(f"⚠️ Failed to load logo for {car_name}: {e}")
+            else:
+                print(f"⚠️ No logo found for {car_name} (searched: {logo_path})")
+
+            # Car name
+            display_name = car_name
+            if len(display_name) > 35:
+                display_name = display_name[:32] + "..."
+
+            ax.text(2.2, y_pos, display_name,
+                   fontsize=11, color=self.COLORS['text_white'], va='center', fontweight='bold')
+
+            # Average lap time
+            avg_lap_time = car.get('avg_lap_time')
+            if avg_lap_time:
+                # Format lap time
+                minutes = int(avg_lap_time // 60)
+                seconds = avg_lap_time % 60
+                lap_time_str = f"{minutes}:{seconds:06.3f}"
+
+                # Color code based on rank
+                time_color = self.COLORS['accent_green'] if idx < 3 else self.COLORS['text_white']
+
+                ax.text(8, y_pos, lap_time_str,
+                       fontsize=12, color=time_color, va='center', fontweight='bold')
+            else:
+                ax.text(8, y_pos, "N/A",
+                       fontsize=11, color=self.COLORS['text_gray'], va='center')
+
+            # Win rate
+            win_rate = car.get('win_rate', 0)
+            win_text = f"{win_rate:.1f}%" if win_rate > 0 else "0%"
+            win_color = self.COLORS['accent_green'] if win_rate >= 15 else self.COLORS['text_gray']
+
+            ax.text(10, y_pos, win_text,
+                   fontsize=11, color=win_color, va='center')
+
+            # Podium rate
+            podium_rate = car.get('podium_rate', 0)
+            podium_text = f"{podium_rate:.1f}%" if podium_rate > 0 else "0%"
+            podium_color = self.COLORS['accent_blue'] if podium_rate >= 30 else self.COLORS['text_gray']
+
+            ax.text(11.5, y_pos, podium_text,
+                   fontsize=11, color=podium_color, va='center')
+
+            # Total races for this car
+            total_car_races = car.get('total_races', 0)
+            ax.text(13, y_pos, str(total_car_races),
+                   fontsize=11, color=self.COLORS['text_gray'], va='center')
+
+            y_pos -= 0.9
+
+        # Footer
+        footer_text = "Generated by WompBot • Performance data from iRacing"
+        ax.text(7, -0.3, footer_text,
+               ha='center', fontsize=10, color=self.COLORS['text_gray'], style='italic')
+
+        # Legend for colors
+        legend_y = -0.8
+        ax.text(2, legend_y, "🏆 Win % ≥ 15% (green)",
+               fontsize=9, color=self.COLORS['text_gray'])
+        ax.text(6, legend_y, "🥉 Podium % ≥ 30% (blue)",
+               fontsize=9, color=self.COLORS['text_gray'])
+        ax.text(10, legend_y, "⏱️ Top 3 lap times (green)",
+               fontsize=9, color=self.COLORS['text_gray'])
 
         plt.tight_layout()
 

@@ -382,6 +382,19 @@ class iRacingClient:
         """
         return await self._get("/data/track/get")
 
+    async def get_subsession_data(self, subsession_id: int) -> Optional[Dict]:
+        """
+        Get detailed data for a specific subsession (race session).
+
+        Args:
+            subsession_id: Subsession ID
+
+        Returns:
+            Detailed subsession data including driver results, lap times, etc.
+        """
+        params = {'subsession_id': subsession_id}
+        return await self._get("/data/results/get", params)
+
     async def close(self):
         """Close the aiohttp session"""
         if self.session and not self.session.closed:
