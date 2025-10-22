@@ -29,6 +29,7 @@ class LogoMatcher:
         self.assets_dir = Path(assets_dir)
         self.car_logos_dir = self.assets_dir / 'car_logos_raw' / 'logos'
         self.series_logos_dir = self.assets_dir / 'series_logos'
+        self.track_logos_dir = self.assets_dir / 'track_logos'
 
         # Load car logos data
         self.car_logos_data = self._load_car_logos_data()
@@ -197,6 +198,51 @@ class LogoMatcher:
         # print(f"⚠️ Series logo not found for {series_name} (tried: {filename})")
         return None
 
+    def get_track_logo(self, track_name: str) -> Optional[Path]:
+        """
+        Get the path to a track logo.
+
+        Track logos are organized in folders by track name, with logo.webp inside:
+        - track_logos/Nurburgring Nordschleife/logo.webp
+        - track_logos/Circuit de Spa-Francorchamps/logo.webp
+
+        Args:
+            track_name: iRacing track name (e.g., "Nürburgring Nordschleife")
+
+        Returns:
+            Path to logo file, or None if not found
+        """
+        if not self.track_logos_dir.exists():
+            return None
+
+        # Try exact match first
+        track_folder = self.track_logos_dir / track_name
+        if track_folder.exists() and track_folder.is_dir():
+            logo_file = track_folder / 'logo.webp'
+            if logo_file.exists():
+                return logo_file
+
+        # Try variations without special characters
+        # Replace "Nürburgring" with "Nurburgring", etc.
+        normalized_name = track_name.replace('ü', 'u').replace('é', 'e').replace('ó', 'o').replace('á', 'a')
+        track_folder = self.track_logos_dir / normalized_name
+        if track_folder.exists() and track_folder.is_dir():
+            logo_file = track_folder / 'logo.webp'
+            if logo_file.exists():
+                return logo_file
+
+        # Try case-insensitive match
+        try:
+            for folder in self.track_logos_dir.iterdir():
+                if folder.is_dir() and folder.name.lower() == track_name.lower():
+                    logo_file = folder / 'logo.webp'
+                    if logo_file.exists():
+                        return logo_file
+        except Exception as e:
+            print(f"⚠️ Error searching track logos: {e}")
+
+        return None
+
     def list_available_series_logos(self) -> list:
         """
         List all available series logo files.
@@ -264,6 +310,20 @@ def get_series_logo(series_name: str) -> Optional[Path]:
     """
     matcher = LogoMatcher()
     return matcher.get_series_logo(series_name)
+
+
+def get_track_logo(track_name: str) -> Optional[Path]:
+    """
+    Get the path to a track logo.
+
+    Args:
+        track_name: iRacing track name
+
+    Returns:
+        Path to logo file, or None if not found
+    """
+    matcher = LogoMatcher()
+    return matcher.get_track_logo(track_name)
 
 
 if __name__ == '__main__':
