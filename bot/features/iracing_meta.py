@@ -37,7 +37,7 @@ class MetaAnalyzer:
         return f"meta_{series_id}_{season_id}_{week_num}"
 
     async def get_meta_for_series(self, series_id: int, season_id: int, week_num: int,
-                                  max_results: int = 500, track_id: Optional[int] = None) -> Optional[Dict]:
+                                  max_results: Optional[int] = None, track_id: Optional[int] = None) -> Optional[Dict]:
         """
         Calculate meta statistics for a series/season/week
 
@@ -45,7 +45,7 @@ class MetaAnalyzer:
             series_id: iRacing series ID
             season_id: iRacing season ID
             week_num: Race week number
-            max_results: Maximum number of race results to analyze (default 500)
+            max_results: Maximum number of race results to analyze (None = analyze all races)
             track_id: Optional track ID to filter results to specific track
 
         Returns:
@@ -91,8 +91,12 @@ class MetaAnalyzer:
                     print(f"⚠️ No results found for track {track_id}")
                     return None
 
-            # Limit to max_results most recent races
-            results_list = results_list[:max_results]
+            # Limit to max_results most recent races (if specified)
+            if max_results:
+                results_list = results_list[:max_results]
+                print(f"📊 Analyzing {len(results_list)} most recent races (limited by max_results={max_results})")
+            else:
+                print(f"📊 Analyzing ALL {len(results_list)} races for this week")
 
             # Process results to extract car performance data
             car_stats = await self._process_race_results(results_list, series_id, season_id, track_id)
@@ -166,11 +170,10 @@ class MetaAnalyzer:
             if idx % 50 == 0:
                 print(f"  Processing session {idx + 1}/{len(results_list)}")
 
-        # Since we need subsession data for detailed stats, let's fetch a sample
-        # Get up to 50 subsession details for accurate statistics
-        print(f"📥 Fetching detailed subsession data...")
+        # Fetch all subsession data for comprehensive analysis
+        print(f"📥 Fetching detailed subsession data for ALL races...")
 
-        race_sessions = [r for r in results_list if r.get('event_type') == 5][:50]
+        race_sessions = [r for r in results_list if r.get('event_type') == 5]
 
         for idx, result in enumerate(race_sessions):
             subsession_id = result.get('subsession_id')
@@ -210,7 +213,9 @@ class MetaAnalyzer:
                                 'total_races': 0,
                                 'total_laps': 0,
                                 'incidents': [],
-                                'subsessions': set()  # Track unique subsessions
+                                'iratings': [],  # Track iRatings for averaging
+                                'subsessions': set(),  # Track unique subsessions
+                                'unique_drivers': set()  # Track unique driver IDs
                             }
 
                         # Extract performance data
@@ -220,10 +225,20 @@ class MetaAnalyzer:
                         incidents = driver_result.get('incidents', 0)
                         qualifying_position = driver_result.get('starting_position', 999)
 
+                        # Track iRating (use old_irating if available)
+                        irating = driver_result.get('oldi_rating', driver_result.get('newi_rating', 0))
+                        driver_id = driver_result.get('cust_id')
+
                         # Record statistics (but don't increment total_races here)
                         car_stats[car_id]['finishes'].append(finish_position)
                         car_stats[car_id]['total_laps'] += laps_complete
                         car_stats[car_id]['incidents'].append(incidents)
+
+                        if irating and irating > 0:
+                            car_stats[car_id]['iratings'].append(irating)
+
+                        if driver_id:
+                            car_stats[car_id]['unique_drivers'].add(driver_id)
 
                         if best_lap_time and best_lap_time > 0:
                             # Convert to seconds
@@ -285,6 +300,12 @@ class MetaAnalyzer:
             # Calculate average incidents per race
             avg_incidents = statistics.mean(stats['incidents']) if stats['incidents'] else 0
 
+            # Calculate average iRating for drivers using this car
+            avg_irating = statistics.mean(stats['iratings']) if stats['iratings'] else 0
+
+            # Count unique drivers for this car
+            unique_driver_count = len(stats['unique_drivers'])
+
             # Calculate meta score (lower is better)
             # Weighted combination of lap time and finishing position
             meta_score = 999999
@@ -302,6 +323,8 @@ class MetaAnalyzer:
                 'podium_rate': podium_rate,
                 'pole_rate': pole_rate,
                 'avg_incidents': avg_incidents,
+                'avg_irating': int(avg_irating),
+                'unique_drivers': unique_driver_count,
                 'meta_score': meta_score
             })
 
