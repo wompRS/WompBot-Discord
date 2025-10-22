@@ -2951,12 +2951,15 @@ async def season_autocomplete(
 
         season_choices = []
 
+        print(f"🔍 Season autocomplete called with series='{series_name}', current='{current}'")
+
         if series_name:
             # Try to get seasons for the specific series
             import asyncio
-            client = await asyncio.wait_for(iracing._get_client(), timeout=2.0)
-            if client:
-                seasons_data = await client.get_series_seasons()
+            try:
+                client = await asyncio.wait_for(iracing._get_client(), timeout=5.0)
+                if client:
+                    seasons_data = await asyncio.wait_for(client.get_series_seasons(), timeout=10.0)
 
                 # Find matching series and extract unique season info
                 seen_seasons = set()
@@ -2978,18 +2981,21 @@ async def season_autocomplete(
                             season_choices.append(app_commands.Choice(name=name, value=season_id))
                             break
 
-                if season_choices:
-                    # Sort by season ID descending (most recent first)
-                    season_choices.sort(key=lambda x: x.value, reverse=True)
+                    if season_choices:
+                        # Sort by season ID descending (most recent first)
+                        season_choices.sort(key=lambda x: x.value, reverse=True)
 
-                    # Filter by current input
-                    if current:
-                        season_choices = [
-                            s for s in season_choices
-                            if current.lower() in s.name.lower() or current in str(s.value)
-                        ]
+                        # Filter by current input
+                        if current:
+                            season_choices = [
+                                s for s in season_choices
+                                if current.lower() in s.name.lower() or current in str(s.value)
+                            ]
 
-                    return season_choices[:25]
+                        print(f"✅ Season autocomplete returning {len(season_choices)} choices")
+                        return season_choices[:25]
+            except Exception as e:
+                print(f"⚠️ Season autocomplete error: {e}")
 
         # Fallback: provide recent season IDs with year/quarter
         # Current season around 5760 (2025 S1), go back 20 seasons (5 years)
@@ -3020,95 +3026,215 @@ async def season_autocomplete(
 
         return season_choices[:10]
 
+async def track_autocomplete(
+    interaction: discord.Interaction,
+    current: str,
+) -> list[app_commands.Choice[str]]:
+    """Autocomplete function for track names"""
+    if not iracing:
+        return []
+
+    try:
+        # Get namespace to access series parameter
+        namespace = interaction.namespace
+        series_name = getattr(namespace, 'series', None)
+
+        if series_name:
+            # Get tracks used in this series
+            import asyncio
+            client = await asyncio.wait_for(iracing._get_client(), timeout=2.0)
+            if client:
+                series_seasons = await client.get_series_seasons()
+
+                # Find matching series and extract tracks
+                track_set = set()
+                track_choices = []
+
+                for season in series_seasons:
+                    schedules = season.get('schedules', [])
+                    if not schedules:
+                        continue
+
+                    # Check if this season matches the selected series
+                    first_schedule = schedules[0]
+                    if series_name.lower() in first_schedule.get('series_name', '').lower():
+                        # Extract all unique tracks from this series
+                        for schedule in schedules:
+                            track = schedule.get('track', {})
+                            track_id = track.get('track_id')
+                            track_name = track.get('track_name', '')
+                            track_config = track.get('config_name', '')
+
+                            if not track_id or track_id in track_set:
+                                continue
+
+                            track_set.add(track_id)
+
+                            # Format: "Spa-Francorchamps - Grand Prix"
+                            if track_config and track_config not in track_name:
+                                display_name = f"{track_name} - {track_config}"
+                            else:
+                                display_name = track_name
+
+                            # Truncate if needed
+                            if len(display_name) > 100:
+                                display_name = display_name[:97] + "..."
+
+                            track_choices.append(app_commands.Choice(
+                                name=display_name,
+                                value=display_name[:100]
+                            ))
+
+                        if track_choices:
+                            # Sort alphabetically
+                            track_choices.sort(key=lambda x: x.name)
+
+                            # Filter by current input
+                            if current:
+                                track_choices = [
+                                    t for t in track_choices
+                                    if current.lower() in t.name.lower()
+                                ]
+
+                            return track_choices[:25]
+                        break
+
+    except Exception as e:
+        print(f"⚠️ Track autocomplete error: {e}")
+
+    return []
+
 @bot.tree.command(name="iracing_meta", description="View meta analysis for an iRacing series")
 @app_commands.describe(
     series="Series name to analyze",
     season="Season number (optional, defaults to current)",
-    week="Week number (optional, defaults to current)"
+    week="Week number (optional, defaults to current)",
+    track="Track name (optional, analyzes all tracks if not specified)"
 )
 @app_commands.autocomplete(
     series=series_autocomplete,
     week=week_autocomplete,
-    season=season_autocomplete
+    season=season_autocomplete,
+    track=track_autocomplete
 )
-async def iracing_meta(interaction: discord.Interaction, series: str, season: int = None, week: int = None):
+async def iracing_meta(interaction: discord.Interaction, series: str, season: int = None, week: int = None, track: str = None):
     """View meta chart showing best cars for a series"""
     if not iracing:
         await interaction.response.send_message("❌ iRacing integration is not configured on this bot")
         return
 
-    await interaction.response.defer()
+    # Send initial response immediately
+    await interaction.response.send_message("🔄 Analyzing race data... This may take up to 60 seconds for detailed performance statistics.")
 
     try:
-        # Get meta chart data
-        meta_data = await iracing.get_meta_chart_data(series, season_id=season, week_num=week)
+        # Get meta chart data with performance analysis
+        # This call will now wait for the full analysis to complete
+        meta_data = await iracing.get_meta_chart_data(series, season_id=season, week_num=week, track_name=track, force_analysis=True)
 
         if not meta_data:
-            await interaction.followup.send(f"❌ Could not find series '{series}' or no data available")
+            await interaction.edit_original_response(content=f"❌ Could not find series '{series}' or no data available")
             return
 
         series_name = meta_data.get('series_name', series)
         series_id = meta_data.get('series_id')
         car_data = meta_data.get('cars', [])
-        track_name = meta_data.get('track_name')
+        track_name_result = meta_data.get('track_name')
         track_config = meta_data.get('track_config')
         week_num = meta_data.get('week', week or 'Current')
-        message = meta_data.get('message', '')
+        season_analyzed = meta_data.get('season_analyzed')
+        has_performance_data = meta_data.get('has_performance_data', False)
 
-        # Create embed with car information
-        embed = discord.Embed(
-            title=f"🏎️ {series_name}",
-            description=message,
-            color=discord.Color.blue()
-        )
+        # If no cars found after analysis, show error
+        if not car_data:
+            await interaction.edit_original_response(content=f"❌ No race data available for {series_name}. No recent races found to analyze.")
+            return
 
-        if track_name:
-            track_text = f"{track_name}"
-            if track_config and track_config not in track_name:
-                track_text += f" - {track_config}"
-            embed.add_field(name="📍 Track", value=track_text, inline=False)
+        # Always create a professional chart if we have car data
+        if has_performance_data and any(car.get('avg_lap_time') for car in car_data):
+            # Use iRacing visualizer to create meta chart
+            from iracing_viz import iRacingVisualizer
+            viz = iRacingVisualizer()
 
-        if car_data:
-            # Group cars into chunks of 10 for readability
+            # Prepare track name for display
+            display_track = track_name_result or "All Tracks"
+            if track_name_result and track_config and track_config not in track_name_result:
+                display_track = f"{track_name_result} - {track_config}"
+
+            # Get total races analyzed
+            total_races = meta_data.get('total_races_analyzed', 0)
+
+            # Create the meta chart
+            chart_image = await viz.create_meta_chart(
+                series_name=series_name,
+                track_name=display_track,
+                week_num=week_num,
+                car_data=car_data,
+                total_races=total_races
+            )
+
+            # Send as file attachment
+            file = discord.File(fp=chart_image, filename=f"meta_{series_name.replace(' ', '_')}_week{week_num}.png")
+
+            # Create embed to accompany the chart
+            description_parts = [
+                f"📍 **Track:** {display_track}",
+                f"📅 **Week:** {week_num}",
+                f"📊 **Races Analyzed:** {total_races:,}"
+            ]
+
+            # Add note if we used data from a previous season
+            if season_analyzed and season_analyzed != meta_data.get('season_id'):
+                description_parts.append(f"ℹ️ Using historical data from Season {season_analyzed}")
+
+            chart_embed = discord.Embed(
+                title=f"🏎️ {series_name} - Meta Analysis",
+                description="\n".join(description_parts),
+                color=discord.Color.blue()
+            )
+
+            chart_embed.set_image(url=f"attachment://meta_{series_name.replace(' ', '_')}_week{week_num}.png")
+            chart_embed.set_footer(text="Car logos from car-logos-dataset • iRacing official series logos")
+
+            # Replace the loading message with the chart
+            await interaction.edit_original_response(content=None, embed=chart_embed, attachments=[file])
+        else:
+            # If still no performance data after waiting, show what cars are available
+            embed = discord.Embed(
+                title=f"🏎️ {series_name}",
+                description=f"Week {week_num} - No race data available yet for this track/series combination.\n\nShowing available cars:",
+                color=discord.Color.orange()
+            )
+
+            if track_name_result:
+                track_text = f"{track_name_result}"
+                if track_config and track_config not in track_name_result:
+                    track_text += f" - {track_config}"
+                embed.add_field(name="📍 Track", value=track_text, inline=False)
+
+            # Show car list
             car_list = []
             for idx, car in enumerate(car_data, 1):
                 car_name = car.get('car_name', 'Unknown')
+                car_list.append(f"{idx}. **{car_name}**")
 
-                # Add BOP info if present
-                bop_info = []
-                if car.get('power_adjust_pct', 0) != 0:
-                    bop_info.append(f"Pwr: {car.get('power_adjust_pct'):+d}%")
-                if car.get('weight_penalty_kg', 0) != 0:
-                    bop_info.append(f"Wgt: {car.get('weight_penalty_kg'):+d}kg")
-
-                if bop_info:
-                    car_list.append(f"{idx}. {car_name} ({', '.join(bop_info)})")
-                else:
-                    car_list.append(f"{idx}. {car_name}")
-
-            # Split into multiple fields if needed
+            # Split into chunks
             chunk_size = 15
             for i in range(0, len(car_list), chunk_size):
                 chunk = car_list[i:i+chunk_size]
                 field_name = "🚗 Available Cars" if i == 0 else "🚗 Available Cars (cont.)"
-                embed.add_field(
-                    name=field_name,
-                    value="\n".join(chunk),
-                    inline=False
-                )
+                embed.add_field(name=field_name, value="\n".join(chunk), inline=False)
 
-            embed.set_footer(text=f"💡 Performance data (lap times, win rates) requires additional API integration")
-        else:
-            embed.add_field(
-                name="ℹ️ Note",
-                value="This series may allow all cars in the class, or car restrictions are not specified for this week.",
-                inline=False
-            )
+            embed.set_footer(text="No race results found for this series/track combination in recent seasons")
 
-        await interaction.followup.send(embed=embed)
+            await interaction.edit_original_response(content=None, embed=embed)
 
     except Exception as e:
-        await interaction.followup.send(f"❌ Error getting meta data: {str(e)}")
+        try:
+            await interaction.edit_original_response(content=f"❌ Error getting meta data: {str(e)}")
+        except:
+            # If edit fails, try followup
+            await interaction.followup.send(f"❌ Error getting meta data: {str(e)}")
+
         print(f"❌ iRacing meta error: {e}")
         import traceback
         traceback.print_exc()

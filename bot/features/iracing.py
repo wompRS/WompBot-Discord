@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from typing import Dict, Optional, List
 import json
 from iracing_client import iRacingClient
+from features.iracing_meta import MetaAnalyzer
 
 
 class iRacingIntegration:
@@ -25,6 +26,9 @@ class iRacingIntegration:
         self._cars_cache = None
         self._series_cache = None
         self._tracks_cache = None
+
+        # Meta analyzer (initialized on first use)
+        self._meta_analyzer = None
 
     async def _get_client(self) -> iRacingClient:
         """Get or create iRacing client"""
@@ -310,7 +314,7 @@ class iRacingIntegration:
             print(f"❌ Error finding series: {e}")
             return None
 
-    async def get_meta_chart_data(self, series_name: str, season_id: Optional[int] = None, week_num: Optional[int] = None) -> Optional[Dict]:
+    async def get_meta_chart_data(self, series_name: str, season_id: Optional[int] = None, week_num: Optional[int] = None, track_name: Optional[str] = None, force_analysis: bool = False) -> Optional[Dict]:
         """
         Get meta chart data for a series showing available cars.
 
@@ -318,6 +322,8 @@ class iRacingIntegration:
             series_name: Name of the series
             season_id: Optional specific season ID
             week_num: Optional specific week number (defaults to current week)
+            track_name: Optional track name to filter analysis to specific track
+            force_analysis: If True, wait for full performance analysis even if it takes time
 
         Returns:
             Dict with series info and car data
@@ -373,20 +379,8 @@ class iRacingIntegration:
             if not target_schedule:
                 target_schedule = schedules[0]
 
-            # Extract car IDs from car_restrictions
+            # Extract car IDs from car_restrictions or from actual race results
             car_restrictions = target_schedule.get('car_restrictions', [])
-            if not car_restrictions:
-                print(f"⚠️ No car restrictions found, series may allow all cars in class")
-                return {
-                    'series_name': target_schedule.get('series_name', series_name),
-                    'series_id': target_schedule.get('series_id'),
-                    'season_id': season_id,
-                    'track_name': target_schedule.get('track', {}).get('track_name'),
-                    'track_config': target_schedule.get('track', {}).get('config_name'),
-                    'week': target_week,
-                    'cars': [],
-                    'message': 'This series allows all cars in the class. Car restrictions not specified.'
-                }
 
             # Get all car details
             all_cars = await self.get_all_cars()
@@ -394,28 +388,149 @@ class iRacingIntegration:
 
             # Build car list with details
             cars = []
-            for car_rest in car_restrictions:
-                car_id = car_rest.get('car_id')
-                if car_id and car_id in car_dict:
-                    car_info = car_dict[car_id]
-                    cars.append({
-                        'car_id': car_id,
-                        'car_name': car_info.get('car_name', f'Car {car_id}'),
-                        'logo_url': car_info.get('logo', ''),
-                        'max_dry_tire_sets': car_rest.get('max_dry_tire_sets'),
-                        'power_adjust_pct': car_rest.get('power_adjust_pct', 0),
-                        'weight_penalty_kg': car_rest.get('weight_penalty_kg', 0)
-                    })
+            analyze_from_results = False
+
+            if not car_restrictions:
+                print(f"⚠️ No car restrictions found, will analyze actual race results to find cars being used")
+                analyze_from_results = True
+            else:
+                # Build car list from car_restrictions
+                for car_rest in car_restrictions:
+                    car_id = car_rest.get('car_id')
+                    if car_id and car_id in car_dict:
+                        car_info = car_dict[car_id]
+                        cars.append({
+                            'car_id': car_id,
+                            'car_name': car_info.get('car_name', f'Car {car_id}'),
+                            'logo_url': car_info.get('logo', ''),
+                            'max_dry_tire_sets': car_rest.get('max_dry_tire_sets'),
+                            'power_adjust_pct': car_rest.get('power_adjust_pct', 0),
+                            'weight_penalty_kg': car_rest.get('weight_penalty_kg', 0)
+                        })
+
+            # Get performance statistics from meta analyzer
+            # If track_name is specified, find the track_id
+            track_id_filter = None
+            if track_name:
+                # Find track ID from schedules
+                for schedule in schedules:
+                    track = schedule.get('track', {})
+                    sched_track_name = track.get('track_name', '')
+                    sched_track_config = track.get('config_name', '')
+
+                    # Build full track name
+                    if sched_track_config and sched_track_config not in sched_track_name:
+                        full_track_name = f"{sched_track_name} - {sched_track_config}"
+                    else:
+                        full_track_name = sched_track_name
+
+                    if track_name.lower() in full_track_name.lower():
+                        track_id_filter = track.get('track_id')
+                        print(f"🏁 Filtering analysis to track: {full_track_name} (ID: {track_id_filter})")
+                        break
+
+            log_msg = f"📊 Analyzing car performance for series {target_schedule.get('series_id')}, season {season_id}, week {target_week}"
+            if track_id_filter:
+                log_msg += f", track {track_id_filter}"
+            print(log_msg)
+
+            if self._meta_analyzer is None:
+                self._meta_analyzer = MetaAnalyzer(client)
+
+            series_id_num = target_schedule.get('series_id')
+            meta_stats = await self._meta_analyzer.get_meta_for_series(
+                series_id_num,
+                season_id,
+                target_week,
+                max_results=100,  # Analyze up to 100 recent races
+                track_id=track_id_filter  # Filter to specific track if provided
+            )
+
+            # Track which season's data we actually used
+            season_analyzed = season_id
+
+            # If no data found and force_analysis is True, try previous seasons
+            if force_analysis and (not meta_stats or not meta_stats.get('cars')):
+                print(f"⚠️ No data found for current season {season_id}, looking back at previous seasons...")
+
+                # Try up to 4 previous seasons (one year back)
+                for season_offset in range(1, 5):
+                    previous_season_id = season_id - season_offset
+                    print(f"🔍 Trying season {previous_season_id}...")
+
+                    try:
+                        meta_stats = await self._meta_analyzer.get_meta_for_series(
+                            series_id_num,
+                            previous_season_id,
+                            target_week,
+                            max_results=100,
+                            track_id=track_id_filter
+                        )
+
+                        if meta_stats and meta_stats.get('cars'):
+                            print(f"✅ Found data in season {previous_season_id}")
+                            season_analyzed = previous_season_id
+                            break
+                    except Exception as e:
+                        print(f"⚠️ Error checking season {previous_season_id}: {e}")
+                        continue
+
+            # Merge performance statistics into car data
+            if meta_stats and meta_stats.get('cars'):
+                perf_stats_by_car = {car['car_id']: car for car in meta_stats['cars']}
+
+                # If we're analyzing from results (no car restrictions), build cars list from meta_stats
+                if analyze_from_results:
+                    print(f"🏁 Building car list from actual race results ({len(perf_stats_by_car)} cars found)")
+                    cars = []
+                    for car_id, stats in perf_stats_by_car.items():
+                        if car_id in car_dict:
+                            car_info = car_dict[car_id]
+                            cars.append({
+                                'car_id': car_id,
+                                'car_name': car_info.get('car_name', f'Car {car_id}'),
+                                'logo_url': car_info.get('logo', ''),
+                                'avg_lap_time': stats.get('avg_lap_time'),
+                                'fastest_lap_time': stats.get('fastest_lap_time'),
+                                'avg_finish': stats.get('avg_finish'),
+                                'win_rate': stats.get('win_rate'),
+                                'podium_rate': stats.get('podium_rate'),
+                                'total_races': stats.get('total_races'),
+                                'meta_score': stats.get('meta_score')
+                            })
+                else:
+                    # Merge stats into existing cars list
+                    for car in cars:
+                        car_id = car['car_id']
+                        if car_id in perf_stats_by_car:
+                            stats = perf_stats_by_car[car_id]
+                            car['avg_lap_time'] = stats.get('avg_lap_time')
+                            car['fastest_lap_time'] = stats.get('fastest_lap_time')
+                            car['avg_finish'] = stats.get('avg_finish')
+                            car['win_rate'] = stats.get('win_rate')
+                            car['podium_rate'] = stats.get('podium_rate')
+                            car['total_races'] = stats.get('total_races')
+                            car['meta_score'] = stats.get('meta_score')
+
+                # Sort cars by meta score (best performing first)
+                cars.sort(key=lambda x: x.get('meta_score', 999999))
+
+                message = f'Week {target_week} at {target_schedule.get("track", {}).get("track_name")} - {len(cars)} cars (Performance data from {meta_stats.get("total_cars_analyzed", 0)} cars with race data)'
+            else:
+                message = f'Week {target_week} at {target_schedule.get("track", {}).get("track_name")} - {len(cars)} cars available (Performance data loading...)'
 
             return {
                 'series_name': target_schedule.get('series_name', series_name),
-                'series_id': target_schedule.get('series_id'),
+                'series_id': series_id_num,
                 'season_id': season_id,
+                'season_analyzed': season_analyzed,  # Which season's data was actually used
                 'track_name': target_schedule.get('track', {}).get('track_name'),
                 'track_config': target_schedule.get('track', {}).get('config_name'),
                 'week': target_week,
                 'cars': cars,
-                'message': f'Week {target_week} at {target_schedule.get("track", {}).get("track_name")} - {len(cars)} cars available'
+                'message': message,
+                'has_performance_data': bool(meta_stats and meta_stats.get('cars')),
+                'total_races_analyzed': meta_stats.get('total_races_analyzed', 0) if meta_stats else 0
             }
 
         except Exception as e:
