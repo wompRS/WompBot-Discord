@@ -281,6 +281,89 @@ class Database:
             print(f"❌ Error storing fact-check: {e}")
             return None
 
+    def get_iracing_meta_cache(self, cache_key: str):
+        """Get cached meta analysis data if not expired"""
+        try:
+            with self.conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    SELECT meta_data, expires_at
+                    FROM iracing_meta_cache
+                    WHERE cache_key = %s
+                    AND expires_at > NOW()
+                """, (cache_key,))
+
+                result = cur.fetchone()
+                if result:
+                    # Update last_accessed timestamp
+                    cur.execute("""
+                        UPDATE iracing_meta_cache
+                        SET last_accessed = NOW()
+                        WHERE cache_key = %s
+                    """, (cache_key,))
+
+                    print(f"✅ Using database cached meta for {cache_key}")
+                    return result['meta_data']
+
+                return None
+        except Exception as e:
+            print(f"⚠️ Error reading meta cache: {e}")
+            return None
+
+    def store_iracing_meta_cache(self, cache_key: str, series_id: int, season_id: int,
+                                  week_num: int, meta_data: dict, track_id: int = None,
+                                  ttl_hours: int = 6):
+        """Store meta analysis data in cache"""
+        try:
+            import json
+            from datetime import timedelta
+
+            expires_at = datetime.now() + timedelta(hours=ttl_hours)
+
+            with self.conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO iracing_meta_cache
+                        (cache_key, series_id, season_id, week_num, track_id, meta_data, expires_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (cache_key)
+                    DO UPDATE SET
+                        meta_data = EXCLUDED.meta_data,
+                        last_accessed = NOW(),
+                        expires_at = EXCLUDED.expires_at
+                """, (
+                    cache_key,
+                    series_id,
+                    season_id,
+                    week_num,
+                    track_id,
+                    json.dumps(meta_data),
+                    expires_at
+                ))
+
+                print(f"✅ Stored meta cache for {cache_key} (expires in {ttl_hours}h)")
+                return True
+        except Exception as e:
+            print(f"❌ Error storing meta cache: {e}")
+            return False
+
+    def cleanup_expired_meta_cache(self):
+        """Remove expired cache entries"""
+        try:
+            with self.conn.cursor() as cur:
+                cur.execute("""
+                    DELETE FROM iracing_meta_cache
+                    WHERE expires_at < NOW()
+                    RETURNING cache_key
+                """)
+
+                deleted = cur.fetchall()
+                if deleted:
+                    print(f"🧹 Cleaned up {len(deleted)} expired meta cache entries")
+
+                return len(deleted)
+        except Exception as e:
+            print(f"⚠️ Error cleaning meta cache: {e}")
+            return 0
+
     def close(self):
         """Close database connection"""
         if self.conn:

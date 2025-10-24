@@ -20,15 +20,17 @@ import statistics
 class MetaAnalyzer:
     """Analyzes race results to determine car meta for a series"""
 
-    def __init__(self, iracing_client):
+    def __init__(self, iracing_client, database=None):
         """
         Initialize meta analyzer
 
         Args:
             iracing_client: Authenticated iRacingClient instance
+            database: Database instance for persistent caching (optional)
         """
         self.client = iracing_client
-        self._cache = {}  # Cache for computed meta data
+        self.db = database
+        self._cache = {}  # In-memory cache as fallback
 
     def _get_cache_key(self, series_id: int, season_id: int, week_num: int, track_id: Optional[int] = None) -> str:
         """Generate cache key for meta data"""
@@ -51,13 +53,24 @@ class MetaAnalyzer:
         Returns:
             Dict with car statistics or None if no data available
         """
-        # Check cache first
+        # Check cache first (database then memory)
         cache_key = self._get_cache_key(series_id, season_id, week_num, track_id)
+
+        # Try database cache first if available
+        if self.db:
+            try:
+                cached_data = self.db.get_iracing_meta_cache(cache_key)
+                if cached_data:
+                    return cached_data
+            except Exception as e:
+                print(f"⚠️ Database cache read error: {e}")
+
+        # Fallback to in-memory cache
         if cache_key in self._cache:
             cached_data = self._cache[cache_key]
             # Return cached data if less than 1 hour old
             if (datetime.now() - cached_data['timestamp']).seconds < 3600:
-                print(f"✅ Using cached meta data for {cache_key}")
+                print(f"✅ Using in-memory cached meta data for {cache_key}")
                 return cached_data['data']
 
         log_msg = f"🔍 Fetching race results for series {series_id}, season {season_id}, week {week_num}"
@@ -111,11 +124,26 @@ class MetaAnalyzer:
             # Add total races count
             meta_data['total_races_analyzed'] = len(results_list)
 
-            # Cache the results
+            # Cache the results in both database and memory
             self._cache[cache_key] = {
                 'timestamp': datetime.now(),
                 'data': meta_data
             }
+
+            # Store in database for persistent caching
+            if self.db:
+                try:
+                    self.db.store_iracing_meta_cache(
+                        cache_key=cache_key,
+                        series_id=series_id,
+                        season_id=season_id,
+                        week_num=week_num,
+                        track_id=track_id,
+                        meta_data=meta_data,
+                        ttl_hours=6  # Cache for 6 hours
+                    )
+                except Exception as e:
+                    print(f"⚠️ Failed to store database cache: {e}")
 
             print(f"✅ Meta analysis complete: {len(meta_data.get('cars', []))} cars analyzed")
             return meta_data

@@ -92,7 +92,15 @@ class iRacingClient:
             session = await self._get_session()
             url = f"{self.BASE_URL}{endpoint}"
 
+            # Debug logging for member info requests
+            if endpoint in ["/data/member/info", "/data/member/get"]:
+                print(f"🌐 Making GET request to: {url}")
+                print(f"   Query params: {params}")
+
             async with session.get(url, params=params) as response:
+                # Debug log the actual URL requested
+                if endpoint in ["/data/member/info", "/data/member/get"]:
+                    print(f"   Actual URL: {response.url}")
                 # Check rate limiting headers
                 if 'x-ratelimit-remaining' in response.headers:
                     remaining = response.headers.get('x-ratelimit-remaining')
@@ -160,11 +168,62 @@ class iRacingClient:
         Returns:
             Member information dict
         """
-        params = {}
+        # Use /data/member/get for specific customer IDs, /data/member/info for authenticated user
         if cust_id:
-            params['cust_ids'] = cust_id
+            endpoint = "/data/member/get"
+            params = {
+                'cust_ids': cust_id,  # Can be int or comma-separated string
+                'include_licenses': 'true'  # Must be string, not boolean
+            }
+        else:
+            endpoint = "/data/member/info"
+            params = {}
 
-        return await self._get("/data/member/info", params)
+        print(f"👤 API REQUEST: {endpoint} with params={params}")
+        result = await self._get(endpoint, params)
+        print(f"   API RESPONSE: Got result with cust_id={result.get('cust_id') if result else None}")
+
+        # Debug logging for profile lookups
+        if result and cust_id:
+            print(f"👤 Profile lookup for cust_id {cust_id}:")
+            print(f"   Requested cust_id: {cust_id}")
+            print(f"   Returned cust_id: {result.get('cust_id')}")
+
+            # Validate that we got the right customer data
+            returned_id = result.get('cust_id')
+            if returned_id and int(returned_id) != cust_id:
+                print(f"   ⚠️ WARNING: Requested {cust_id} but got {returned_id}!")
+                print(f"   This is likely an API or caching issue")
+
+            # Handle response - might be a dict with 'members' array or 'success' dict
+            member_data = result
+
+            # Check if response has 'members' array
+            if 'members' in result and isinstance(result['members'], list) and len(result['members']) > 0:
+                member_data = result['members'][0]
+                print(f"   Extracted from members array")
+            # Check if response has 'success' dict
+            elif 'success' in result and isinstance(result['success'], dict):
+                member_data = result['success']
+                print(f"   Extracted from success dict")
+
+            print(f"   display_name: '{member_data.get('display_name')}'")
+            print(f"   name: '{member_data.get('name')}'")
+            print(f"   cust_id: '{member_data.get('cust_id')}'")
+
+            # Debug: Show licenses structure
+            licenses = member_data.get('licenses')
+            if licenses:
+                print(f"   licenses type: {type(licenses)}, count: {len(licenses)}")
+                if isinstance(licenses, list):
+                    for idx, lic in enumerate(licenses):
+                        print(f"   License[{idx}]: cat={lic.get('category_id')} name={lic.get('category_name')} "
+                              f"iR={lic.get('irating', 'N/A')} SR={lic.get('safety_rating')} "
+                              f"ttR={lic.get('tt_rating', 'N/A')} group={lic.get('group_name')}")
+
+            return member_data
+
+        return result
 
     async def get_member_recent_races(self, cust_id: Optional[int] = None) -> Optional[List[Dict]]:
         """
@@ -252,7 +311,7 @@ class iRacingClient:
 
     async def search_member_by_name(self, name: str) -> Optional[List[Dict]]:
         """
-        Search for members by name.
+        Search for members by name - tries multiple endpoint variations.
 
         Args:
             name: Display name or part of name
@@ -260,9 +319,56 @@ class iRacingClient:
         Returns:
             List of matching members
         """
-        params = {'search_term': name}
-        response = await self._get("/data/member/search", params)
-        return response if response else []
+        print(f"🔍 Searching for '{name}'...")
+
+        # Try different endpoints and parameter combinations
+        attempts = [
+            ("/data/lookup/drivers", {'search_term': name}),
+            ("/data/lookup/drivers", {'search_value': name}),
+            ("/data/lookup", {'search_term': name, 'category': 'driver'}),
+            ("/data/member/get", {'search_term': name}),
+            ("/data/lookup/get", {'search_term': name}),
+        ]
+
+        for endpoint, params in attempts:
+            print(f"   Trying {endpoint} with params {params}")
+            response = await self._get(endpoint, params)
+
+            if response:
+                import json
+                print(f"   ✓ Got response: {json.dumps(response, indent=2)[:300]}")
+
+                # Try to extract driver list from response
+                if isinstance(response, list):
+                    # Direct list of drivers
+                    if len(response) > 0:
+                        print(f"   ✓ Found {len(response)} results as direct list")
+                        return self._format_driver_results(response)
+
+                elif isinstance(response, dict):
+                    # Check for common response patterns
+                    for key in ['drivers', 'members', 'results', 'data']:
+                        if key in response and isinstance(response[key], list):
+                            print(f"   ✓ Found {len(response[key])} results in '{key}' key")
+                            return self._format_driver_results(response[key])
+            else:
+                print(f"   ✗ No response or 404")
+
+        print(f"   ❌ All search attempts failed")
+        return []
+
+    def _format_driver_results(self, raw_results: list) -> List[Dict]:
+        """Format raw driver results into consistent structure"""
+        formatted = []
+        for r in raw_results[:10]:  # Limit to 10
+            if isinstance(r, dict):
+                formatted.append({
+                    'cust_id': r.get('cust_id'),
+                    'display_name': r.get('display_name', r.get('name', 'Unknown')),
+                    'name': r.get('name', '')
+                })
+                print(f"      • {r.get('display_name', 'Unknown')} (ID: {r.get('cust_id')})")
+        return formatted
 
     async def get_member_career_stats(self, cust_id: int) -> Optional[Dict]:
         """

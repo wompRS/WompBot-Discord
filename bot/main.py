@@ -2514,7 +2514,7 @@ async def iracing_link(interaction: discord.Interaction, iracing_id_or_name: str
         traceback.print_exc()
 
 @bot.tree.command(name="iracing_profile", description="View iRacing driver profile and stats")
-@app_commands.describe(driver_name="iRacing display name (optional if you've linked your account)")
+@app_commands.describe(driver_name="Driver display name, real name, or customer ID (optional if linked)")
 async def iracing_profile(interaction: discord.Interaction, driver_name: str = None):
     """View iRacing driver profile"""
     if not iracing:
@@ -2542,7 +2542,10 @@ async def iracing_profile(interaction: discord.Interaction, driver_name: str = N
             # Search for driver
             results = await iracing.search_driver(driver_name)
             if not results or len(results) == 0:
-                await interaction.followup.send(f"❌ No driver found with name '{driver_name}'")
+                await interaction.followup.send(
+                    f"❌ No driver found with name '{driver_name}'\n"
+                    f"💡 Tip: Try the driver's customer ID for reliable results"
+                )
                 return
             cust_id = results[0].get('cust_id')
             display_name = results[0].get('display_name', driver_name)
@@ -3117,6 +3120,26 @@ async def track_autocomplete(
 
     return []
 
+async def category_autocomplete(
+    interaction: discord.Interaction,
+    current: str,
+) -> list[app_commands.Choice[str]]:
+    """Autocomplete function for license categories"""
+    categories = [
+        app_commands.Choice(name="Oval", value="oval"),
+        app_commands.Choice(name="Sports Car (Road)", value="sports_car_road"),
+        app_commands.Choice(name="Formula Car (Road)", value="formula_car_road"),
+        app_commands.Choice(name="Dirt Oval", value="dirt_oval"),
+        app_commands.Choice(name="Dirt Road", value="dirt_road")
+    ]
+
+    if not current:
+        return categories
+
+    # Filter based on user input
+    current_lower = current.lower()
+    return [c for c in categories if current_lower in c.name.lower() or current_lower in c.value.lower()][:25]
+
 @bot.tree.command(name="iracing_meta", description="View meta analysis for an iRacing series")
 @app_commands.describe(
     series="Series name to analyze",
@@ -3258,7 +3281,7 @@ async def iracing_meta(interaction: discord.Interaction, series: str, season: in
         traceback.print_exc()
 
 @bot.tree.command(name="iracing_results", description="View recent iRacing race results for a driver")
-@app_commands.describe(driver_name="iRacing display name (optional if you've linked your account)")
+@app_commands.describe(driver_name="Driver display name, real name, or customer ID (optional if linked)")
 async def iracing_results(interaction: discord.Interaction, driver_name: str = None):
     """View driver's recent race results"""
     if not iracing:
@@ -3286,7 +3309,10 @@ async def iracing_results(interaction: discord.Interaction, driver_name: str = N
             # Search for driver
             results = await iracing.search_driver(driver_name)
             if not results or len(results) == 0:
-                await interaction.followup.send(f"❌ No driver found with name '{driver_name}'")
+                await interaction.followup.send(
+                    f"❌ No driver found with name '{driver_name}'\n"
+                    f"💡 Tip: Try the driver's customer ID for reliable results"
+                )
                 return
             cust_id = results[0].get('cust_id')
             display_name = results[0].get('display_name', driver_name)
@@ -3325,6 +3351,718 @@ async def iracing_results(interaction: discord.Interaction, driver_name: str = N
     except Exception as e:
         await interaction.followup.send(f"❌ Error getting race results: {str(e)}")
         print(f"❌ iRacing results error: {e}")
+
+
+@bot.tree.command(name="iracing_season_schedule", description="View full season schedule for an iRacing series")
+@app_commands.describe(
+    series_name="Series name",
+    season="Season (e.g., '2025 S1', optional - uses current if not specified)"
+)
+async def iracing_season_schedule(interaction: discord.Interaction, series_name: str, season: str = None):
+    """View complete season track rotation"""
+    if not iracing:
+        await interaction.response.send_message("❌ iRacing integration is not configured on this bot")
+        return
+
+    await interaction.response.defer()
+
+    try:
+        # Get series info
+        all_series = await iracing.get_current_series()
+        if not all_series:
+            await interaction.followup.send("❌ Failed to retrieve series data")
+            return
+
+        # Find matching series
+        series_match = None
+        for s in all_series:
+            if series_name.lower() in s.get('series_name', '').lower():
+                series_match = s
+                break
+
+        if not series_match:
+            await interaction.followup.send(f"❌ Series not found: '{series_name}'")
+            return
+
+        series_id = series_match.get('series_id')
+        series_full_name = series_match.get('series_name')
+
+        # If season not specified, use current
+        if season:
+            # Parse season string to find season_id
+            season_id = season_string_to_id(season)
+        else:
+            season_id = series_match.get('season_id')
+
+        # Get schedule
+        schedule = await iracing.get_series_schedule(series_id, season_id)
+
+        if not schedule or len(schedule) == 0:
+            await interaction.followup.send(f"❌ No schedule found for {series_full_name}")
+            return
+
+        # Create embed with schedule
+        embed = discord.Embed(
+            title=f"📅 {series_full_name}",
+            description=f"Season Schedule - {len(schedule)} weeks",
+            color=discord.Color.blue()
+        )
+
+        # Group by week and display
+        for i, week in enumerate(schedule[:12]):  # First 12 weeks
+            week_num = week.get('race_week_num', i)
+            track_name = week.get('track_name', 'Unknown Track')
+            layout = week.get('track_layout', '')
+
+            if layout and layout != track_name:
+                track_display = f"{track_name} - {layout}"
+            else:
+                track_display = track_name
+
+            embed.add_field(
+                name=f"Week {week_num + 1}",
+                value=track_display,
+                inline=True
+            )
+
+        # If more than 12 weeks, add second embed
+        if len(schedule) > 12:
+            embed.set_footer(text=f"Showing first 12 of {len(schedule)} weeks")
+
+        await interaction.followup.send(embed=embed)
+
+        # Send second embed if needed
+        if len(schedule) > 12:
+            embed2 = discord.Embed(
+                title=f"📅 {series_full_name} (continued)",
+                description="Remaining weeks",
+                color=discord.Color.blue()
+            )
+
+            for i, week in enumerate(schedule[12:], start=12):
+                week_num = week.get('race_week_num', i)
+                track_name = week.get('track_name', 'Unknown Track')
+                layout = week.get('track_layout', '')
+
+                if layout and layout != track_name:
+                    track_display = f"{track_name} - {layout}"
+                else:
+                    track_display = track_name
+
+                embed2.add_field(
+                    name=f"Week {week_num + 1}",
+                    value=track_display,
+                    inline=True
+                )
+
+            await interaction.followup.send(embed=embed2)
+
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error getting schedule: {str(e)}")
+        print(f"❌ iRacing schedule error: {e}")
+        import traceback
+        traceback.print_exc()
+
+
+@bot.tree.command(name="iracing_server_leaderboard", description="Show iRating leaderboard for this Discord server")
+@app_commands.describe(category="License category (oval/sports_car_road/formula_car_road/dirt_oval/dirt_road)")
+@app_commands.autocomplete(category=category_autocomplete)
+async def iracing_server_leaderboard(interaction: discord.Interaction, category: str = "sports_car_road"):
+    """Show server-wide iRating rankings"""
+    if not iracing:
+        await interaction.response.send_message("❌ iRacing integration is not configured on this bot")
+        return
+
+    await interaction.response.defer()
+
+    try:
+        # Get all linked accounts in this guild
+        guild_member_ids = [member.id for member in interaction.guild.members]
+
+        if len(guild_member_ids) == 0:
+            await interaction.followup.send("❌ No members in this server")
+            return
+
+        # Get linked iRacing accounts
+        leaderboard_data = []
+
+        for discord_id in guild_member_ids:
+            linked = await iracing.get_linked_iracing_id(discord_id)
+            if linked:
+                cust_id, display_name = linked
+
+                # Get profile to fetch current iRating
+                profile = await iracing.get_driver_profile(cust_id)
+                if profile:
+                    licenses = profile.get('licenses', {})
+
+                    # Map category names
+                    category_map = {
+                        'oval': 'oval',
+                        'road': 'sports_car',
+                        'dirt_oval': 'dirt_oval',
+                        'dirt_road': 'dirt_road',
+                        'formula_car': 'formula_car',
+                        'formula': 'formula_car'
+                    }
+
+                    license_key = category_map.get(category.lower(), 'sports_car')
+
+                    if license_key in licenses:
+                        lic = licenses[license_key]
+                        irating = lic.get('irating', 0)
+                        sr = lic.get('safety_rating', 0.0)
+
+                        # Get Discord member
+                        member = interaction.guild.get_member(discord_id)
+                        discord_name = member.display_name if member else "Unknown"
+
+                        leaderboard_data.append({
+                            'discord_name': discord_name,
+                            'iracing_name': display_name,
+                            'irating': irating,
+                            'safety_rating': sr,
+                            'cust_id': cust_id
+                        })
+
+        if len(leaderboard_data) == 0:
+            await interaction.followup.send("❌ No linked iRacing accounts found in this server.\nUse `/iracing_link` to link your account!")
+            return
+
+        # Sort by iRating
+        leaderboard_data.sort(key=lambda x: x['irating'], reverse=True)
+
+        # Create embed
+        category_display = category.replace('_', ' ').title()
+        embed = discord.Embed(
+            title=f"🏆 {interaction.guild.name} - {category_display} Leaderboard",
+            description=f"{len(leaderboard_data)} linked drivers",
+            color=discord.Color.gold()
+        )
+
+        # Add top 10 (or all if less)
+        for i, driver in enumerate(leaderboard_data[:10]):
+            rank_emoji = ["🥇", "🥈", "🥉"][i] if i < 3 else f"**{i+1}.**"
+
+            embed.add_field(
+                name=f"{rank_emoji} {driver['discord_name']}",
+                value=f"iR: {driver['irating']:,} | SR: {driver['safety_rating']:.2f}\n*{driver['iracing_name']}*",
+                inline=False
+            )
+
+        if len(leaderboard_data) > 10:
+            embed.set_footer(text=f"Showing top 10 of {len(leaderboard_data)} drivers")
+
+        await interaction.followup.send(embed=embed)
+
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error generating leaderboard: {str(e)}")
+        print(f"❌ Server leaderboard error: {e}")
+        import traceback
+        traceback.print_exc()
+
+
+@bot.tree.command(name="iracing_history", description="View your iRating and Safety Rating history over time")
+@app_commands.describe(
+    driver_name="iRacing display name (optional if you've linked your account)",
+    category="License category (oval/sports_car_road/formula_car_road/dirt_oval/dirt_road)",
+    days="Number of days of history to show (default: 30)"
+)
+@app_commands.autocomplete(category=category_autocomplete)
+async def iracing_history(interaction: discord.Interaction, driver_name: str = None,
+                          category: str = "sports_car_road", days: int = 30):
+    """View rating progression chart"""
+    if not iracing or not iracing_viz:
+        await interaction.response.send_message("❌ iRacing integration is not configured on this bot")
+        return
+
+    await interaction.response.defer()
+
+    try:
+        cust_id = None
+        display_name = driver_name
+
+        # If no driver name provided, check for linked account
+        if not driver_name:
+            linked = await iracing.get_linked_iracing_id(interaction.user.id)
+            if linked:
+                cust_id, display_name = linked
+            else:
+                await interaction.followup.send(
+                    "❌ No driver name provided and no linked account found.\n"
+                    "Use `/iracing_link` to link your account or provide a driver name."
+                )
+                return
+        else:
+            # Search for driver
+            results = await iracing.search_driver(driver_name)
+            if not results or len(results) == 0:
+                await interaction.followup.send(
+                    f"❌ No driver found with name '{driver_name}'\n"
+                    f"💡 Tip: Try the driver's customer ID for reliable results"
+                )
+                return
+            cust_id = results[0].get('cust_id')
+            display_name = results[0].get('display_name', driver_name)
+
+        # Get profile for current ratings
+        profile = await iracing.get_driver_profile(cust_id)
+        if not profile:
+            await interaction.followup.send("❌ Failed to retrieve profile data")
+            return
+
+        # Map category to license key
+        category_map = {
+            'oval': 'oval',
+            'road': 'sports_car',
+            'dirt_oval': 'dirt_oval',
+            'dirt_road': 'dirt_road',
+            'formula_car': 'formula_car',
+            'formula': 'formula_car'
+        }
+        license_key = category_map.get(category.lower(), 'sports_car')
+
+        licenses = profile.get('licenses', {})
+        if license_key not in licenses:
+            await interaction.followup.send(f"❌ No {category} license data found")
+            return
+
+        # For now, create a simple history from recent races
+        # TODO: Implement proper historical tracking in database
+        races = await iracing.get_driver_recent_races(cust_id, limit=min(days, 50))
+
+        if not races or len(races) == 0:
+            await interaction.followup.send(f"❌ No race history found for {display_name}")
+            return
+
+        # Map category to race category IDs
+        # iRacing categories: 1=oval, 2=road, 3=dirt_road, 4=dirt_oval
+        category_id_map = {
+            'oval': 1,
+            'road': 2,
+            'dirt_road': 3,
+            'dirt_oval': 4,
+            'formula_car': 2  # Formula is part of road
+        }
+        target_category_id = category_id_map.get(category.lower(), 2)
+
+        # Extract rating history from races - FILTER by category
+        history_data = []
+        print(f"🔍 Filtering {len(races)} races for category '{category}' (target_category_id={target_category_id})")
+
+        for race in reversed(races):  # Oldest first
+            race_category = race.get('category_id', race.get('category', 2))
+
+            # Debug: Show first 5 races' categories
+            if len(history_data) < 5:
+                print(f"   Race: category_id={race.get('category_id')}, category={race.get('category')}, "
+                      f"resolved={race_category}, match={race_category == target_category_id}")
+
+            # Only include races from the selected category with rating data
+            if race_category == target_category_id and 'newi_rating' in race and race.get('newi_rating'):
+                history_data.append({
+                    'date': race.get('session_start_time', 'Unknown'),
+                    'irating': race.get('newi_rating', 0),
+                    'safety_rating': race.get('new_sub_level', 0) / 100.0  # Convert to SR format
+                })
+
+        print(f"   ✓ Found {len(history_data)} races matching category")
+
+        if len(history_data) == 0:
+            await interaction.followup.send("❌ Not enough rating history data available")
+            return
+
+        # Generate chart
+        image_buffer = iracing_viz.create_rating_history_chart(display_name, history_data, category)
+
+        # Send as Discord file attachment
+        file = discord.File(fp=image_buffer, filename=f"rating_history_{cust_id}.png")
+        await interaction.followup.send(file=file)
+
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error getting rating history: {str(e)}")
+        print(f"❌ iRacing history error: {e}")
+        import traceback
+        traceback.print_exc()
+
+
+@bot.tree.command(name="iracing_recent", description="View dashboard of your recent race performance")
+@app_commands.describe(
+    driver_name="iRacing display name (optional if you've linked your account)",
+    limit="Number of recent races to analyze (default: 10, max: 20)"
+)
+async def iracing_recent(interaction: discord.Interaction, driver_name: str = None, limit: int = 10):
+    """View recent races dashboard"""
+    if not iracing or not iracing_viz:
+        await interaction.response.send_message("❌ iRacing integration is not configured on this bot")
+        return
+
+    await interaction.response.defer()
+
+    try:
+        cust_id = None
+        display_name = driver_name
+
+        # If no driver name provided, check for linked account
+        if not driver_name:
+            linked = await iracing.get_linked_iracing_id(interaction.user.id)
+            if linked:
+                cust_id, display_name = linked
+            else:
+                await interaction.followup.send(
+                    "❌ No driver name provided and no linked account found.\n"
+                    "Use `/iracing_link` to link your account or provide a driver name."
+                )
+                return
+        else:
+            # Search for driver
+            results = await iracing.search_driver(driver_name)
+            if not results or len(results) == 0:
+                await interaction.followup.send(
+                    f"❌ No driver found with name '{driver_name}'\n"
+                    f"💡 Tip: Try the driver's customer ID for reliable results"
+                )
+                return
+            cust_id = results[0].get('cust_id')
+            display_name = results[0].get('display_name', driver_name)
+
+        # Limit to reasonable number
+        limit = min(max(limit, 1), 20)
+
+        # Get recent races
+        races = await iracing.get_driver_recent_races(cust_id, limit=limit)
+
+        if not races or len(races) == 0:
+            await interaction.followup.send(f"❌ No recent races found for {display_name}")
+            return
+
+        # Generate dashboard
+        image_buffer = iracing_viz.create_recent_races_dashboard(display_name, races)
+
+        # Send as Discord file attachment
+        file = discord.File(fp=image_buffer, filename=f"recent_races_{cust_id}.png")
+        await interaction.followup.send(file=file)
+
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error generating dashboard: {str(e)}")
+        print(f"❌ iRacing recent error: {e}")
+        import traceback
+        traceback.print_exc()
+
+
+@bot.tree.command(name="iracing_win_rate", description="View win rate analysis for cars in a series")
+@app_commands.describe(
+    series_name="Series name (autocomplete available)",
+    season="Season (e.g., '2025 S1', optional)",
+    week="Week number (optional, defaults to current week)",
+    track="Track name filter (optional)"
+)
+async def iracing_win_rate(interaction: discord.Interaction, series_name: str,
+                           season: str = None, week: int = None, track: str = None):
+    """View win rate and podium rate analysis"""
+    if not iracing or not iracing_viz:
+        await interaction.response.send_message("❌ iRacing integration is not configured on this bot")
+        return
+
+    await interaction.response.defer()
+
+    try:
+        # Get series list
+        all_series = await iracing.get_current_series()
+        if not all_series:
+            await interaction.followup.send("❌ Failed to retrieve series data")
+            return
+
+        # Find series
+        series_match = None
+        for s in all_series:
+            if series_name.lower() in s.get('series_name', '').lower():
+                series_match = s
+                break
+
+        if not series_match:
+            await interaction.followup.send(f"❌ Series not found: '{series_name}'")
+            return
+
+        series_id = series_match.get('series_id')
+        series_full_name = series_match.get('series_name')
+        season_id = series_match.get('season_id') if not season else season_string_to_id(season)
+
+        # Determine week (current week if not specified)
+        if week is None:
+            week = series_match.get('race_week_num', 0)
+
+        # Get meta analysis (with track filter if specified)
+        track_id_filter = None
+        if track:
+            tracks = await iracing.get_all_tracks()
+            for t in tracks:
+                if track.lower() in t.get('track_name', '').lower():
+                    track_id_filter = t.get('track_id')
+                    break
+
+        # Get meta stats
+        meta_stats = await iracing.get_meta_for_series(
+            series_id,
+            season_id,
+            week,
+            track_id=track_id_filter
+        )
+
+        if not meta_stats or 'cars' not in meta_stats or len(meta_stats['cars']) == 0:
+            await interaction.followup.send(f"❌ No meta data available for {series_full_name}")
+            return
+
+        cars = meta_stats['cars']
+
+        # Calculate win rates and podium rates
+        car_data = []
+        for car in cars:
+            total_races = car.get('total_races', 0)
+            wins = car.get('wins', 0)
+            podiums = car.get('podiums', 0)
+
+            if total_races > 0:
+                win_rate = (wins / total_races) * 100
+                podium_rate = (podiums / total_races) * 100
+
+                car_data.append({
+                    'car_name': car.get('car_name', 'Unknown'),
+                    'wins': wins,
+                    'races': total_races,
+                    'win_rate': win_rate,
+                    'podium_rate': podium_rate
+                })
+
+        if len(car_data) == 0:
+            await interaction.followup.send("❌ Not enough data to calculate win rates")
+            return
+
+        # Generate chart
+        track_name = meta_stats.get('track_name') if track_id_filter else None
+        image_buffer = iracing_viz.create_win_rate_chart(series_full_name, car_data, track_name)
+
+        # Send as Discord file attachment
+        file = discord.File(fp=image_buffer, filename=f"win_rate_{series_id}.png")
+
+        embed = discord.Embed(
+            title=f"📊 Win Rate Analysis",
+            description=f"{series_full_name}\nWeek {week + 1}",
+            color=discord.Color.gold()
+        )
+        embed.add_field(name="Total Cars Analyzed", value=str(len(car_data)), inline=True)
+        embed.add_field(name="Total Races", value=str(sum(c['races'] for c in car_data)), inline=True)
+
+        await interaction.followup.send(embed=embed, file=file)
+
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error generating win rate analysis: {str(e)}")
+        print(f"❌ Win rate error: {e}")
+        import traceback
+        traceback.print_exc()
+
+
+@bot.tree.command(name="iracing_compare_drivers", description="Compare two drivers side-by-side")
+@app_commands.describe(
+    driver1="First driver (name or customer ID)",
+    driver2="Second driver (name or customer ID)",
+    category="License category to compare (oval/sports_car_road/formula_car_road/dirt_oval/dirt_road)"
+)
+@app_commands.autocomplete(category=category_autocomplete)
+async def iracing_compare_drivers(interaction: discord.Interaction, driver1: str, driver2: str, category: str = "sports_car_road"):
+    """Compare two drivers side-by-side"""
+    if not iracing or not iracing_viz:
+        await interaction.response.send_message("❌ iRacing integration is not configured")
+        return
+
+    await interaction.response.defer()
+
+    try:
+        # Helper to resolve driver name or ID to customer ID
+        async def resolve_driver(input_str: str) -> tuple:
+            """Returns (cust_id, display_name) or (None, None)"""
+            # Try as customer ID first
+            if input_str.strip().isdigit():
+                cust_id = int(input_str.strip())
+                profile = await iracing.get_driver_profile(cust_id)
+                if profile:
+                    return cust_id, profile.get('display_name', f'Driver {cust_id}')
+                return None, None
+
+            # Search by name
+            results = await iracing.search_driver(input_str)
+            if results and len(results) > 0:
+                return results[0].get('cust_id'), results[0].get('display_name', input_str)
+            return None, None
+
+        # Get both drivers
+        cust_id1, name1 = await resolve_driver(driver1)
+        if not cust_id1:
+            await interaction.followup.send(f"❌ Driver not found: '{driver1}'")
+            return
+
+        cust_id2, name2 = await resolve_driver(driver2)
+        if not cust_id2:
+            await interaction.followup.send(f"❌ Driver not found: '{driver2}'")
+            return
+
+        # Get full profiles
+        profile1 = await iracing.get_driver_profile(cust_id1)
+        profile2 = await iracing.get_driver_profile(cust_id2)
+
+        if not profile1 or not profile2:
+            await interaction.followup.send("❌ Failed to retrieve profile data")
+            return
+
+        # Get career stats
+        stats1 = await iracing.get_driver_career_stats(cust_id1)
+        stats2 = await iracing.get_driver_career_stats(cust_id2)
+
+        print(f"📊 Career stats for {name1}: {len(stats1.get('stats', [])) if stats1 else 0} stat entries")
+        print(f"📊 Career stats for {name2}: {len(stats2.get('stats', [])) if stats2 else 0} stat entries")
+
+        # Build comparison data
+        def build_data(profile, stats_data, name):
+            stats_summary = {
+                'starts': 0,
+                'wins': 0,
+                'top3': 0,
+                'top5': 0,
+                'poles': 0,
+                'avg_finish': 0,
+                'avg_incidents': 0,
+                'win_rate': 0
+            }
+
+            if stats_data and 'stats' in stats_data and len(stats_data['stats']) > 0:
+                all_stats = stats_data['stats']
+
+                # Debug: Show what categories are in stats
+                print(f"   Stats for {name}: {len(all_stats)} categories")
+                for s in all_stats:
+                    print(f"      Category {s.get('category_id', 'N/A')}: starts={s.get('starts', 0)} "
+                          f"wins={s.get('wins', 0)} category={s.get('category', 'N/A')}")
+
+                total_starts = sum(s.get('starts', 0) for s in all_stats)
+
+                stats_summary = {
+                    'starts': total_starts,
+                    'wins': sum(s.get('wins', 0) for s in all_stats),
+                    'top3': sum(s.get('top3', 0) for s in all_stats),
+                    'top5': sum(s.get('top5', 0) for s in all_stats),
+                    'poles': sum(s.get('poles', 0) for s in all_stats),
+                    'avg_finish': sum(s.get('avg_finish', 0) for s in all_stats) / len(all_stats) if len(all_stats) > 0 else 0,
+                    'avg_incidents': sum(s.get('avg_incidents', 0) for s in all_stats) / len(all_stats) if len(all_stats) > 0 else 0,
+                    'win_rate': (sum(s.get('wins', 0) for s in all_stats) / total_starts * 100) if total_starts > 0 else 0
+                }
+
+            # Map license keys to match visualization expectations
+            # Licenses is a list, need to convert to dict by category
+            licenses_mapped = {}
+
+            # Category ID to name mapping (based on iRacing API)
+            # 1=Oval, 3=Dirt Road, 4=Dirt Oval
+            # 5=Sports Car Road, 6=Formula Car Road
+            # Note: Category 2 was removed - iRacing uses 5 & 6 for road racing categories
+            category_id_to_name = {
+                1: 'oval',
+                3: 'dirt_road',
+                4: 'dirt_oval',
+                5: 'sports_car_road',  # Sports Car Road
+                6: 'formula_car_road'  # Formula Car Road
+            }
+
+            licenses_list = profile.get('licenses', [])
+            if isinstance(licenses_list, list):
+                for lic_data in licenses_list:
+                    # Get category identifier
+                    cat_id = lic_data.get('category_id', lic_data.get('category'))
+                    cat_name = category_id_to_name.get(cat_id, f'unknown_{cat_id}')
+
+                    # Store both iRating and TT Rating separately
+                    irating = lic_data.get('irating', 0)
+                    tt_rating = lic_data.get('tt_rating', 0)
+
+                    licenses_mapped[cat_name] = {
+                        'irating': irating,
+                        'tt_rating': tt_rating,
+                        'safety_rating': lic_data.get('safety_rating', 0.0),
+                        'license_class': lic_data.get('group_name', 'R')  # Use group_name (e.g., "Rookie", "Class A")
+                    }
+
+                    print(f"   License: {cat_name} - iR:{irating} ttR:{tt_rating} "
+                          f"SR:{lic_data.get('safety_rating')} class:{lic_data.get('group_name', 'N/A')}")
+
+            return {
+                'name': name,
+                'licenses': licenses_mapped,
+                'stats': stats_summary
+            }
+
+        driver1_data = build_data(profile1, stats1, name1)
+        driver2_data = build_data(profile2, stats2, name2)
+
+        # Generate comparison chart
+        image_buffer = iracing_viz.create_driver_comparison(driver1_data, driver2_data, category)
+        file = discord.File(fp=image_buffer, filename=f"comparison_{cust_id1}_vs_{cust_id2}.png")
+
+        await interaction.followup.send(file=file)
+
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error comparing drivers: {str(e)}")
+        print(f"❌ Compare drivers error: {e}")
+        import traceback
+        traceback.print_exc()
+
+
+@bot.tree.command(name="iracing_series_popularity", description="View most popular series by participation")
+async def iracing_series_popularity(interaction: discord.Interaction):
+    """Show series popularity rankings"""
+    if not iracing:
+        await interaction.response.send_message("❌ iRacing integration not configured")
+        return
+
+    await interaction.response.defer()
+
+    try:
+        all_series = await iracing.get_current_series()
+        if not all_series:
+            await interaction.followup.send("❌ Failed to retrieve series data")
+            return
+
+        # For now, show basic participation info from series data
+        # TODO: Implement proper tracking over time in database
+        series_data = []
+        for s in all_series:
+            series_data.append({
+                'name': s.get('series_name', 'Unknown'),
+                'total_drivers': s.get('active', 0),  # Placeholder
+                'avg_splits': 1,  # Placeholder
+                'avg_sof': s.get('min_license_level', 0) * 500  # Rough estimate
+            })
+
+        embed = discord.Embed(
+            title="📈 iRacing Series Activity",
+            description=f"Currently tracking {len(series_data)} series",
+            color=discord.Color.blue()
+        )
+
+        # Sort by estimated activity
+        series_data.sort(key=lambda x: x['total_drivers'], reverse=True)
+
+        for i, s in enumerate(series_data[:10]):
+            embed.add_field(
+                name=f"{i+1}. {s['name']}",
+                value=f"Activity Level: {s['total_drivers']}",
+                inline=False
+            )
+
+        await interaction.followup.send(embed=embed)
+
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error: {str(e)}")
+        print(f"❌ Popularity error: {e}")
+
 
 # Error handling
 async def leaderboard(ctx, stat_type: str = 'messages', days: int = 7):
