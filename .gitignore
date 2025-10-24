@@ -18,6 +18,9 @@ bot/.iracing_credentials
 .image_cache/
 bot/.image_cache/
 
+# Raw car logos (nested git repo)
+bot/assets/car_logos_raw/
+
 # Docker
 postgres_data/
 
