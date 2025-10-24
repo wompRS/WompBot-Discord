@@ -107,23 +107,70 @@ class iRacingIntegration:
             print(f"❌ Error getting schedule: {e}")
             return []
 
-    async def search_driver(self, name: str) -> Optional[List[Dict]]:
+    async def search_driver(self, name_or_id: str) -> Optional[List[Dict]]:
         """
-        Search for a driver by name.
+        Search for a driver by name or customer ID.
 
         Args:
-            name: Driver display name
+            name_or_id: Driver's display name, real name, or customer ID
 
         Returns:
-            List of matching drivers
+            List of matching drivers (or single driver if cust_id lookup)
         """
         try:
             client = await self._get_client()
-            results = await client.search_member_by_name(name)
-            return results
+
+            # Check if it's a numeric customer ID
+            if name_or_id.strip().isdigit():
+                cust_id = int(name_or_id.strip())
+                # Lookup by customer ID directly (most reliable method)
+                profile = await client.get_member_info(cust_id)
+                if profile:
+                    # Return in list format for consistency
+                    return [{
+                        'cust_id': cust_id,
+                        'display_name': profile.get('display_name', f'Driver {cust_id}'),
+                        'name': profile.get('name', '')
+                    }]
+                else:
+                    return []
+
+            # Search by name - NOTE: iRacing API primarily searches display names
+            # Real names (first/last name) may not be reliably searchable
+            results = await client.search_member_by_name(name_or_id)
+
+            if results and len(results) > 0:
+                return results
+
+            # If no results with full name, try searching by display name only
+            # (in case user entered "First Last" but display name is different)
+            # Try first word only as fallback
+            words = name_or_id.strip().split()
+            if len(words) > 1:
+                print(f"⚠️ No results for '{name_or_id}', trying first word '{words[0]}'...")
+                results = await client.search_member_by_name(words[0])
+                if results and len(results) > 0:
+                    # Filter results to match additional words in the name field if available
+                    filtered = []
+                    for r in results:
+                        # Check if other words appear in display_name or name field
+                        display_name = (r.get('display_name', '') or '').lower()
+                        real_name = (r.get('name', '') or '').lower()
+                        search_lower = name_or_id.lower()
+
+                        if search_lower in display_name or search_lower in real_name:
+                            filtered.append(r)
+
+                    if filtered:
+                        return filtered
+                    return results  # Return all matches from first word if no exact match
+
+            return results if results else []
 
         except Exception as e:
             print(f"❌ Error searching driver: {e}")
+            import traceback
+            traceback.print_exc()
             return None
 
     async def get_driver_profile(self, cust_id: int) -> Optional[Dict]:
@@ -137,15 +184,25 @@ class iRacingIntegration:
             Driver profile dict
         """
         cache_key = f'profile_{cust_id}'
-        cached = self._get_cache(cache_key)
-        if cached:
-            return cached
+
+        # TEMP: Disable cache to debug profile lookup issue
+        # cached = self._get_cache(cache_key)
+        # if cached:
+        #     print(f"🔄 Using cached profile for {cust_id}")
+        #     return cached
 
         try:
+            print(f"🌐 Fetching fresh profile data for cust_id {cust_id}")
             client = await self._get_client()
             profile = await client.get_member_info(cust_id)
 
             if profile:
+                # Verify we got the right customer's data
+                returned_id = profile.get('cust_id')
+                if returned_id and int(returned_id) != cust_id:
+                    print(f"❌ ERROR: Requested profile for {cust_id} but API returned {returned_id}")
+                    return None
+
                 self._set_cache(cache_key, profile, ttl_minutes=30)
                 return profile
             return None
@@ -435,7 +492,7 @@ class iRacingIntegration:
             print(log_msg)
 
             if self._meta_analyzer is None:
-                self._meta_analyzer = MetaAnalyzer(client)
+                self._meta_analyzer = MetaAnalyzer(client, database=self.db)
 
             series_id_num = target_schedule.get('series_id')
             meta_stats = await self._meta_analyzer.get_meta_for_series(
@@ -596,6 +653,36 @@ class iRacingIntegration:
 
         except Exception as e:
             print(f"❌ Error getting tracks: {e}")
+            return []
+
+    async def get_series_schedule(self, series_id: int, season_id: int) -> List[Dict]:
+        """
+        Get the full season schedule for a series.
+
+        Args:
+            series_id: Series ID
+            season_id: Season ID
+
+        Returns:
+            List of schedule entries (one per week)
+        """
+        cache_key = f'schedule_{series_id}_{season_id}'
+        cached = self._get_cache(cache_key)
+        if cached:
+            return cached
+
+        try:
+            client = await self._get_client()
+            schedule = await client.get_series_race_schedule(season_id)
+
+            if schedule:
+                self._set_cache(cache_key, schedule, ttl_minutes=60)
+                return schedule
+
+            return []
+
+        except Exception as e:
+            print(f"❌ Error getting series schedule: {e}")
             return []
 
     async def close(self):

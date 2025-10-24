@@ -221,15 +221,15 @@ class iRacingGraphics:
 
         license_order = [
             ('oval', 'OVAL', 'rookie'),
-            ('road', 'ROAD',  'rookie'),
-            ('formula_car', 'FORMULA', 'rookie'),
+            ('sports_car_road', 'SPORTS CAR',  'rookie'),
+            ('formula_car_road', 'FORMULA CAR', 'rookie'),
             ('dirt_oval', 'DIRT OVAL', 'rookie'),
             ('dirt_road', 'DIRT ROAD', 'rookie')
         ]
 
         for idx, (category_key, category_name, default_class) in enumerate(license_order):
             # Try multiple possible key names for licenses
-            lic = licenses.get(category_key) or licenses.get(f'{category_key}_license') or licenses.get('sports_car' if category_key == 'road' else category_key)
+            lic = licenses.get(category_key) or licenses.get(f'{category_key}_license') or licenses.get(category_key.replace('_road', ''))
 
             if not lic:
                 continue
