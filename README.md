@@ -95,12 +95,18 @@ A Discord bot powered by OpenRouter LLMs (Hermes/Dolphin models) with conversati
 - **Low Cost**: Only uses LLM when debate ends (typically $0.01-0.05 per debate)
 
 ### 🏁 iRacing Integration (NEW!)
-- **Driver Profiles**: View any iRacing driver's stats, iRating, and Safety Rating
+- **Driver Profiles**: View any iRacing driver's stats across all license categories
+- **Driver Comparison**: Side-by-side comparison charts with license ratings and career stats
+- **Rating History**: Track iRating and Safety Rating progression over time
+- **Server Leaderboards**: See who's the fastest in your Discord server by category
+- **Meta Analysis**: View best cars for any series with performance statistics
 - **Account Linking**: Link your Discord account to your iRacing profile
 - **Race Schedule**: View upcoming official races across all series
-- **Series Information**: Browse all active iRacing series and seasons
+- **Series Information**: Browse all active iRacing series and seasons with autocomplete
 - **Recent Results**: Check recent race results and performance
 - **Smart Search**: Automatically finds drivers by name
+- **Category Autocomplete**: Easy selection of Oval, Sports Car, Formula Car, Dirt Oval, Dirt Road
+- **Professional Visualizations**: Charts matching iRacing Reports style
 - **Live Data**: Direct integration with iRacing's official API
 - **Response Caching**: Intelligent caching to minimize API requests
 - **Optional Feature**: Only enabled if credentials are provided
@@ -213,6 +219,10 @@ docker-compose down
 ### iRacing Integration
 - **/iracing_link <iracing_name>**: Link your Discord account to your iRacing account
 - **/iracing_profile [driver_name]**: View iRacing driver profile (uses linked account if no name provided)
+- **/iracing_compare_drivers <driver1> <driver2> [category]**: Compare two drivers side-by-side with charts
+- **/iracing_history [driver_name] [category] [days]**: View rating progression chart (default: 30 days)
+- **/iracing_server_leaderboard [category]**: Show iRating rankings for linked Discord members
+- **/iracing_meta <series> [season] [week] [track]**: View meta analysis showing best cars for a series
 - **/iracing_schedule [series] [hours]**: View upcoming race schedule (default: next 24 hours)
 - **/iracing_series**: List all active iRacing series and seasons
 - **/iracing_results [driver_name]**: View recent race results (uses linked account if no name provided)
@@ -256,6 +266,7 @@ Use `/analyze` command to run analysis.
 - [🔥 Hot Takes Leaderboard](docs/features/HOT_TAKES.md) - Controversy detection, vindication tracking
 - [⏰ Reminders](docs/features/REMINDERS.md) - Natural language time parsing, context preservation
 - [📅 Event Scheduling](docs/features/EVENTS.md) - Scheduled events with periodic reminders
+- [🏁 iRacing Integration](docs/features/IRACING.md) - Driver stats, comparisons, meta analysis, schedules
 
 **Configuration & Development:**
 - [⚙️ Configuration Guide](docs/CONFIGURATION.md) - All settings, API keys, environment variables
