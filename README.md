@@ -112,6 +112,19 @@ A Discord bot powered by OpenRouter LLMs (Hermes/Dolphin models) with conversati
 - **Optional Feature**: Only enabled if credentials are provided
 - **Zero Cost**: No LLM usage, pure API calls
 
+### 🏁 iRacing Team Management (NEW!)
+- **Team Creation**: Create racing teams with custom names and tags
+- **Role Management**: Assign roles (manager, driver, crew_chief, spotter)
+- **Event Scheduling**: Schedule practice sessions, races, and endurance events
+- **Natural Language Times**: "tomorrow 8pm", "next Friday 7:00pm", "January 15 2025 19:00"
+- **Driver Availability**: Track who's available for each event (available/unavailable/maybe/confirmed)
+- **Team Roster**: View team members with their iRacing profiles
+- **Multi-Guild Support**: Teams are server-specific
+- **Event Calendar**: View all upcoming team events with Discord timestamps
+- **Availability Tracking**: See driver availability and roster status for events
+- **Integration**: Works with existing iRacing account links
+- **Zero Cost**: Pure database operations, no LLM or API usage
+
 ## Setup Instructions
 
 ### 1. Install Dependencies (WSL2 Debian)
@@ -227,6 +240,19 @@ docker-compose down
 - **/iracing_series**: List all active iRacing series and seasons
 - **/iracing_results [driver_name]**: View recent race results (uses linked account if no name provided)
 
+### iRacing Team Management
+- **/iracing_team_create <name> <tag> [description]**: Create a new racing team
+- **/iracing_team_invite <team_id> <member> [role]**: Invite a member to your team (roles: driver, manager, crew_chief, spotter)
+- **/iracing_team_leave <team_id>**: Leave a team
+- **/iracing_team_info <team_id>**: View team details and roster
+- **/iracing_team_list**: List all teams in this server
+- **/iracing_my_teams**: View teams you're a member of
+- **/iracing_event_create <team_id> <name> <type> <time> [duration] [series] [track]**: Schedule a team event
+- **/iracing_team_events <team_id>**: View upcoming events for a team
+- **/iracing_event_availability <event_id> <status> [notes]**: Mark your availability (available/unavailable/maybe/confirmed)
+- **/iracing_event_roster <event_id>**: View driver availability for an event
+- **/iracing_upcoming_races [hours] [series]**: Browse upcoming official iRacing races
+
 ### User Analytics & Leaderboards
 - **!stats [@user]**: View user statistics and behavior analysis
 - **!leaderboard <type> [days]**: Show leaderboards (messages/questions/profanity)
@@ -235,12 +261,21 @@ docker-compose down
 
 ## Privacy Features
 
-Create a Discord role called `NoDataCollection` (or customize in .env).
+**GDPR-Compliant Consent System:**
 
-Users with this role:
-- Messages are still logged but flagged as opted-out
+Users control their data through slash commands:
+- **/wompbot_consent**: Give consent for data processing (required for most features)
+- **/wompbot_noconsent**: Withdraw consent and opt out of data collection
+- **/download_my_data**: Export all your data in JSON format (GDPR Art. 15)
+- **/delete_my_data**: Request permanent deletion with 30-day grace period (GDPR Art. 17)
+- **/my_privacy_status**: View your current privacy and consent status
+- **/privacy_policy**: View the complete privacy policy
+
+**Without consent:**
+- Messages are flagged as opted-out
 - Excluded from behavior analysis
 - Not included in conversation context
+- Most bot features unavailable
 
 ## Behavior Analysis
 
@@ -257,7 +292,7 @@ Use `/analyze` command to run analysis.
 📚 **Comprehensive guides available:**
 
 **Feature Documentation:**
-- [🤖 Conversational AI](docs/features/CONVERSATIONAL_AI.md) - Feyd-Rautha personality, LLM configuration
+- [🤖 Conversational AI](docs/features/CONVERSATIONAL_AI.md) - Professional assistant, LLM configuration
 - [📋 Claims Tracking](docs/features/CLAIMS_TRACKING.md) - Auto-detection, edit tracking, contradictions
 - [⚠️ Fact-Checking](docs/features/FACT_CHECK.md) - Web search integration, verdict system
 - [☁️ Quotes System](docs/features/QUOTES.md) - Emoji reactions, context preservation
@@ -266,7 +301,7 @@ Use `/analyze` command to run analysis.
 - [🔥 Hot Takes Leaderboard](docs/features/HOT_TAKES.md) - Controversy detection, vindication tracking
 - [⏰ Reminders](docs/features/REMINDERS.md) - Natural language time parsing, context preservation
 - [📅 Event Scheduling](docs/features/EVENTS.md) - Scheduled events with periodic reminders
-- [🏁 iRacing Integration](docs/features/IRACING.md) - Driver stats, comparisons, meta analysis, schedules
+- [🏁 iRacing Integration](docs/features/IRACING.md) - Driver stats, team management, event scheduling
 
 **Configuration & Development:**
 - [⚙️ Configuration Guide](docs/CONFIGURATION.md) - All settings, API keys, environment variables
@@ -292,6 +327,19 @@ Use `/analyze` command to run analysis.
 - `stats_cache`: Pre-computed statistics (network, topics, primetime, engagement)
 - `message_interactions`: Network graph data
 - `topic_snapshots`: Trending topics over time
+- `iracing_links`: Discord to iRacing account mappings
+- `iracing_teams`: Racing team metadata (name, tag, description)
+- `iracing_team_members`: Team rosters with roles
+- `iracing_team_events`: Scheduled team events (practice, races, endurance)
+- `iracing_driver_availability`: Driver availability per event
+- `iracing_stint_schedule`: Driver stint rotations for endurance races
+- `user_consent`: GDPR consent tracking and versioning
+- `data_audit_log`: Complete audit trail (7-year retention)
+- `data_export_requests`: Data export request tracking
+- `data_deletion_requests`: Data deletion with 30-day grace period
+- `data_retention_config`: Configurable retention policies
+- `data_breach_log`: Security incident tracking
+- `privacy_policy_versions`: Privacy policy version history
 
 ## Costs
 
