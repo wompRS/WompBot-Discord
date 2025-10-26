@@ -42,7 +42,7 @@ class ConsentView(View):
                 "**Your Rights:**\n"
                 "• `/download_my_data` - Export all your data\n"
                 "• `/delete_my_data` - Delete all your data\n"
-                "• `/withdraw_consent` - Withdraw consent anytime\n"
+                "• `/wompbot_noconsent` - Withdraw consent anytime\n"
                 "• `/privacy_policy` - View full privacy policy",
                 ephemeral=True
             )
@@ -67,7 +67,7 @@ class ConsentView(View):
             "You have declined data processing. The bot will not collect or store your data.\n\n"
             "**Limited Functionality:**\n"
             "Without consent, most bot features will be unavailable. You can change your "
-            "mind anytime with `/give_consent`.\n\n"
+            "mind anytime with `/wompbot_consent`.\n\n"
             "**What Happens Now:**\n"
             "• Your messages will not be stored\n"
             "• Statistics won't include your data\n"
@@ -188,8 +188,8 @@ def setup_privacy_commands(bot, db, privacy_manager):
         privacy_manager: GDPRPrivacyManager instance
     """
 
-    @bot.tree.command(name="give_consent", description="Give consent for data processing (required for most features)")
-    async def give_consent(interaction: discord.Interaction):
+    @bot.tree.command(name="wompbot_consent", description="Give consent for data processing (required for most features)")
+    async def wompbot_consent(interaction: discord.Interaction):
         """Collect user consent for data processing"""
         user_id = interaction.user.id
         username = str(interaction.user)
@@ -200,7 +200,7 @@ def setup_privacy_commands(bot, db, privacy_manager):
         if existing_consent and existing_consent['consent_given'] and not existing_consent['consent_withdrawn']:
             await interaction.response.send_message(
                 "✅ You have already given consent for data processing.\n\n"
-                "Use `/withdraw_consent` if you wish to withdraw it.",
+                "Use `/wompbot_noconsent` if you wish to withdraw it.",
                 ephemeral=True
             )
             return
@@ -221,7 +221,7 @@ def setup_privacy_commands(bot, db, privacy_manager):
                 "**Your Rights:**\n"
                 "• Access your data anytime (`/download_my_data`)\n"
                 "• Delete your data anytime (`/delete_my_data`)\n"
-                "• Withdraw consent anytime (`/withdraw_consent`)\n\n"
+                "• Withdraw consent anytime (`/wompbot_noconsent`)\n\n"
                 "**Privacy Policy:** Use `/privacy_policy` to read full policy\n\n"
                 "⚠️ Without consent, most bot features will be unavailable."
             ),
@@ -231,8 +231,8 @@ def setup_privacy_commands(bot, db, privacy_manager):
         view = ConsentView(privacy_manager, user_id, username)
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
-    @bot.tree.command(name="withdraw_consent", description="Withdraw consent and opt out of data collection")
-    async def withdraw_consent(interaction: discord.Interaction):
+    @bot.tree.command(name="wompbot_noconsent", description="Withdraw consent and opt out of data collection")
+    async def wompbot_noconsent(interaction: discord.Interaction):
         """Withdraw data processing consent"""
         user_id = interaction.user.id
         username = str(interaction.user)
@@ -255,7 +255,7 @@ def setup_privacy_commands(bot, db, privacy_manager):
                 "**Delete Your Data:**\n"
                 "Use `/delete_my_data` to permanently delete all stored data.\n\n"
                 "**Change Your Mind:**\n"
-                "Use `/give_consent` to opt back in anytime.",
+                "Use `/wompbot_consent` to opt back in anytime.",
                 ephemeral=True
             )
         else:
@@ -411,7 +411,7 @@ def setup_privacy_commands(bot, db, privacy_manager):
                 embed.add_field(
                     name="📱 Quick Links",
                     value=(
-                        "`/give_consent` - Give consent\n"
+                        "`/wompbot_consent` - Give consent\n"
                         "`/download_my_data` - Export your data\n"
                         "`/delete_my_data` - Delete your data\n"
                         "`/privacy_support` - Get help"
@@ -470,8 +470,8 @@ def setup_privacy_commands(bot, db, privacy_manager):
             value=(
                 "`/download_my_data` - Export all your data\n"
                 "`/delete_my_data` - Request deletion\n"
-                "`/withdraw_consent` - Opt out\n"
-                "`/give_consent` - Opt back in"
+                "`/wompbot_noconsent` - Opt out\n"
+                "`/wompbot_consent` - Opt back in"
             ),
             inline=False
         )
@@ -519,7 +519,7 @@ def setup_privacy_commands(bot, db, privacy_manager):
         embed.add_field(
             name="What if I opt out?",
             value=(
-                "Use `/withdraw_consent` to stop data collection. Most bot features "
+                "Use `/wompbot_noconsent` to stop data collection. Most bot features "
                 "will be unavailable, but your existing data remains until you delete it."
             ),
             inline=False

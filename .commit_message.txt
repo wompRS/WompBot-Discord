@@ -1,0 +1,34 @@
+feat(privacy): rename consent commands and remove role-based opt-out
+
+BREAKING CHANGE: Privacy consent commands renamed and opt-out system changed
+
+## Command Changes
+- `/give_consent` → `/wompbot_consent`
+- `/withdraw_consent` → `/wompbot_noconsent`
+
+## System Changes
+- Removed role-based opt-out system (NoDataCollection role)
+- All opt-out checks now use GDPR consent database
+- Message handler uses privacy_manager.get_consent_status() instead of role checks
+
+## Files Modified
+- bot/main.py: Removed OPT_OUT_ROLE constant and user_has_opted_out() function
+- bot/privacy_commands.py: Renamed both consent commands
+- GDPR_COMPLIANCE.md: Updated 6 command references
+- GDPR_SELF_ATTESTATION.md: Updated 9 command references
+- SECURITY_AND_GDPR_UPDATE.md: Updated 5 command references
+- CHANGELOG.md: Added breaking change entries
+
+## Migration Notes
+- **Users**: Must use new command names (`/wompbot_consent`, `/wompbot_noconsent`)
+- **No data migration needed**: Existing consent records remain valid
+- **Role system deprecated**: NoDataCollection role no longer has any effect
+
+## Why This Change?
+- Better command naming consistency (all WompBot commands use wompbot_ prefix)
+- Cleaner architecture (single source of truth for consent via database)
+- Improved GDPR compliance (explicit consent tracking, not role-based)
+
+🤖 Generated with Claude Code (https://claude.com/claude-code)
+
+Co-Authored-By: Claude <noreply@anthropic.com>

@@ -30,8 +30,8 @@ This bot is fully compliant with the **General Data Protection Regulation (GDPR)
 Per GDPR Article 6, we process personal data under the following legal bases:
 
 ### 1.1 Consent (Art. 6(1)(a))
-- **Primary Basis**: Explicit user consent collected via `/give_consent` command
-- **Consent Management**: Users can withdraw consent anytime via `/withdraw_consent`
+- **Primary Basis**: Explicit user consent collected via `/wompbot_consent` command
+- **Consent Management**: Users can withdraw consent anytime via `/wompbot_noconsent`
 - **Proof of Consent**: All consent actions logged in `user_consent` table with timestamps
 
 ### 1.2 Legitimate Interest (Art. 6(1)(f))
@@ -134,7 +134,7 @@ Per GDPR Article 6, we process personal data under the following legal bases:
 - Includes all personal data
 
 ### 3.4 Right to Object (Art. 21)
-**Command**: `/withdraw_consent`
+**Command**: `/wompbot_noconsent`
 
 **Implementation**:
 - Immediate cessation of data processing
@@ -230,8 +230,8 @@ data_retention_config (
 **Commands Module**: [`bot/privacy_commands.py`](bot/privacy_commands.py)
 
 **User Commands**:
-- `/give_consent` - Provide data processing consent
-- `/withdraw_consent` - Withdraw consent
+- `/wompbot_consent` - Provide data processing consent
+- `/wompbot_noconsent` - Withdraw consent
 - `/download_my_data` - Export all data (Art. 15)
 - `/delete_my_data` - Request deletion (Art. 17)
 - `/cancel_deletion` - Cancel scheduled deletion
@@ -401,9 +401,9 @@ For any processors outside EU/EEA:
 - [x] Art. 15: Right of access (`/download_my_data`)
 - [x] Art. 16: Right to rectification (contact admin)
 - [x] Art. 17: Right to erasure (`/delete_my_data`)
-- [x] Art. 18: Right to restriction (`/withdraw_consent`)
+- [x] Art. 18: Right to restriction (`/wompbot_noconsent`)
 - [x] Art. 20: Right to data portability (JSON export)
-- [x] Art. 21: Right to object (`/withdraw_consent`)
+- [x] Art. 21: Right to object (`/wompbot_noconsent`)
 - [x] Art. 22: No automated decision-making (N/A)
 
 ### 8.3 Records of Processing (Art. 30)
