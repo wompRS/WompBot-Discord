@@ -1,11 +1,11 @@
-# WompBot - Discord Bot with Feyd-Rautha Persona
+# WompBot - Discord Bot
 
-A Discord bot powered by OpenRouter LLMs (Hermes/Dolphin models) with conversation memory, web search, claims tracking, and user behavior analysis. Embodies the persona of Feyd-Rautha Harkonnen from Dune.
+A Discord bot powered by OpenRouter LLMs (Hermes/Dolphin models) with conversation memory, web search, claims tracking, user behavior analysis, and iRacing integration.
 
 ## Features
 
 ### 🤖 Core Features
-- **Conversational AI**: Context-aware responses with Feyd-Rautha's cunning personality
+- **Conversational AI**: Context-aware responses with a professional and helpful personality
 - **Smart Response Detection**: Only responds when "wompbot" mentioned or @tagged
 - **Web Search Integration**: Automatic Tavily API search when facts are needed
 - **Message Storage**: PostgreSQL database tracks all conversations

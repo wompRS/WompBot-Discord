@@ -16,6 +16,7 @@ from features.yearly_wrapped import YearlyWrapped
 from features.quote_of_the_day import QuoteOfTheDay
 from features.debate_scorekeeper import DebateScorekeeper
 from features.iracing import iRacingIntegration
+from features.iracing_teams import iRacingTeamManager
 from credential_manager import CredentialManager
 from iracing_graphics import iRacingGraphics
 
@@ -70,6 +71,10 @@ if iracing_credentials:
 else:
     print("⚠️ iRacing integration disabled (no encrypted credentials found)")
     print("   Run 'python encrypt_credentials.py' to set up credentials")
+
+# iRacing Team Management (always available, independent of iRacing API)
+iracing_team_manager = iRacingTeamManager(db)
+print("✅ iRacing Team Manager loaded")
 
 WOMPIE_USERNAME = "Wompie__"
 
@@ -450,6 +455,17 @@ async def on_ready():
     from privacy_commands import setup_privacy_commands
     setup_privacy_commands(bot, db, privacy_manager)
     print("🔒 GDPR privacy commands registered")
+
+    # Setup iRacing team commands
+    from iracing_team_commands import setup_iracing_team_commands
+    from iracing_event_commands import setup_iracing_event_commands
+    setup_iracing_team_commands(bot, iracing_team_manager)
+    if iracing:  # Event commands need iRacing API client
+        setup_iracing_event_commands(bot, iracing_team_manager, iracing.client)
+    else:
+        # Set up event commands without API features
+        setup_iracing_event_commands(bot, iracing_team_manager, None)
+    print("🏁 iRacing team & event commands registered")
 
     # Start background stats computation task
     if not precompute_stats.is_running():
