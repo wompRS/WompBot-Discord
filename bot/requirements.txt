@@ -2,9 +2,9 @@ discord.py==2.3.2
 psycopg2-binary==2.9.9
 python-dotenv==1.0.1
 python-dateutil==2.9.0  # Natural language date parsing for event scheduling
-aiohttp==3.9.5  # SECURITY: Updated to fix CVE-2024-23334 (HTTP request smuggling)
+aiohttp==3.12.14  # SECURITY: Updated to fix CVE-2024-23334 (HTTP request smuggling)
 tavily-python==0.3.9  # Updated for latest features
-requests==2.32.3  # SECURITY: Updated to fix multiple CVEs
+requests==2.32.4  # SECURITY: Updated to fix multiple CVEs
 scikit-learn==1.5.1  # Updated for performance and security
 networkx==3.3  # Updated for bug fixes
 pandas==2.2.2  # Updated for performance improvements
