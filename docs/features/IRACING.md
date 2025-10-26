@@ -444,6 +444,280 @@ See testing section below for comprehensive test cases.
 - No automatic data collection
 - Respects Discord privacy settings
 
+---
+
+## Team Management System
+
+Complete team management and event scheduling system for organizing iRacing teams, practices, and races.
+
+### Features
+
+#### Team Creation & Management
+- Create teams with custom names and tags
+- Role-based permissions (manager, driver, crew_chief, spotter)
+- Multi-guild support (teams are server-specific)
+- Team roster with Discord and iRacing profile integration
+- Team discovery (list all teams, view team info)
+
+#### Event Scheduling
+- Schedule practices, qualifying sessions, races, and endurance events
+- Natural language time parsing ("tomorrow 8pm", "next Friday 19:00")
+- Discord timestamp integration (shows in user's local timezone)
+- Optional series and track information
+- Duration tracking for endurance races
+
+#### Driver Availability Tracking
+- Four status levels: available, unavailable, maybe, confirmed
+- Optional notes for partial availability
+- Team roster view showing all driver statuses
+- Ready count for quick availability overview
+
+#### Official Race Schedule
+- Browse upcoming iRacing official races
+- Filter by series name
+- Customizable time window (default: 24 hours)
+
+### Team Management Commands
+
+#### `/iracing_team_create <name> <tag> [description]`
+Create a new racing team.
+
+**Parameters:**
+- `name` - Team name (e.g., "Team Racing Technologies")
+- `tag` - Short team abbreviation (e.g., "TRT", max 10 chars)
+- `description` (optional) - Team description
+
+**Example:**
+```
+/iracing_team_create name:"Team Racing Technologies" tag:"TRT" description:"Competitive GT3 racing team"
+```
+
+**Result:**
+- Team created with you as manager
+- Unique team ID assigned
+- Ready to invite members
+
+---
+
+#### `/iracing_team_invite <team_id> <member> [role]`
+Invite a member to your team.
+
+**Parameters:**
+- `team_id` - Your team ID
+- `member` - Discord user to invite
+- `role` (optional) - Member role (default: driver)
+  - `driver` - Team driver
+  - `manager` - Team manager (can invite/remove members)
+  - `crew_chief` - Race strategist/engineer
+  - `spotter` - Race spotter
+
+**Example:**
+```
+/iracing_team_invite team_id:1 member:@JohnDoe role:driver
+```
+
+**Permissions:**
+- Only team managers can invite members
+- Invited member added immediately
+
+---
+
+#### `/iracing_team_leave <team_id>`
+Leave a team.
+
+**Example:**
+```
+/iracing_team_leave team_id:1
+```
+
+---
+
+#### `/iracing_team_info <team_id>`
+View detailed team information and roster.
+
+**Example:**
+```
+/iracing_team_info team_id:1
+```
+
+**Shows:**
+- Team name and tag
+- Description
+- Member roster grouped by role
+- iRacing names (if linked)
+- Total member count
+- Creation date
+
+---
+
+#### `/iracing_team_list`
+List all teams in your Discord server.
+
+**Example:**
+```
+/iracing_team_list
+```
+
+**Shows:**
+- All active teams
+- Member counts
+- Team IDs for joining
+
+---
+
+#### `/iracing_my_teams`
+View teams you're a member of.
+
+**Example:**
+```
+/iracing_my_teams
+```
+
+**Shows:**
+- Your teams
+- Your role in each team
+- Team IDs
+
+---
+
+### Event Scheduling Commands
+
+#### `/iracing_event_create <team_id> <name> <type> <time> [duration] [series] [track] [notes]`
+Schedule a team event.
+
+**Parameters:**
+- `team_id` - Your team ID
+- `name` - Event name
+- `type` - Event type (practice, qualifying, race, endurance)
+- `time` - Event start time (natural language)
+- `duration` (optional) - Duration in minutes (for endurance races)
+- `series` (optional) - iRacing series name
+- `track` (optional) - Track name
+- `notes` (optional) - Additional notes
+
+**Time Examples:**
+- "tomorrow 8pm"
+- "next Friday 19:00"
+- "January 15 2025 7:00pm"
+- "2025-01-15 19:00"
+
+**Example:**
+```
+/iracing_event_create team_id:1 name:"GT3 Practice" type:practice time:"tomorrow 8pm" series:"GT3 Sprint Series" track:"Spa-Francorchamps"
+```
+
+---
+
+#### `/iracing_team_events <team_id>`
+View upcoming events for a team.
+
+**Example:**
+```
+/iracing_team_events team_id:1
+```
+
+**Shows:**
+- Event name and type
+- Start time (with Discord timestamp)
+- Duration (if applicable)
+- Series and track
+- Event IDs for availability marking
+
+---
+
+#### `/iracing_event_availability <event_id> <status> [notes]`
+Mark your availability for an event.
+
+**Parameters:**
+- `event_id` - Event ID
+- `status` - Your availability
+  - `available` - Available to participate
+  - `unavailable` - Cannot participate
+  - `maybe` - Tentative
+  - `confirmed` - Confirmed participation
+- `notes` (optional) - Availability notes (e.g., "Can only do first 2 hours")
+
+**Example:**
+```
+/iracing_event_availability event_id:5 status:available notes:"Available for full duration"
+```
+
+---
+
+#### `/iracing_event_roster <event_id>`
+View driver availability for an event.
+
+**Example:**
+```
+/iracing_event_roster event_id:5
+```
+
+**Shows:**
+- Drivers grouped by availability status
+- iRacing names (if linked)
+- Availability notes
+- Total driver count
+
+---
+
+#### `/iracing_upcoming_races [hours] [series]`
+Browse upcoming official iRacing races.
+
+**Parameters:**
+- `hours` (optional) - Hours ahead to search (default: 24)
+- `series` (optional) - Filter by series name
+
+**Example:**
+```
+/iracing_upcoming_races
+/iracing_upcoming_races hours:48
+/iracing_upcoming_races series:"GT3 Sprint"
+```
+
+**Shows:**
+- Upcoming official races
+- Series names
+- Track names
+- Start times
+
+---
+
+### Use Cases
+
+#### Practice Sessions
+1. Create team event for practice
+2. Members mark availability
+3. Check roster before session
+4. Coordinate on voice chat
+
+#### Race Events
+1. Schedule race event with series/track info
+2. Set event duration
+3. Track confirmed drivers
+4. Organize lineup
+
+#### Endurance Races
+1. Create endurance event with duration
+2. Track availability for full duration
+3. Plan driver stints (future feature)
+4. Coordinate team strategy
+
+### Integration
+
+**Works with:**
+- `/iracing_link` - Links Discord to iRacing profile
+- Shows iRacing names in rosters
+- Falls back to Discord mentions if not linked
+- Compatible with all iRacing API features
+
+**Database:**
+- Teams are server-specific
+- Events linked to teams
+- Availability tracked per event
+- Complete audit trail
+
+---
+
 ## Future Enhancements
 
 ### Potential Features

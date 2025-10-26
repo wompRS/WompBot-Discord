@@ -22,11 +22,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - HTTP request timeouts (30s total, 10s connect, 20s read)
 - SSL/TLS verification enforcement in HTTP clients
 - Container resource limits (CPU/memory)
+- **iRacing Team Management System** with 11 new commands
+- Team creation and roster management (`/iracing_team_create`, `/iracing_team_invite`, `/iracing_team_leave`)
+- Team discovery (`/iracing_team_list`, `/iracing_team_info`, `/iracing_my_teams`)
+- Event scheduling with natural language time parsing (`/iracing_event_create`, `/iracing_team_events`)
+- Driver availability tracking (`/iracing_event_availability`, `/iracing_event_roster`)
+- Official race schedule browser (`/iracing_upcoming_races`)
+- Role-based team permissions (manager, driver, crew_chief, spotter)
+- Multi-guild support (teams are server-specific)
+- Integration with existing iRacing account links
+- Discord timestamp support (shows in user's local timezone)
+- Natural language date parsing (python-dateutil integration)
 
 ### Changed
 - **BREAKING**: Users must provide explicit consent via `/wompbot_consent` for most features
 - **BREAKING**: Consent commands renamed from `/give_consent` and `/withdraw_consent` to `/wompbot_consent` and `/wompbot_noconsent`
 - **BREAKING**: Role-based opt-out system (NoDataCollection role) removed in favor of consent commands
+- Bot personality changed from "sarcastic" Feyd-Rautha persona to "professional but friendly" tone
 - Updated all Python dependencies to latest secure versions
 - Database port no longer exposed to host network (Docker internal only)
 - Containers now run as non-root user (UID 1000) instead of root
