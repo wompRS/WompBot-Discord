@@ -246,7 +246,7 @@ This document provides evidence-based attestation that WompBot is fully complian
 2. Bot shows consent request with full disclosure
 3. User clicks "I Accept" or "I Decline"
 4. Consent recorded in database with timestamp
-5. User can withdraw via `/withdraw_consent`
+5. User can withdraw via `/wompbot_noconsent`
 
 **Evidence**:
 - File: `bot/privacy_commands.py` lines 15-100 - ConsentView interactive UI
@@ -343,7 +343,7 @@ This document provides evidence-based attestation that WompBot is fully complian
 **Requirement**: Data subject must be able to withdraw consent as easily as giving it.
 
 **Implementation**:
-- ✅ `/withdraw_consent` command available
+- ✅ `/wompbot_noconsent` command available
 - ✅ Single command to withdraw (same ease as giving)
 - ✅ Data processing stops immediately
 - ✅ Withdrawal tracked in database
@@ -511,7 +511,7 @@ WHERE user_id = ?;
 
 **Implementation**: ✅ **FULLY IMPLEMENTED**
 
-**Method**: `/withdraw_consent` command
+**Method**: `/wompbot_noconsent` command
 
 **Effects**:
 - ✅ Data marked as opted-out
@@ -572,7 +572,7 @@ WHERE user_id = ?;
 
 **Implementation**: ✅ **FULLY IMPLEMENTED**
 
-**Method**: `/withdraw_consent` command
+**Method**: `/wompbot_noconsent` command
 
 **Effects**:
 - ✅ Immediate cessation of processing
@@ -1033,8 +1033,8 @@ WHERE user_id = ?;
 - `get_privacy_policy()` - Policy retrieval
 
 **Commands Implemented**:
-- `/give_consent` - Provide consent
-- `/withdraw_consent` - Withdraw consent
+- `/wompbot_consent` - Provide consent
+- `/wompbot_noconsent` - Withdraw consent
 - `/download_my_data` - Export data (Art. 15)
 - `/delete_my_data` - Request deletion (Art. 17)
 - `/cancel_deletion` - Cancel deletion
@@ -1265,10 +1265,10 @@ Contact: ___________________________________
 | Art. 15 | Right of access | ✅ `/download_my_data` |
 | Art. 16 | Right to rectification | ✅ Update mechanisms |
 | Art. 17 | Right to erasure | ✅ `/delete_my_data` |
-| Art. 18 | Right to restriction | ✅ `/withdraw_consent` |
+| Art. 18 | Right to restriction | ✅ `/wompbot_noconsent` |
 | Art. 19 | Notification obligation | ✅ N/A (no recipients) |
 | Art. 20 | Right to data portability | ✅ JSON export |
-| Art. 21 | Right to object | ✅ `/withdraw_consent` |
+| Art. 21 | Right to object | ✅ `/wompbot_noconsent` |
 | Art. 22 | Automated decision-making | ✅ N/A (not used) |
 | Art. 25 | Data protection by design | ✅ Implemented |
 | Art. 30 | Records of processing | ✅ Complete records |

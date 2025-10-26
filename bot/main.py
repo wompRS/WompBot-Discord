@@ -71,7 +71,6 @@ else:
     print("⚠️ iRacing integration disabled (no encrypted credentials found)")
     print("   Run 'python encrypt_credentials.py' to set up credentials")
 
-OPT_OUT_ROLE = os.getenv('OPT_OUT_ROLE_NAME', 'NoDataCollection')
 WOMPIE_USERNAME = "Wompie__"
 
 # Background task for pre-computing statistics
@@ -343,10 +342,6 @@ async def before_gdpr_cleanup():
     await bot.wait_until_ready()
     print("🔒 GDPR cleanup task started (runs daily)")
 
-def user_has_opted_out(member):
-    """Check if user has the opt-out role"""
-    return any(role.name == OPT_OUT_ROLE for role in member.roles)
-
 async def generate_leaderboard_response(channel, stat_type, days):
     """Generate and send leaderboard embed"""
     try:
@@ -428,8 +423,7 @@ async def generate_leaderboard_response(channel, stat_type, days):
 async def on_ready():
     print(f'✅ WompBot logged in as {bot.user}')
     print(f'📊 Connected to {len(bot.guilds)} servers')
-    print(f'🔒 Opt-out role: {OPT_OUT_ROLE}')
-    
+
     # Set Wompie user ID for claims tracker
     for guild in bot.guilds:
         member = discord.utils.get(guild.members, name=WOMPIE_USERNAME)
@@ -502,10 +496,11 @@ async def on_message(message):
     # Ignore bot's own messages
     if message.author == bot.user:
         return
-    
-    # Check if user opted out
-    opted_out = user_has_opted_out(message.author) if hasattr(message.author, 'roles') else False
-    
+
+    # Check GDPR consent status (opted_out = True if no consent given)
+    consent_status = privacy_manager.get_consent_status(message.author.id)
+    opted_out = not consent_status.get('has_consent', False) if consent_status else True
+
     # Store ALL messages (even if opted out, we flag them)
     db.store_message(message, opted_out=opted_out)
 
@@ -1069,7 +1064,7 @@ async def wompbot_help(ctx):
         inline=False
     )
 
-    embed.set_footer(text=f"Opt-out: Get the '{OPT_OUT_ROLE}' role to exclude your data from analysis.")
+    embed.set_footer(text="Privacy: Use /wompbot_noconsent to opt out of data collection.")
 
     await ctx.send(embed=embed)
 
@@ -1273,7 +1268,7 @@ async def help_slash(interaction: discord.Interaction):
         inline=False
     )
 
-    embed.set_footer(text=f"Opt-out: Get the '{OPT_OUT_ROLE}' role to exclude your data from analysis.")
+    embed.set_footer(text="Privacy: Use /wompbot_noconsent to opt out of data collection.")
 
     await interaction.response.send_message(embed=embed)
 

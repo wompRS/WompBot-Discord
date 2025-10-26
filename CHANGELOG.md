@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - GDPR compliance system with all data subject rights (Art. 12-23)
-- Privacy commands: `/give_consent`, `/withdraw_consent`, `/download_my_data`, `/delete_my_data`, `/privacy_policy`, `/my_privacy_status`, `/privacy_support`
+- Privacy commands: `/wompbot_consent`, `/wompbot_noconsent`, `/download_my_data`, `/delete_my_data`, `/privacy_policy`, `/my_privacy_status`, `/privacy_support`
 - Data export functionality in machine-readable JSON format (GDPR Art. 15)
 - Data deletion with 30-day grace period (GDPR Art. 17)
 - Consent management system with version tracking
@@ -24,7 +24,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Container resource limits (CPU/memory)
 
 ### Changed
-- **BREAKING**: Users must provide explicit consent via `/give_consent` for most features
+- **BREAKING**: Users must provide explicit consent via `/wompbot_consent` for most features
+- **BREAKING**: Consent commands renamed from `/give_consent` and `/withdraw_consent` to `/wompbot_consent` and `/wompbot_noconsent`
+- **BREAKING**: Role-based opt-out system (NoDataCollection role) removed in favor of consent commands
 - Updated all Python dependencies to latest secure versions
 - Database port no longer exposed to host network (Docker internal only)
 - Containers now run as non-root user (UID 1000) instead of root
@@ -252,7 +254,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Conversational tone analysis
 - Honesty pattern detection (fact-based vs exaggeration)
 - Communication style assessment
-- Privacy opt-out via role-based system (`NoDataCollection` role)
+- Privacy opt-out system (replaced by GDPR consent commands in v2.0.0)
 - Weekly and on-demand behavior analysis
 - Leaderboards for messages, questions, and profanity
 - User statistics viewing (`!stats`)
