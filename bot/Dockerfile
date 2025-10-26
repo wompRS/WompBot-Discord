@@ -12,8 +12,15 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
-COPY . .
+# SECURITY: Create non-root user to run the application
+RUN useradd -m -u 1000 -s /bin/bash botuser && \
+    chown -R botuser:botuser /app
+
+# Copy application code with correct ownership
+COPY --chown=botuser:botuser . .
+
+# SECURITY: Switch to non-root user
+USER botuser
 
 # Run the bot
 CMD ["python", "-u", "main.py"]

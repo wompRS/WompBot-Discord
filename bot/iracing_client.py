@@ -25,11 +25,24 @@ class iRacingClient:
         self.auth_expires = None
 
     async def _get_session(self) -> aiohttp.ClientSession:
-        """Get or create aiohttp session with cookie jar"""
+        """Get or create aiohttp session with cookie jar and timeout"""
         if self.session is None or self.session.closed:
-            # Enable cookie jar to store auth cookies
+            # SECURITY: Configure timeouts to prevent hung connections (DoS protection)
+            timeout = aiohttp.ClientTimeout(
+                total=30,      # 30 seconds max for entire request
+                connect=10,    # 10 seconds max for initial connection
+                sock_read=20   # 20 seconds max for reading data
+            )
+
+            # Enable cookie jar to store auth cookies with SSL verification
             self.session = aiohttp.ClientSession(
-                cookie_jar=aiohttp.CookieJar()
+                cookie_jar=aiohttp.CookieJar(),
+                timeout=timeout,
+                connector=aiohttp.TCPConnector(
+                    ssl=True,  # Enforce SSL/TLS verification
+                    limit=100,  # Max 100 concurrent connections
+                    limit_per_host=30  # Max 30 connections per host
+                )
             )
         return self.session
 

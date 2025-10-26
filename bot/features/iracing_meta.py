@@ -68,8 +68,8 @@ class MetaAnalyzer:
         # Fallback to in-memory cache
         if cache_key in self._cache:
             cached_data = self._cache[cache_key]
-            # Return cached data if less than 1 hour old
-            if (datetime.now() - cached_data['timestamp']).seconds < 3600:
+            # Return cached data if less than 7 days old (race results don't change once week is over)
+            if (datetime.now() - cached_data['timestamp']).total_seconds() < 604800:
                 print(f"✅ Using in-memory cached meta data for {cache_key}")
                 return cached_data['data']
 
@@ -140,7 +140,7 @@ class MetaAnalyzer:
                         week_num=week_num,
                         track_id=track_id,
                         meta_data=meta_data,
-                        ttl_hours=6  # Cache for 6 hours
+                        ttl_hours=168  # Cache for 7 days (race results don't change once week is over)
                     )
                 except Exception as e:
                     print(f"⚠️ Failed to store database cache: {e}")

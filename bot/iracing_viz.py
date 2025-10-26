@@ -162,8 +162,8 @@ class iRacingVisualizer:
         # License categories in order with type badges
         license_categories = [
             ('oval', 'OVAL', 'O', '#3b82f6'),
-            ('sports_car', 'ROAD', 'R', '#22c55e'),
-            ('formula_car', 'FORMULA', 'F', '#ef4444'),
+            ('sports_car_road', 'SPORTS CAR', 'SC', '#22c55e'),
+            ('formula_car_road', 'FORMULA CAR', 'FC', '#ef4444'),
             ('dirt_oval', 'DIRT OVAL', 'DO', '#eab308'),
             ('dirt_road', 'DIRT ROAD', 'DR', '#a855f7')
         ]
@@ -1185,7 +1185,7 @@ class iRacingVisualizer:
         # Configure both axes
         for ax, driver_data in [(ax1, driver1_data), (ax2, driver2_data)]:
             ax.set_xlim(0, 10)
-            ax.set_ylim(0, 16)
+            ax.set_ylim(3, 16)  # Reduced bottom margin to eliminate white space
             ax.axis('off')
             ax.set_facecolor(self.COLORS['bg_card'])
 
@@ -1194,7 +1194,7 @@ class iRacingVisualizer:
             driver_name = driver_data.get('name', 'Unknown')
 
             # Driver name at top
-            ax.text(5, 15.2, driver_name, ha='center', fontsize=20,
+            ax.text(5, 15.2, driver_name, ha='center', fontsize=24,
                    fontweight='bold', color=self.COLORS['text_white'])
             # Horizontal line under driver name
             ax.plot([1.0, 9.0], [14.6, 14.6], color=self.COLORS['accent_gold'], linewidth=1.5)
@@ -1206,20 +1206,20 @@ class iRacingVisualizer:
                                       edgecolor=self.COLORS['accent_gold'],
                                       linewidth=2.5)
             ax.add_patch(header_bg)
-            ax.text(5, 14.05, "LICENSE RATINGS", ha='center', fontsize=12,
+            ax.text(5, 14.05, "LICENSE RATINGS", ha='center', fontsize=14,
                    fontweight='bold', color=self.COLORS['accent_gold'])
 
             # Column headers for license table
             y_header = 13.0
-            ax.text(0.8, y_header, "Category", ha='left', fontsize=10,
+            ax.text(0.8, y_header, "Category", ha='left', fontsize=12,
                    fontweight='bold', color=self.COLORS['accent_gold'])
-            ax.text(4.0, y_header, "iRating", ha='center', fontsize=10,
+            ax.text(4.0, y_header, "iRating", ha='center', fontsize=12,
                    fontweight='bold', color=self.COLORS['accent_gold'])
-            ax.text(5.6, y_header, "TT Rating", ha='center', fontsize=10,
+            ax.text(5.6, y_header, "TT Rating", ha='center', fontsize=12,
                    fontweight='bold', color=self.COLORS['accent_gold'])
-            ax.text(7.1, y_header, "Safety", ha='center', fontsize=10,
+            ax.text(7.1, y_header, "Safety", ha='center', fontsize=12,
                    fontweight='bold', color=self.COLORS['accent_gold'])
-            ax.text(8.6, y_header, "Class", ha='center', fontsize=10,
+            ax.text(8.6, y_header, "Class", ha='center', fontsize=12,
                    fontweight='bold', color=self.COLORS['accent_gold'])
 
             # License data rows with banded backgrounds
@@ -1247,22 +1247,22 @@ class iRacingVisualizer:
                     ax.add_patch(row_bg)
 
                 # Category name
-                ax.text(0.8, y, cat_display, ha='left', fontsize=11,
+                ax.text(0.8, y, cat_display, ha='left', fontsize=13,
                        color=self.COLORS['text_white'], fontweight='500')
 
                 # iRating value
                 ir_text = f"{irating:,}" if irating > 0 else "-"
-                ax.text(4.0, y, ir_text, ha='center', fontsize=12,
+                ax.text(4.0, y, ir_text, ha='center', fontsize=14,
                        color=self.COLORS['accent_blue'], fontweight='bold')
 
                 # TT Rating value
                 tt_text = f"{tt_rating:,}" if tt_rating > 0 else "-"
-                ax.text(5.6, y, tt_text, ha='center', fontsize=12,
+                ax.text(5.6, y, tt_text, ha='center', fontsize=14,
                        color=self.COLORS['accent_blue'], fontweight='bold')
 
                 # Safety Rating value
                 sr_text = f"{sr_value:.2f}" if (irating > 0 or tt_rating > 0) else "-"
-                ax.text(7.1, y, sr_text, ha='center', fontsize=12,
+                ax.text(7.1, y, sr_text, ha='center', fontsize=14,
                        color=self.COLORS['accent_green'], fontweight='bold')
 
                 # License class as colored text
@@ -1274,10 +1274,10 @@ class iRacingVisualizer:
                     else:
                         class_display = license_class
 
-                    ax.text(8.6, y, class_display, ha='center', fontsize=11,
+                    ax.text(8.6, y, class_display, ha='center', fontsize=13,
                            color=lic_color, fontweight='bold')
                 else:
-                    ax.text(8.6, y, "-", ha='center', fontsize=11,
+                    ax.text(8.6, y, "-", ha='center', fontsize=13,
                            color=self.COLORS['text_gray'])
 
                 y -= 0.95
@@ -1290,7 +1290,7 @@ class iRacingVisualizer:
                                             edgecolor=self.COLORS['accent_gold'],
                                             linewidth=2.5)
             ax.add_patch(stats_header_bg)
-            ax.text(5, y + 0.4, "CAREER STATISTICS", ha='center', fontsize=12,
+            ax.text(5, y + 0.4, "CAREER STATISTICS", ha='center', fontsize=14,
                    fontweight='bold', color=self.COLORS['accent_gold'])
 
             # Career stats with rounded banded backgrounds
@@ -1311,15 +1311,15 @@ class iRacingVisualizer:
                     ax.add_patch(row_bg)
 
                 # Left column
-                ax.text(0.8, y, label1, ha='left', fontsize=10,
+                ax.text(0.8, y, label1, ha='left', fontsize=11,
                        color=self.COLORS['text_gray'])
-                ax.text(2.5, y, str(val1), ha='left', fontsize=12,
+                ax.text(2.5, y, str(val1), ha='left', fontsize=14,
                        color=self.COLORS['text_white'], fontweight='bold')
 
                 # Right column
-                ax.text(4.7, y, label2, ha='left', fontsize=10,
+                ax.text(4.7, y, label2, ha='left', fontsize=11,
                        color=self.COLORS['text_gray'])
-                ax.text(7.6, y, str(val2), ha='left', fontsize=12,
+                ax.text(7.6, y, str(val2), ha='left', fontsize=14,
                        color=self.COLORS['text_white'], fontweight='bold')
 
                 y -= 0.6

@@ -82,18 +82,25 @@ class Database:
         """Get recent messages from a channel for context"""
         try:
             with self.conn.cursor(cursor_factory=RealDictCursor) as cur:
+                # Build query with parameterized statements (SECURE - prevents SQL injection)
                 query = """
                     SELECT message_id, user_id, username, content, timestamp
                     FROM messages
                     WHERE channel_id = %s
                 """
+                params = [channel_id]
+
                 if exclude_opted_out:
                     query += " AND opted_out = FALSE"
-                if exclude_bot_id:
-                    query += f" AND user_id != {exclude_bot_id}"
-                query += " ORDER BY timestamp DESC LIMIT %s"
 
-                cur.execute(query, (channel_id, limit))
+                if exclude_bot_id:
+                    query += " AND user_id != %s"
+                    params.append(exclude_bot_id)
+
+                query += " ORDER BY timestamp DESC LIMIT %s"
+                params.append(limit)
+
+                cur.execute(query, tuple(params))
                 messages = cur.fetchall()
                 return list(reversed(messages))  # Return chronological order
         except Exception as e:

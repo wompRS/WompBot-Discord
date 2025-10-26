@@ -1,14 +1,14 @@
 discord.py==2.3.2
 psycopg2-binary==2.9.9
-python-dotenv==1.0.0
-aiohttp==3.9.1
-tavily-python==0.3.3
-requests==2.31.0
-scikit-learn==1.3.2
-networkx==3.2.1
-pandas==2.1.4
-numpy==1.26.2
-cryptography==41.0.7
-Pillow==10.1.0
-matplotlib==3.8.2
-seaborn==0.13.0
+python-dotenv==1.0.1
+aiohttp==3.9.5  # SECURITY: Updated to fix CVE-2024-23334 (HTTP request smuggling)
+tavily-python==0.3.9  # Updated for latest features
+requests==2.32.3  # SECURITY: Updated to fix multiple CVEs
+scikit-learn==1.5.1  # Updated for performance and security
+networkx==3.3  # Updated for bug fixes
+pandas==2.2.2  # Updated for performance improvements
+numpy==1.26.4  # Updated for bug fixes
+cryptography==42.0.8  # SECURITY: Critical security fixes for OpenSSL bindings
+Pillow==10.3.0  # SECURITY: Updated to fix CVE-2024-28219 (buffer overflow)
+matplotlib==3.9.0  # Updated for compatibility
+seaborn==0.13.2  # Updated for matplotlib compatibility
