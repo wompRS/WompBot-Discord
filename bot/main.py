@@ -45,6 +45,11 @@ yearly_wrapped = YearlyWrapped(db)
 qotd = QuoteOfTheDay(db)
 debate_scorekeeper = DebateScorekeeper(db, llm)
 
+# GDPR Privacy Compliance (mandatory per EU regulations)
+from features.gdpr_privacy import GDPRPrivacyManager
+privacy_manager = GDPRPrivacyManager(db)
+print("✅ GDPR Privacy Manager loaded")
+
 # iRacing integration (optional - only if encrypted credentials provided)
 credential_manager = CredentialManager()
 iracing = None
@@ -305,6 +310,39 @@ async def before_check_event_reminders():
     await bot.wait_until_ready()
     print("📅 Event reminder checker task started")
 
+# GDPR Compliance: Background task for data retention and cleanup
+@tasks.loop(hours=24)  # Run once daily
+async def gdpr_cleanup():
+    """Process GDPR-related tasks: scheduled deletions, data retention cleanup"""
+    try:
+        print("🧹 Starting GDPR compliance cleanup...")
+
+        # Process scheduled deletions
+        deletions_processed = privacy_manager.process_scheduled_deletions()
+        if deletions_processed > 0:
+            print(f"   🗑️ Processed {deletions_processed} scheduled user deletions")
+
+        # Clean up old data based on retention policies
+        cleanup_counts = privacy_manager.cleanup_old_data()
+        if cleanup_counts:
+            print(f"   📊 Data cleanup results:")
+            for data_type, count in cleanup_counts.items():
+                if count > 0:
+                    print(f"      • {data_type}: {count:,} records deleted")
+
+        print("✅ GDPR compliance cleanup complete")
+
+    except Exception as e:
+        print(f"❌ Error during GDPR cleanup: {e}")
+        import traceback
+        traceback.print_exc()
+
+@gdpr_cleanup.before_loop
+async def before_gdpr_cleanup():
+    """Wait for bot to be ready before starting GDPR cleanup"""
+    await bot.wait_until_ready()
+    print("🔒 GDPR cleanup task started (runs daily)")
+
 def user_has_opted_out(member):
     """Check if user has the opt-out role"""
     return any(role.name == OPT_OUT_ROLE for role in member.roles)
@@ -414,6 +452,11 @@ async def on_ready():
     except Exception as e:
         print(f"❌ Failed to sync commands: {e}")
 
+    # Setup GDPR privacy commands
+    from privacy_commands import setup_privacy_commands
+    setup_privacy_commands(bot, db, privacy_manager)
+    print("🔒 GDPR privacy commands registered")
+
     # Start background stats computation task
     if not precompute_stats.is_running():
         precompute_stats.start()
@@ -422,6 +465,11 @@ async def on_ready():
     # Start reminder checking task
     if not check_reminders.is_running():
         check_reminders.start()
+
+    # Start GDPR data cleanup task
+    if not gdpr_cleanup.is_running():
+        gdpr_cleanup.start()
+        print("🧹 GDPR data cleanup enabled (runs daily)")
 
     # Pre-warm series autocomplete cache (runs in background)
     if iracing:
@@ -3614,13 +3662,16 @@ async def iracing_history(interaction: discord.Interaction, driver_name: str = N
         # Map category to license key
         category_map = {
             'oval': 'oval',
-            'road': 'sports_car',
+            'road': 'sports_car_road',  # Legacy support
+            'sports_car_road': 'sports_car_road',
+            'sports_car': 'sports_car_road',  # Legacy support
             'dirt_oval': 'dirt_oval',
             'dirt_road': 'dirt_road',
-            'formula_car': 'formula_car',
-            'formula': 'formula_car'
+            'formula_car': 'formula_car_road',  # Legacy support
+            'formula_car_road': 'formula_car_road',
+            'formula': 'formula_car_road'  # Legacy support
         }
-        license_key = category_map.get(category.lower(), 'sports_car')
+        license_key = category_map.get(category.lower(), 'sports_car_road')
 
         licenses = profile.get('licenses', {})
         if license_key not in licenses:
@@ -3636,15 +3687,19 @@ async def iracing_history(interaction: discord.Interaction, driver_name: str = N
             return
 
         # Map category to race category IDs
-        # iRacing categories: 1=oval, 2=road, 3=dirt_road, 4=dirt_oval
+        # iRacing categories: 1=oval, 3=dirt_road, 4=dirt_oval, 5=sports_car_road, 6=formula_car_road
         category_id_map = {
             'oval': 1,
-            'road': 2,
             'dirt_road': 3,
             'dirt_oval': 4,
-            'formula_car': 2  # Formula is part of road
+            'sports_car_road': 5,
+            'sports_car': 5,  # Legacy support
+            'road': 5,  # Legacy support
+            'formula_car_road': 6,
+            'formula_car': 6,  # Legacy support
+            'formula': 6  # Legacy support
         }
-        target_category_id = category_id_map.get(category.lower(), 2)
+        target_category_id = category_id_map.get(category.lower(), 5)
 
         # Extract rating history from races - FILTER by category
         history_data = []
