@@ -12,6 +12,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./sql/init.sql:/docker-entrypoint-initdb.d/init.sql
       - ./sql/gdpr_migration.sql:/docker-entrypoint-initdb.d/02_gdpr.sql
+      - ./sql/iracing_teams_migration.sql:/docker-entrypoint-initdb.d/03_iracing_teams.sql
       - ./backups:/backups  # Backup directory
     # SECURITY: Database port NOT exposed to host (only accessible within Docker network)
     # If you need local access for debugging, use: ports: ["127.0.0.1:5432:5432"]
