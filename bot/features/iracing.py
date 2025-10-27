@@ -591,7 +591,8 @@ class iRacingIntegration:
                 'cars': cars,
                 'message': message,
                 'has_performance_data': bool(meta_stats and meta_stats.get('cars')),
-                'total_races_analyzed': meta_stats.get('total_races_analyzed', 0) if meta_stats else 0
+                'total_races_analyzed': meta_stats.get('total_races_analyzed', 0) if meta_stats else 0,
+                'weather': meta_stats.get('weather', {}) if meta_stats else {}
             }
 
         except Exception as e:

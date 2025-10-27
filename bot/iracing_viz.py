@@ -796,7 +796,8 @@ class iRacingVisualizer:
         return car_name[:6]  # Fallback
 
     async def create_meta_chart(self, series_name: str, track_name: str, week_num: int,
-                               car_data: List[Dict], total_races: int = 0, unique_drivers: int = 0) -> BytesIO:
+                               car_data: List[Dict], total_races: int = 0, unique_drivers: int = 0,
+                               weather_data: Optional[Dict] = None) -> BytesIO:
         """
         Create clean meta chart matching iRacing Reports style.
 
@@ -807,6 +808,7 @@ class iRacingVisualizer:
             car_data: List of {car_name, avg_lap_time, avg_irating, ...}
             total_races: Total number of races analyzed
             unique_drivers: Number of unique drivers in dataset
+            weather_data: Weather statistics {dry, wet, total_sessions}
 
         Returns:
             BytesIO containing the PNG image
@@ -856,8 +858,54 @@ class iRacingVisualizer:
                ha='center', fontsize=16, color='#cbd5e1', fontweight='600')
 
         # Unique drivers count with better contrast
+        info_y = title_y - 1.3
         if unique_drivers > 0:
-            ax.text(6, title_y - 1.3, f"{unique_drivers:,} unique drivers",
+            ax.text(6, info_y, f"{unique_drivers:,} unique drivers",
+                   ha='center', fontsize=13, color='#94a3b8')
+            info_y -= 0.5  # Move down for next line
+
+        # Weather information
+        if weather_data and weather_data.get('total_sessions', 0) > 0:
+            sample = weather_data.get('sample_weather')
+
+            if sample:
+                # Format full weather details for chart
+                weather_parts = []
+
+                # Temperature
+                temp = sample.get('temp_value', 0)
+                temp_unit = '°F' if sample.get('temp_units', 0) == 0 else '°C'
+
+                # Sky conditions
+                sky_map = {0: 'Clear', 1: 'Partly Cloudy', 2: 'Mostly Cloudy', 3: 'Overcast'}
+                sky = sky_map.get(sample.get('skies', 0), 'Unknown')
+
+                # Track condition - check track_water value
+                track_water = sample.get('track_water', 0)
+                precip_mm = sample.get('precip_mm_final', 0)
+                precip_pct = sample.get('precip_time_pct', 0)
+
+                if track_water > 0 or precip_mm > 0:
+                    # Wet track
+                    if precip_mm > 0:
+                        track_condition = f"Wet ({precip_mm:.1f}mm rain)"
+                    else:
+                        track_condition = f"Wet (track water: {track_water}%)"
+                else:
+                    # Dry track
+                    track_condition = "Dry"
+
+                weather_text = f"{temp}{temp_unit} • {sky} • {track_condition}"
+            else:
+                # Fallback to simple dry/wet count
+                dry = weather_data.get('dry', 0)
+                wet = weather_data.get('wet', 0)
+                if wet > 0:
+                    weather_text = f"{dry} dry, {wet} wet"
+                else:
+                    weather_text = f"{dry} dry conditions"
+
+            ax.text(6, info_y, weather_text,
                    ha='center', fontsize=13, color='#94a3b8')
 
         # Column headers - clean alignment with better contrast
@@ -929,9 +977,8 @@ class iRacingVisualizer:
                 except Exception as e:
                     pass  # Silently skip if logo fails
 
-            # Abbreviated car name with better contrast
-            car_abbrev = self._abbreviate_car_name(car_name)
-            ax.text(2.8, y_pos, car_abbrev,
+            # Full car name with better contrast
+            ax.text(2.8, y_pos, car_name,
                    fontsize=15, color='#ffffff', va='center', fontweight='bold')
 
             # Lap time - centered under header with enhanced visibility

@@ -32,3 +32,6 @@ postgres_data/
 
 # Logs
 *.log
+
+# AI Session Manual (internal use only)
+AI_SESSION_MANUAL.md
