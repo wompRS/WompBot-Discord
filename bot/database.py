@@ -309,7 +309,9 @@ class Database:
                     """, (cache_key,))
 
                     print(f"✅ Using database cached meta for {cache_key}")
-                    return result['meta_data']
+                    meta_data = result['meta_data']
+                    print(f"🔍 Retrieved meta_data type: {type(meta_data)}, has weather: {'weather' in meta_data if isinstance(meta_data, dict) else 'N/A'}")
+                    return meta_data
 
                 return None
         except Exception as e:
@@ -346,7 +348,10 @@ class Database:
                     expires_at
                 ))
 
-                print(f"✅ Stored meta cache for {cache_key} (expires in {ttl_hours}h)")
+                has_weather = 'weather' in meta_data
+                print(f"✅ Stored meta cache for {cache_key} (expires in {ttl_hours}h), has_weather: {has_weather}")
+                if has_weather:
+                    print(f"  Weather data being stored: {meta_data['weather']}")
                 return True
         except Exception as e:
             print(f"❌ Error storing meta cache: {e}")

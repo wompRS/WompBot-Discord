@@ -82,21 +82,34 @@ class MetaAnalyzer:
             # Get race results for the season/week
             results = await self.client.get_season_results(season_id, week_num)
 
-            if not results or not results.get('results_list'):
-                print(f"⚠️ No results found for series {series_id}")
+            if not results:
+                print(f"⚠️ get_season_results returned None for season {season_id}, week {week_num}")
                 return None
 
             results_list = results.get('results_list', [])
+
+            if not isinstance(results_list, list):
+                print(f"⚠️ results_list is not a list. Type: {type(results_list)}")
+                return None
+
+            if len(results_list) == 0:
+                print(f"⚠️ results_list is empty (no sessions found for this season/week)")
+                return None
             print(f"📊 Found {len(results_list)} race sessions")
 
             # Filter by track if specified
             if track_id:
                 filtered_results = []
+                # Debug: show what track_ids we're seeing
+                unique_track_ids = set()
                 for result in results_list:
                     track = result.get('track', {})
-                    if track.get('track_id') == track_id:
+                    result_track_id = track.get('track_id')
+                    unique_track_ids.add(result_track_id)
+                    if result_track_id == track_id:
                         filtered_results.append(result)
 
+                print(f"🏁 Track filter: looking for {track_id}, found track IDs: {unique_track_ids}")
                 print(f"🏁 Filtered to {len(filtered_results)} sessions at track {track_id}")
                 results_list = filtered_results
 
@@ -112,7 +125,7 @@ class MetaAnalyzer:
                 print(f"📊 Analyzing ALL {len(results_list)} races for this week")
 
             # Process results to extract car performance data
-            car_stats = await self._process_race_results(results_list, series_id, season_id, track_id)
+            car_stats, weather_stats = await self._process_race_results(results_list, series_id, season_id, track_id)
 
             if not car_stats:
                 print(f"⚠️ No car statistics calculated")
@@ -121,8 +134,9 @@ class MetaAnalyzer:
             # Calculate final statistics
             meta_data = self._calculate_meta_statistics(car_stats)
 
-            # Add total races count
+            # Add total races count and weather data
             meta_data['total_races_analyzed'] = len(results_list)
+            meta_data['weather'] = weather_stats
 
             # Cache the results in both database and memory
             self._cache[cache_key] = {
@@ -146,6 +160,7 @@ class MetaAnalyzer:
                     print(f"⚠️ Failed to store database cache: {e}")
 
             print(f"✅ Meta analysis complete: {len(meta_data.get('cars', []))} cars analyzed")
+            print(f"🔍 Returning meta_data with weather: {'weather' in meta_data}, weather value: {meta_data.get('weather', 'NOT FOUND')}")
             return meta_data
 
         except Exception as e:
@@ -201,20 +216,107 @@ class MetaAnalyzer:
         # Fetch all subsession data for comprehensive analysis
         print(f"📥 Fetching detailed subsession data for ALL races...")
 
-        race_sessions = [r for r in results_list if r.get('event_type') == 5]
+        # Debug: Check what event_types we're seeing
+        event_types = {}
+        for r in results_list[:50]:  # Sample first 50
+            et = r.get('event_type')
+            event_types[et] = event_types.get(et, 0) + 1
+
+        print(f"🔍 Event types in first 50 sessions: {event_types}")
+
+        # Filter for competitive sessions: Time Trials (2) and Races (5)
+        # Time Trials are competitive ranked sessions in iRacing
+        race_sessions = [r for r in results_list if r.get('event_type') in [2, 5]]
+        successful_fetches = 0
+        failed_fetches = 0
+
+        # Track weather conditions across sessions
+        weather_stats = {
+            'total_sessions': 0,
+            'dry': 0,
+            'wet': 0,
+            'partly_cloudy': 0,
+            'overcast': 0,
+            'clear': 0,
+            'sample_weather': None  # Store full weather data from first session
+        }
+
+        print(f"🔍 Found {len(race_sessions)} competitive sessions (filtered from {len(results_list)} total)")
 
         for idx, result in enumerate(race_sessions):
             subsession_id = result.get('subsession_id')
+
+            if not subsession_id:
+                failed_fetches += 1
+                if failed_fetches <= 3:
+                    print(f"  ⚠️ Session missing subsession_id: {result}")
+                continue
 
             try:
                 # Fetch subsession result details
                 subsession_data = await self.client.get_subsession_data(subsession_id)
 
                 if not subsession_data:
+                    failed_fetches += 1
+                    if failed_fetches <= 5:
+                        print(f"  ⚠️ Subsession {subsession_id} returned None (API call succeeded but no data)")
                     continue
+
+                successful_fetches += 1
+
+                # Track weather conditions for this session
+                weather_stats['total_sessions'] += 1
+                weather = subsession_data.get('weather', {})
+
+                # Store full weather details from first session (all sessions in a week have same weather)
+                if weather_stats['sample_weather'] is None and weather:
+                    track_state = subsession_data.get('track_state', {})
+
+                    weather_stats['sample_weather'] = {
+                        'type': weather.get('type', 0),
+                        'temp_units': weather.get('temp_units', 0),  # 0=F, 1=C
+                        'temp_value': weather.get('temp_value', 0),
+                        'weather_type_name': subsession_data.get('weather_type_name', 'Unknown'),
+                        'skies': weather.get('skies', 0),  # 0=clear, 1=partly cloudy, 2=mostly cloudy, 3=overcast
+                        'wind_speed_units': weather.get('wind_speed_units', 0),
+                        'wind_speed_value': weather.get('wind_speed_value', 0),
+                        'wind_dir': weather.get('wind_dir', 0),
+                        'rel_humidity': weather.get('rel_humidity', 0),
+                        'fog': weather.get('fog', 0),
+                        # Precipitation data
+                        'precip_mm2hr_before': weather.get('precip_mm2hr_before_final_session', 0),
+                        'precip_mm_final': weather.get('precip_mm_final_session', 0),
+                        'precip_option': weather.get('precip_option', 0),
+                        'precip_time_pct': weather.get('precip_time_pct', 0),
+                        'track_water': weather.get('track_water', 0),
+                        # Add track state data
+                        'leave_marbles': track_state.get('leave_marbles') if track_state else None,
+                        'practice_rubber': track_state.get('practice_rubber') if track_state else None,
+                        'qualify_rubber': track_state.get('qualify_rubber') if track_state else None,
+                        'warmup_rubber': track_state.get('warmup_rubber') if track_state else None,
+                        'race_rubber': track_state.get('race_rubber') if track_state else None
+                    }
+
+                # Track weather type (0=constant, 1=dynamic)
+                weather_type = weather.get('type', 0)
+
+                # Track if wet (rain/water on track)
+                # iRacing weather includes: simulated_start_time, weather_var_initial, weather_var_ongoing, etc.
+                # For now, track based on weather_type_name or assume dry for most sessions
+                weather_type_name = subsession_data.get('weather_type_name', '').lower()
+                track_state = subsession_data.get('track_state', {})
+
+                # Check for wet conditions
+                if 'rain' in weather_type_name or 'wet' in weather_type_name:
+                    weather_stats['wet'] += 1
+                else:
+                    weather_stats['dry'] += 1
 
                 # Process each driver's result
                 session_results = subsession_data.get('session_results', [])
+
+                if not session_results and successful_fetches <= 3:
+                    print(f"  ⚠️ Subsession {subsession_id} has no session_results. Keys: {list(subsession_data.keys())[:10]}")
 
                 # Track which cars are in this subsession
                 cars_in_session = set()
@@ -253,8 +355,37 @@ class MetaAnalyzer:
                         incidents = driver_result.get('incidents', 0)
                         qualifying_position = driver_result.get('starting_position', 999)
 
-                        # Track iRating (use old_irating if available)
-                        irating = driver_result.get('oldi_rating', driver_result.get('newi_rating', 0))
+                        # Track iRating - handle both individual and team events
+                        # For team events, iRating is nested in driver_results array
+                        irating = 0
+                        driver_iratings = []
+
+                        # Check if this is a team entry (has driver_results array)
+                        if 'driver_results' in driver_result and driver_result.get('driver_results'):
+                            # Team event - extract iRatings from individual drivers
+                            for individual_driver in driver_result.get('driver_results', []):
+                                # Try all possible field names, but check each explicitly
+                                individual_irating = 0
+                                for field_name in ['oldi_rating', 'old_i_rating', 'newi_rating', 'new_i_rating']:
+                                    value = individual_driver.get(field_name)
+                                    if value is not None and value > 0:
+                                        individual_irating = value
+                                        break
+
+                                if individual_irating > 0:
+                                    driver_iratings.append(individual_irating)
+
+                            # Use average iRating of all team drivers
+                            if driver_iratings:
+                                irating = sum(driver_iratings) / len(driver_iratings)
+                        else:
+                            # Individual event - try multiple possible field names
+                            irating = (driver_result.get('oldi_rating') or
+                                     driver_result.get('old_i_rating') or
+                                     driver_result.get('newi_rating') or
+                                     driver_result.get('new_i_rating') or
+                                     0)
+
                         driver_id = driver_result.get('cust_id')
 
                         # Record statistics (but don't increment total_races here)
@@ -290,10 +421,15 @@ class MetaAnalyzer:
                     print(f"  Processed {idx + 1}/{len(race_sessions)} detailed sessions")
 
             except Exception as e:
-                print(f"  ⚠️ Error fetching subsession {subsession_id}: {e}")
+                failed_fetches += 1
+                if failed_fetches <= 3:
+                    print(f"  ⚠️ Error fetching subsession {subsession_id}: {e}")
                 continue
 
-        return car_stats
+        print(f"✅ Subsession fetch complete: {successful_fetches} successful, {failed_fetches} failed")
+        print(f"📊 Car stats collected for {len(car_stats)} cars")
+        print(f"🌤️ Weather: {weather_stats['dry']} dry, {weather_stats['wet']} wet sessions")
+        return car_stats, weather_stats
 
     def _calculate_meta_statistics(self, car_stats: Dict[int, Dict]) -> Dict:
         """
@@ -303,10 +439,12 @@ class MetaAnalyzer:
             Dict with car rankings and statistics
         """
         cars = []
+        filtered_cars = 0
 
         for car_id, stats in car_stats.items():
             # Require at least 1 race (was 3, but that filters out too much for smaller series)
             if stats['total_races'] < 1:
+                filtered_cars += 1
                 continue
 
             # Calculate average lap time
@@ -358,6 +496,8 @@ class MetaAnalyzer:
 
         # Sort by meta score (best to worst)
         cars.sort(key=lambda x: x['meta_score'])
+
+        print(f"📊 Meta calculation: {len(cars)} cars passed filter, {filtered_cars} cars filtered out (< 1 race)")
 
         return {
             'cars': cars,

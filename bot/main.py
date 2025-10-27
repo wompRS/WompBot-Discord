@@ -2982,9 +2982,9 @@ def season_id_to_year_quarter(season_id: int) -> str:
     Returns:
         String like "2025 S1" or "2024 S4"
     """
-    # Reference point: Season 5760 = 2025 Season 1
+    # Reference point: Season 5513 = 2025 Season 1 (updated from actual API data)
     # Each season is +1, 4 seasons per year
-    reference_season = 5760
+    reference_season = 5513
     reference_year = 2025
     reference_quarter = 1
 
@@ -3073,8 +3073,8 @@ async def season_autocomplete(
                 print(f"⚠️ Season autocomplete error: {e}")
 
         # Fallback: provide recent season IDs with year/quarter
-        # Current season around 5760 (2025 S1), go back 20 seasons (5 years)
-        base = 5760
+        # Current season around 5516 (2025 S4), go back 20 seasons (5 years)
+        base = 5516
         for season_id in range(base, base - 20, -1):
             year_quarter = season_id_to_year_quarter(season_id)
             is_current = (season_id == base)
@@ -3230,6 +3230,12 @@ async def iracing_meta(interaction: discord.Interaction, series: str, season: in
             await interaction.edit_original_response(content=f"❌ Could not find series '{series}' or no data available")
             return
 
+        print(f"🔍 Received meta_data type: {type(meta_data)}")
+        print(f"🔍 meta_data keys: {list(meta_data.keys())[:15] if isinstance(meta_data, dict) else 'NOT A DICT'}")
+        print(f"🔍 'weather' in keys: {'weather' in meta_data if isinstance(meta_data, dict) else 'N/A'}")
+        if isinstance(meta_data, dict) and 'weather' in meta_data:
+            print(f"🔍 weather value in meta_data: {meta_data['weather']}")
+
         series_name = meta_data.get('series_name', series)
         series_id = meta_data.get('series_id')
         car_data = meta_data.get('cars', [])
@@ -3262,6 +3268,9 @@ async def iracing_meta(interaction: discord.Interaction, series: str, season: in
             # Just sum up the unique drivers per car (they're already counted)
             unique_drivers_count = sum(car.get('unique_drivers', 0) for car in car_data)
 
+            # Get weather data if available
+            weather_data = meta_data.get('weather', {})
+
             # Create the meta chart
             chart_image = await viz.create_meta_chart(
                 series_name=series_name,
@@ -3269,31 +3278,20 @@ async def iracing_meta(interaction: discord.Interaction, series: str, season: in
                 week_num=week_num,
                 car_data=car_data,
                 total_races=total_races,
-                unique_drivers=unique_drivers_count
+                unique_drivers=unique_drivers_count,
+                weather_data=weather_data
             )
 
             # Send as file attachment
             file = discord.File(fp=chart_image, filename=f"meta_{series_name.replace(' ', '_')}_week{week_num}.png")
 
-            # Create embed to accompany the chart
-            description_parts = [
-                f"📍 **Track:** {display_track}",
-                f"📅 **Week:** {week_num}",
-                f"📊 **Races Analyzed:** {total_races:,}"
-            ]
-
-            # Add note if we used data from a previous season
-            if season_analyzed and season_analyzed != meta_data.get('season_id'):
-                description_parts.append(f"ℹ️ Using historical data from Season {season_analyzed}")
-
+            # Create minimal embed with just the image
             chart_embed = discord.Embed(
-                title=f"🏎️ {series_name} - Meta Analysis",
-                description="\n".join(description_parts),
+                title=f"{series_name} - Meta Analysis",
                 color=discord.Color.blue()
             )
 
             chart_embed.set_image(url=f"attachment://meta_{series_name.replace(' ', '_')}_week{week_num}.png")
-            chart_embed.set_footer(text="Car logos from car-logos-dataset • iRacing official series logos")
 
             # Replace the loading message with the chart
             await interaction.edit_original_response(content=None, embed=chart_embed, attachments=[file])
