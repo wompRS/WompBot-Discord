@@ -818,12 +818,12 @@ class iRacingVisualizer:
         row_height = 0.7
         chart_height = max(8, 4 + (num_cars * row_height))
 
-        # Standard width for readability
-        fig = plt.figure(figsize=(12, chart_height), facecolor=self.COLORS['bg_dark'])
+        # Wider layout to accommodate full car names
+        fig = plt.figure(figsize=(14, chart_height), facecolor=self.COLORS['bg_dark'])
 
         ax = fig.add_subplot(111)
         ax.axis('off')
-        ax.set_xlim(0, 12)
+        ax.set_xlim(0, 14)
 
         # Calculate total height for proper positioning
         total_height = num_cars + 4
@@ -848,19 +848,19 @@ class iRacingVisualizer:
             except Exception as e:
                 print(f"⚠️ Failed to load series logo: {e}")
 
-        # Title and info - positioned to the right of logo with better contrast
+        # Title and info - centered with better contrast
         title_y = total_height - 0.8
-        ax.text(3.5, title_y, "Best Average Lap Time",
-               ha='left', fontsize=21, fontweight='bold', color='#ffffff')
+        ax.text(7, title_y, "Best Average Lap Time",
+               ha='center', fontsize=21, fontweight='bold', color='#ffffff')
 
         # Track name (centered below title) with better visibility
-        ax.text(6, title_y - 0.7, track_name,
+        ax.text(7, title_y - 0.7, track_name,
                ha='center', fontsize=16, color='#cbd5e1', fontweight='600')
 
         # Unique drivers count with better contrast
         info_y = title_y - 1.3
         if unique_drivers > 0:
-            ax.text(6, info_y, f"{unique_drivers:,} unique drivers",
+            ax.text(7, info_y, f"{unique_drivers:,} unique drivers",
                    ha='center', fontsize=13, color='#94a3b8')
             info_y -= 0.5  # Move down for next line
 
@@ -869,33 +869,72 @@ class iRacingVisualizer:
             sample = weather_data.get('sample_weather')
 
             if sample:
-                # Format full weather details for chart
-                weather_parts = []
-
-                # Temperature
+                # Format full weather details for chart with colors
                 temp = sample.get('temp_value', 0)
                 temp_unit = '°F' if sample.get('temp_units', 0) == 0 else '°C'
 
-                # Sky conditions
-                sky_map = {0: 'Clear', 1: 'Partly Cloudy', 2: 'Mostly Cloudy', 3: 'Overcast'}
-                sky = sky_map.get(sample.get('skies', 0), 'Unknown')
+                # Temperature color based on value (convert F to C for comparison if needed)
+                temp_c = temp if temp_unit == '°C' else (temp - 32) * 5/9
+                if temp_c < 10:
+                    temp_color = '#60a5fa'  # Cold blue
+                elif temp_c < 20:
+                    temp_color = '#34d399'  # Cool green
+                elif temp_c < 30:
+                    temp_color = '#fbbf24'  # Warm yellow
+                else:
+                    temp_color = '#f87171'  # Hot red
+
+                # Sky conditions with colors
+                sky_map = {0: ('Clear', '#fbbf24'), 1: ('Partly Cloudy', '#94a3b8'),
+                          2: ('Mostly Cloudy', '#64748b'), 3: ('Overcast', '#475569')}
+                sky, sky_color = sky_map.get(sample.get('skies', 0), ('Unknown', '#94a3b8'))
 
                 # Track condition - check track_water value
                 track_water = sample.get('track_water', 0)
                 precip_mm = sample.get('precip_mm_final', 0)
                 precip_pct = sample.get('precip_time_pct', 0)
 
-                if track_water > 0 or precip_mm > 0:
+                if track_water > 0 or precip_mm > 0 or precip_pct > 0:
                     # Wet track
-                    if precip_mm > 0:
-                        track_condition = f"Wet ({precip_mm:.1f}mm rain)"
+                    track_color = '#60a5fa'  # Blue for wet
+                    if precip_pct > 0:
+                        track_condition = f"Wet ({precip_pct}% precip)"
+                    elif precip_mm > 0:
+                        track_condition = f"Wet ({precip_mm:.1f}mm)"
                     else:
-                        track_condition = f"Wet (track water: {track_water}%)"
+                        track_condition = f"Wet ({track_water}%)"
                 else:
                     # Dry track
+                    track_color = '#34d399'  # Green for dry
                     track_condition = "Dry"
 
-                weather_text = f"{temp}{temp_unit} • {sky} • {track_condition}"
+                # Draw weather components with individual colors, centered with proper spacing
+                weather_y = info_y
+                temp_text = f"{temp}{temp_unit}"
+
+                # Use fixed spacing between elements for reliable positioning
+                # Position elements relative to center (x=7)
+                spacing = 0.15  # Gap between elements
+
+                # Temperature - left of center
+                ax.text(5.5, weather_y, temp_text, ha='center', fontsize=13, va='center',
+                       color=temp_color, fontweight='bold')
+
+                # Separator
+                ax.text(6.3, weather_y, "•", ha='center', fontsize=13, va='center',
+                       color='#475569')
+
+                # Sky condition - at center
+                ax.text(7.0, weather_y, sky, ha='center', fontsize=13, va='center',
+                       color=sky_color, fontweight='bold')
+
+                # Separator
+                ax.text(7.7 + (len(sky) * 0.06), weather_y, "•", ha='center', fontsize=13, va='center',
+                       color='#475569')
+
+                # Track condition - right of center
+                ax.text(8.5 + (len(sky) * 0.06), weather_y, track_condition, ha='center', fontsize=13, va='center',
+                       color=track_color, fontweight='bold')
             else:
                 # Fallback to simple dry/wet count
                 dry = weather_data.get('dry', 0)
@@ -905,22 +944,30 @@ class iRacingVisualizer:
                 else:
                     weather_text = f"{dry} dry conditions"
 
-            ax.text(6, info_y, weather_text,
-                   ha='center', fontsize=13, color='#94a3b8')
+                ax.text(7, info_y, weather_text,
+                       ha='center', fontsize=13, color='#94a3b8')
 
         # Column headers - clean alignment with better contrast
         headers_y = total_height - 3.0
 
-        # Header background for better separation
-        header_bg = plt.Rectangle((0.4, headers_y - 0.3), 11.2, 0.5,
+        # Header background spanning full row width (matches cell backgrounds)
+        header_bg = plt.Rectangle((0.4, headers_y - 0.3), 13.2, 0.5,
                                  facecolor='#172033', edgecolor='#334155',
                                  linewidth=1, alpha=0.6)
         ax.add_patch(header_bg)
 
-        ax.text(5.5, headers_y, "Lap Time", fontsize=14, color='#60a5fa',
-               fontweight='bold', ha='center')
-        ax.text(10, headers_y, "iRating", fontsize=14, color='#60a5fa',
-               fontweight='bold', ha='center')
+        # Column header positions - centered vertically in header box (headers_y - 0.05 for proper padding)
+        header_text_y = headers_y - 0.05
+        ax.text(0.8, header_text_y, "Rank", fontsize=14, color='#60a5fa',
+               fontweight='bold', ha='center', va='center')
+        ax.text(2.8, header_text_y, "Car", fontsize=14, color='#60a5fa',
+               fontweight='bold', ha='left', va='center')
+        # Lap Time column: 6.5 to 10.5 (width: 4.0), center at 8.5
+        # iRating column: 10.5 to 13.6 (width: 3.1), center at 12.05
+        ax.text(8.5, header_text_y, "Lap Time", fontsize=14, color='#60a5fa',
+               fontweight='bold', ha='center', va='center')
+        ax.text(12.05, header_text_y, "iRating", fontsize=14, color='#60a5fa',
+               fontweight='bold', ha='center', va='center')
 
         # Draw car rows - clean and simple with better contrast
         y_pos = headers_y - 1.0
@@ -934,20 +981,11 @@ class iRacingVisualizer:
                 # Lighter row
                 bg_color = '#222d3f'
 
-            # Draw cell background
-            cell_bg = plt.Rectangle((0.4, y_pos - 0.35), 11.2, 0.65,
+            # Draw cell background (adjusted for wider layout)
+            cell_bg = plt.Rectangle((0.4, y_pos - 0.35), 13.2, 0.65,
                                    facecolor=bg_color, edgecolor='#334155',
                                    linewidth=0.5, alpha=0.8)
             ax.add_patch(cell_bg)
-
-            # Highlight top 3 with gradient gold border
-            if idx < 3:
-                # Outer gold border with glow effect
-                for offset, alpha in [(3.0, 0.3), (2.5, 0.5), (2.0, 0.8)]:
-                    glow_rect = plt.Rectangle((0.4, y_pos - 0.35), 11.2, 0.65,
-                                             facecolor='none', edgecolor=self.COLORS['accent_yellow'],
-                                             linewidth=offset, alpha=alpha)
-                    ax.add_patch(glow_rect)
 
             # Rank number with better contrast
             rank_text = f"{idx + 1}st" if idx == 0 else f"{idx + 1}nd" if idx == 1 else f"{idx + 1}rd" if idx == 2 else f"{idx + 1}th"
@@ -979,7 +1017,7 @@ class iRacingVisualizer:
 
             # Full car name with better contrast
             ax.text(2.8, y_pos, car_name,
-                   fontsize=15, color='#ffffff', va='center', fontweight='bold')
+                   fontsize=14, color='#ffffff', va='center', fontweight='bold')
 
             # Lap time - centered under header with enhanced visibility
             avg_lap_time = car.get('avg_lap_time')
@@ -988,28 +1026,26 @@ class iRacingVisualizer:
                 seconds = avg_lap_time % 60
                 lap_time_str = f"{minutes}:{seconds:06.3f}"
 
-                ax.text(5.5, y_pos, lap_time_str,
+                ax.text(8.5, y_pos, lap_time_str,
                        fontsize=15, color='#60a5fa', va='center',
                        fontweight='bold', ha='center')
             else:
-                ax.text(5.5, y_pos, "N/A",
+                ax.text(8.5, y_pos, "N/A",
                        fontsize=13, color='#64748b', va='center', ha='center')
 
             # iRating - centered under header with better contrast
             avg_irating = car.get('avg_irating', 0)
             if avg_irating > 0:
                 irating_str = f"{avg_irating:,}"
-                ax.text(10, y_pos, irating_str,
+                ax.text(12.05, y_pos, irating_str,
                        fontsize=15, color='#ffffff', va='center', ha='center', fontweight='bold')
             else:
-                ax.text(10, y_pos, "N/A",
+                ax.text(12.05, y_pos, "N/A",
                        fontsize=13, color='#64748b', va='center', ha='center')
 
             y_pos -= row_height
 
-        # Footer - minimal
-        ax.text(6, 0.3, "iracingreports.com",
-               ha='center', fontsize=10, color=self.COLORS['text_gray'], style='italic')
+        # No footer needed
 
         # No tight_layout - it breaks with add_axes
 
@@ -1018,6 +1054,146 @@ class iRacingVisualizer:
         plt.close()
         buffer.seek(0)
 
+        return buffer
+
+    def create_recent_results_table(self, driver_name: str, races: List[Dict]) -> BytesIO:
+        """
+        Create a visual table of recent race results.
+
+        Args:
+            driver_name: Driver's display name
+            races: List of race result dicts
+
+        Returns:
+            BytesIO containing the PNG image
+        """
+        num_races = len(races)
+        row_height = 0.8
+        chart_height = max(8, 3 + (num_races * row_height))
+
+        fig = plt.figure(figsize=(14, chart_height), facecolor=self.COLORS['bg_dark'])
+        ax = fig.add_subplot(111)
+        ax.axis('off')
+        ax.set_xlim(0, 14)
+
+        total_height = num_races + 3
+        ax.set_ylim(0, total_height)
+
+        # Title
+        title_y = total_height - 0.8
+        ax.text(7, title_y, f"{driver_name} - Recent Race Results",
+               ha='center', fontsize=21, fontweight='bold', color='#ffffff')
+
+        # Column headers
+        headers_y = total_height - 2.5
+
+        # Header background
+        header_bg = plt.Rectangle((0.4, headers_y - 0.3), 13.2, 0.5,
+                                 facecolor='#172033', edgecolor='#334155',
+                                 linewidth=1, alpha=0.6)
+        ax.add_patch(header_bg)
+
+        header_text_y = headers_y - 0.05
+        ax.text(0.5, header_text_y, "Series", fontsize=14, color='#60a5fa',
+               fontweight='bold', ha='left', va='center')
+        ax.text(4.8, header_text_y, "Track", fontsize=14, color='#60a5fa',
+               fontweight='bold', ha='left', va='center')
+        ax.text(8.3, header_text_y, "Finish", fontsize=14, color='#60a5fa',
+               fontweight='bold', ha='center', va='center')
+        ax.text(9.5, header_text_y, "Start", fontsize=14, color='#60a5fa',
+               fontweight='bold', ha='center', va='center')
+        ax.text(10.7, header_text_y, "Inc", fontsize=14, color='#60a5fa',
+               fontweight='bold', ha='center', va='center')
+        ax.text(11.8, header_text_y, "iR Δ", fontsize=14, color='#60a5fa',
+               fontweight='bold', ha='center', va='center')
+        ax.text(12.9, header_text_y, "SR Δ", fontsize=14, color='#60a5fa',
+               fontweight='bold', ha='center', va='center')
+
+        # Race rows
+        y_pos = headers_y - 1.0
+
+        for idx, race in enumerate(races):
+            # Alternate row backgrounds
+            if idx % 2 == 0:
+                bg_color = '#1a2332'
+            else:
+                bg_color = '#222d3f'
+
+            cell_bg = plt.Rectangle((0.4, y_pos - 0.35), 13.2, 0.65,
+                                   facecolor=bg_color, edgecolor='#334155',
+                                   linewidth=0.5, alpha=0.8)
+            ax.add_patch(cell_bg)
+
+            # Series name (with more space, truncate if too long)
+            series_name = race.get('series_name', 'Unknown Series')
+            if len(series_name) > 35:
+                series_name = series_name[:32] + '...'
+            ax.text(0.5, y_pos, series_name,
+                   fontsize=12, color='#ffffff', va='center', fontweight='bold')
+
+            # Track name (with more space, truncate if too long)
+            track_name = race.get('track_name', 'Unknown Track')
+            if len(track_name) > 30:
+                track_name = track_name[:27] + '...'
+            ax.text(4.8, y_pos, track_name,
+                   fontsize=11, color='#cbd5e1', va='center')
+
+            # Finish position
+            finish_pos = race.get('finish_position', 'N/A')
+            finish_color = '#34d399' if isinstance(finish_pos, int) and finish_pos <= 3 else '#60a5fa'
+            ax.text(8.3, y_pos, f"P{finish_pos}",
+                   fontsize=13, color=finish_color, va='center', ha='center', fontweight='bold')
+
+            # Start position
+            start_pos = race.get('start_position', 'N/A')
+            ax.text(9.5, y_pos, f"P{start_pos}",
+                   fontsize=12, color='#94a3b8', va='center', ha='center')
+
+            # Incidents
+            incidents = race.get('incidents', 'N/A')
+            incident_color = '#34d399' if isinstance(incidents, int) and incidents == 0 else '#fbbf24' if isinstance(incidents, int) and incidents <= 4 else '#f87171'
+            ax.text(10.7, y_pos, str(incidents),
+                   fontsize=13, color=incident_color, va='center', ha='center', fontweight='bold')
+
+            # iRating change
+            old_ir = race.get('oldi_rating', 0)
+            new_ir = race.get('newi_rating', 0)
+            if old_ir and new_ir:
+                ir_change = new_ir - old_ir
+                ir_text = f"+{ir_change}" if ir_change > 0 else str(ir_change)
+                ir_color = '#34d399' if ir_change > 0 else '#f87171' if ir_change < 0 else '#94a3b8'
+            else:
+                ir_text = 'N/A'
+                ir_color = '#94a3b8'
+            ax.text(11.8, y_pos, ir_text,
+                   fontsize=12, color=ir_color, va='center', ha='center', fontweight='bold')
+
+            # Safety Rating change
+            old_sr = race.get('old_sub_level', 0)
+            new_sr = race.get('new_sub_level', 0)
+            if old_sr and new_sr:
+                sr_change = (new_sr - old_sr) / 100.0  # Convert from sub_level to SR
+                sr_text = f"+{sr_change:.2f}" if sr_change > 0 else f"{sr_change:.2f}"
+                sr_color = '#34d399' if sr_change > 0 else '#f87171' if sr_change < 0 else '#94a3b8'
+            else:
+                sr_text = 'N/A'
+                sr_color = '#94a3b8'
+            ax.text(12.9, y_pos, sr_text,
+                   fontsize=12, color=sr_color, va='center', ha='center', fontweight='bold')
+
+            y_pos -= row_height
+
+        # Footer
+        ax.text(7, 0.3, "Generated by WompBot • Data from iRacing",
+               ha='center', fontsize=10, color='#94a3b8', style='italic')
+
+        # Save to buffer
+        buffer = BytesIO()
+        plt.savefig(buffer, format='png', dpi=150, bbox_inches='tight',
+                   facecolor=self.COLORS['bg_dark'], edgecolor='none')
+        plt.close(fig)
+
+        buffer.seek(0)
         return buffer
 
     def create_rating_history_chart(self, driver_name: str, history_data: List[Dict], category: str = "sports_car_road") -> BytesIO:

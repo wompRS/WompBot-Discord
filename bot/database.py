@@ -308,9 +308,7 @@ class Database:
                         WHERE cache_key = %s
                     """, (cache_key,))
 
-                    print(f"✅ Using database cached meta for {cache_key}")
                     meta_data = result['meta_data']
-                    print(f"🔍 Retrieved meta_data type: {type(meta_data)}, has weather: {'weather' in meta_data if isinstance(meta_data, dict) else 'N/A'}")
                     return meta_data
 
                 return None

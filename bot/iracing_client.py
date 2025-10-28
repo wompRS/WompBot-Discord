@@ -234,6 +234,28 @@ class iRacingClient:
                               f"iR={lic.get('irating', 'N/A')} SR={lic.get('safety_rating')} "
                               f"ttR={lic.get('tt_rating', 'N/A')} group={lic.get('group_name')}")
 
+                    # Convert licenses list to dict format expected by visualization
+                    # Map category_id to expected keys
+                    category_map = {
+                        1: 'oval',                  # Oval
+                        5: 'sports_car_road',       # Sports Car
+                        6: 'formula_car_road',      # Formula Car
+                        3: 'dirt_oval',             # Dirt Oval
+                        4: 'dirt_road'              # Dirt Road
+                    }
+
+                    licenses_dict = {}
+                    for lic in licenses:
+                        cat_id = lic.get('category_id')
+                        if cat_id in category_map:
+                            key = category_map[cat_id]
+                            # Keep original license data, just reorganize as dict
+                            licenses_dict[key] = lic
+
+                    # Replace licenses list with dict for visualization compatibility
+                    member_data['licenses'] = licenses_dict
+                    print(f"   ✅ Converted licenses to dict with keys: {list(licenses_dict.keys())}")
+
             return member_data
 
         return result
@@ -310,12 +332,22 @@ class iRacingClient:
 
             # Only add unique series (avoid duplicates from multiple seasons)
             if series_id not in series_map:
+                # Try to get category from multiple sources
+                category = (
+                    first_schedule.get('category') or
+                    first_schedule.get('category_id') or
+                    season.get('category') or
+                    season.get('category_id')
+                )
+
                 series_map[series_id] = {
                     'series_id': series_id,
                     'series_name': series_name,
                     'season_id': season.get('season_id'),
                     'season_name': season.get('season_name'),
-                    'active': season.get('active', False)
+                    'active': season.get('active', False),
+                    'category': category,
+                    'category_id': category  # Use same value for both
                 }
 
         # Return list of unique series, sorted by name

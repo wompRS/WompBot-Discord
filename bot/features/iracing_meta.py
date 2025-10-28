@@ -160,7 +160,6 @@ class MetaAnalyzer:
                     print(f"⚠️ Failed to store database cache: {e}")
 
             print(f"✅ Meta analysis complete: {len(meta_data.get('cars', []))} cars analyzed")
-            print(f"🔍 Returning meta_data with weather: {'weather' in meta_data}, weather value: {meta_data.get('weather', 'NOT FOUND')}")
             return meta_data
 
         except Exception as e:

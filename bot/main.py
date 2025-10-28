@@ -3230,12 +3230,6 @@ async def iracing_meta(interaction: discord.Interaction, series: str, season: in
             await interaction.edit_original_response(content=f"❌ Could not find series '{series}' or no data available")
             return
 
-        print(f"🔍 Received meta_data type: {type(meta_data)}")
-        print(f"🔍 meta_data keys: {list(meta_data.keys())[:15] if isinstance(meta_data, dict) else 'NOT A DICT'}")
-        print(f"🔍 'weather' in keys: {'weather' in meta_data if isinstance(meta_data, dict) else 'N/A'}")
-        if isinstance(meta_data, dict) and 'weather' in meta_data:
-            print(f"🔍 weather value in meta_data: {meta_data['weather']}")
-
         series_name = meta_data.get('series_name', series)
         series_id = meta_data.get('series_id')
         car_data = meta_data.get('cars', [])
@@ -3381,29 +3375,60 @@ async def iracing_results(interaction: discord.Interaction, driver_name: str = N
             await interaction.followup.send(f"❌ No recent races found for {display_name}")
             return
 
-        # Create embed
-        embed = discord.Embed(
-            title=f"🏁 Recent Races - {display_name}",
-            description=f"Last {len(races)} races",
-            color=discord.Color.blue()
-        )
+        # Look up track names for each race
+        for race in races:
+            # Track might be an object or a direct ID
+            track_data = race.get('track')
+            if isinstance(track_data, dict):
+                # Track is an object with track_id and track_name
+                track_id = track_data.get('track_id')
+                track_name = track_data.get('track_name', 'Unknown Track')
+                config_name = track_data.get('config_name', '')
 
-        for i, race in enumerate(races):
-            series_name = race.get('series_name', 'Unknown Series')
-            track_name = race.get('track_name', 'Unknown Track')
-            finish_pos = race.get('finish_position', 'N/A')
-            start_pos = race.get('start_position', 'N/A')
-            incidents = race.get('incidents', 'N/A')
+                # Append config if it exists and isn't already in the name
+                if config_name and config_name not in track_name:
+                    track_name = f"{track_name} - {config_name}"
 
-            embed.add_field(
-                name=f"{i+1}. {series_name}",
-                value=f"**Track:** {track_name}\n**Finish:** P{finish_pos} (started P{start_pos})\n**Incidents:** {incidents}",
-                inline=False
+                race['track_name'] = track_name
+            else:
+                # Try to look up by track_id
+                track_id = race.get('track_id')
+                if track_id and (not race.get('track_name') or race.get('track_name') == 'Unknown Track'):
+                    track_name = await iracing.get_track_name(track_id)
+                    race['track_name'] = track_name
+
+        # Generate visual table
+        if not iracing_viz:
+            # Fallback to simple embed if visualizer failed to load
+            embed = discord.Embed(
+                title=f"🏁 Recent Races - {display_name}",
+                description=f"Last {len(races)} races",
+                color=discord.Color.blue()
             )
 
-        embed.set_footer(text=f"Customer ID: {cust_id}")
+            for i, race in enumerate(races):
+                series_name = race.get('series_name', 'Unknown Series')
+                track_name = race.get('track_name', 'Unknown Track')
+                finish_pos = race.get('finish_position', 'N/A')
+                start_pos = race.get('start_position', 'N/A')
+                incidents = race.get('incidents', 'N/A')
 
-        await interaction.followup.send(embed=embed)
+                embed.add_field(
+                    name=f"{i+1}. {series_name}",
+                    value=f"**Track:** {track_name}\n**Finish:** P{finish_pos} (started P{start_pos})\n**Incidents:** {incidents}",
+                    inline=False
+                )
+
+            embed.set_footer(text=f"Customer ID: {cust_id}")
+            await interaction.followup.send(embed=embed)
+            return
+
+        # Create visualization
+        image_buffer = iracing_viz.create_recent_results_table(display_name, races)
+
+        # Send as Discord file attachment
+        file = discord.File(fp=image_buffer, filename=f"results_{cust_id}.png")
+        await interaction.followup.send(file=file)
 
     except Exception as e:
         await interaction.followup.send(f"❌ Error getting race results: {str(e)}")
@@ -3619,15 +3644,12 @@ async def iracing_server_leaderboard(interaction: discord.Interaction, category:
         traceback.print_exc()
 
 
-@bot.tree.command(name="iracing_history", description="View your iRating and Safety Rating history over time")
+@bot.tree.command(name="iracing_history", description="View your iRating and Safety Rating history from recent races")
 @app_commands.describe(
     driver_name="iRacing display name (optional if you've linked your account)",
-    category="License category (oval/sports_car_road/formula_car_road/dirt_oval/dirt_road)",
     days="Number of days of history to show (default: 30)"
 )
-@app_commands.autocomplete(category=category_autocomplete)
-async def iracing_history(interaction: discord.Interaction, driver_name: str = None,
-                          category: str = "sports_car_road", days: int = 30):
+async def iracing_history(interaction: discord.Interaction, driver_name: str = None, days: int = 30):
     """View rating progression chart"""
     if not iracing or not iracing_viz:
         await interaction.response.send_message("❌ iRacing integration is not configured on this bot")
@@ -3662,82 +3684,31 @@ async def iracing_history(interaction: discord.Interaction, driver_name: str = N
             cust_id = results[0].get('cust_id')
             display_name = results[0].get('display_name', driver_name)
 
-        # Get profile for current ratings
-        profile = await iracing.get_driver_profile(cust_id)
-        if not profile:
-            await interaction.followup.send("❌ Failed to retrieve profile data")
-            return
-
-        # Map category to license key
-        category_map = {
-            'oval': 'oval',
-            'road': 'sports_car_road',  # Legacy support
-            'sports_car_road': 'sports_car_road',
-            'sports_car': 'sports_car_road',  # Legacy support
-            'dirt_oval': 'dirt_oval',
-            'dirt_road': 'dirt_road',
-            'formula_car': 'formula_car_road',  # Legacy support
-            'formula_car_road': 'formula_car_road',
-            'formula': 'formula_car_road'  # Legacy support
-        }
-        license_key = category_map.get(category.lower(), 'sports_car_road')
-
-        licenses = profile.get('licenses', {})
-        if license_key not in licenses:
-            await interaction.followup.send(f"❌ No {category} license data found")
-            return
-
-        # For now, create a simple history from recent races
-        # TODO: Implement proper historical tracking in database
+        # Get recent races to build history from
         races = await iracing.get_driver_recent_races(cust_id, limit=min(days, 50))
 
         if not races or len(races) == 0:
             await interaction.followup.send(f"❌ No race history found for {display_name}")
             return
 
-        # Map category to race category IDs
-        # iRacing categories: 1=oval, 3=dirt_road, 4=dirt_oval, 5=sports_car_road, 6=formula_car_road
-        category_id_map = {
-            'oval': 1,
-            'dirt_road': 3,
-            'dirt_oval': 4,
-            'sports_car_road': 5,
-            'sports_car': 5,  # Legacy support
-            'road': 5,  # Legacy support
-            'formula_car_road': 6,
-            'formula_car': 6,  # Legacy support
-            'formula': 6  # Legacy support
-        }
-        target_category_id = category_id_map.get(category.lower(), 5)
-
-        # Extract rating history from races - FILTER by category
+        # Extract rating history from ALL races (don't filter by category - it's unreliable)
         history_data = []
-        print(f"🔍 Filtering {len(races)} races for category '{category}' (target_category_id={target_category_id})")
 
         for race in reversed(races):  # Oldest first
-            race_category = race.get('category_id', race.get('category', 2))
-
-            # Debug: Show first 5 races' categories
-            if len(history_data) < 5:
-                print(f"   Race: category_id={race.get('category_id')}, category={race.get('category')}, "
-                      f"resolved={race_category}, match={race_category == target_category_id}")
-
-            # Only include races from the selected category with rating data
-            if race_category == target_category_id and 'newi_rating' in race and race.get('newi_rating'):
+            # Only include races with rating data
+            if 'newi_rating' in race and race.get('newi_rating'):
                 history_data.append({
                     'date': race.get('session_start_time', 'Unknown'),
                     'irating': race.get('newi_rating', 0),
-                    'safety_rating': race.get('new_sub_level', 0) / 100.0  # Convert to SR format
+                    'safety_rating': race.get('new_sub_level', 0) / 100.0 if race.get('new_sub_level') else 0
                 })
-
-        print(f"   ✓ Found {len(history_data)} races matching category")
 
         if len(history_data) == 0:
             await interaction.followup.send("❌ Not enough rating history data available")
             return
 
         # Generate chart
-        image_buffer = iracing_viz.create_rating_history_chart(display_name, history_data, category)
+        image_buffer = iracing_viz.create_rating_history_chart(display_name, history_data, "All Races")
 
         # Send as Discord file attachment
         file = discord.File(fp=image_buffer, filename=f"rating_history_{cust_id}.png")
