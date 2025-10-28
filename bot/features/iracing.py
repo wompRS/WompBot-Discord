@@ -656,6 +656,30 @@ class iRacingIntegration:
             print(f"❌ Error getting tracks: {e}")
             return []
 
+    async def get_track_name(self, track_id: int) -> str:
+        """
+        Get track name from track ID.
+
+        Args:
+            track_id: iRacing track ID
+
+        Returns:
+            Track name with config, or "Unknown Track" if not found
+        """
+        tracks = await self.get_tracks()
+
+        for track in tracks:
+            if track.get('track_id') == track_id:
+                track_name = track.get('track_name', 'Unknown Track')
+                config_name = track.get('config_name', '')
+
+                # Append config if it exists and isn't already in the name
+                if config_name and config_name not in track_name:
+                    return f"{track_name} - {config_name}"
+                return track_name
+
+        return "Unknown Track"
+
     async def get_series_schedule(self, series_id: int, season_id: int) -> List[Dict]:
         """
         Get the full season schedule for a series.

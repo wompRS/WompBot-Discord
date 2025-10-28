@@ -10,6 +10,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **iRacing Meta Analysis Enhancements**
+  - Weather data tracking (temperature, sky conditions, precipitation %, track surface)
+  - Color-coded weather display in meta charts
+  - Full car names instead of abbreviations
+  - Performance caching system for 300-race analysis
+  - Season display fixes (2025 S1 format)
+- **iRacing Results Visualization**
+  - Image-based results table with proper formatting
+  - Track name lookup with configuration
+  - iRating and Safety Rating gain/loss columns
+  - Color-coded performance indicators
+- **iRacing Profile Improvements**
+  - Fixed license overview display (all 5 categories)
+  - Proper license data structure conversion
+- **iRacing History**
+  - Rating progression charts for all recent races
+  - Simplified interface without category filtering
 - GDPR compliance system with all data subject rights (Art. 12-23)
 - Privacy commands: `/wompbot_consent`, `/wompbot_noconsent`, `/download_my_data`, `/delete_my_data`, `/privacy_policy`, `/my_privacy_status`, `/privacy_support`
 - Data export functionality in machine-readable JSON format (GDPR Art. 15)
