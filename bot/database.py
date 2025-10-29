@@ -374,6 +374,180 @@ class Database:
             print(f"⚠️ Error cleaning meta cache: {e}")
             return 0
 
+    def store_participation_snapshot(self, series_name: str, series_id: int, season_id: int,
+                                     season_year: int, season_quarter: int, participant_count: int,
+                                     snapshot_date=None):
+        """Store a daily snapshot of series participation"""
+        try:
+            if snapshot_date is None:
+                snapshot_date = datetime.now().date()
+
+            with self.conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO iracing_participation_history
+                        (series_name, series_id, season_id, season_year, season_quarter,
+                         participant_count, snapshot_date)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (series_name, season_id, snapshot_date)
+                    DO UPDATE SET
+                        participant_count = EXCLUDED.participant_count
+                """, (
+                    series_name,
+                    series_id,
+                    season_id,
+                    season_year,
+                    season_quarter,
+                    participant_count,
+                    snapshot_date
+                ))
+                return True
+        except Exception as e:
+            print(f"❌ Error storing participation snapshot: {e}")
+            return False
+
+    def get_participation_data(self, time_range: str, season_year: int, season_quarter: int, limit: int = 10):
+        """
+        Get historical participation data for a time range.
+
+        Args:
+            time_range: 'season', 'yearly', or 'all_time'
+            season_year: Current season year
+            season_quarter: Current season quarter
+            limit: Number of top series to return
+
+        Returns:
+            List of (series_name, total_participants) tuples, or None if insufficient data
+        """
+        try:
+            with self.conn.cursor(cursor_factory=RealDictCursor) as cur:
+                if time_range == 'season':
+                    # Current quarter only - need at least 7 days of data
+                    cur.execute("""
+                        SELECT COUNT(DISTINCT snapshot_date) as days_of_data
+                        FROM iracing_participation_history
+                        WHERE season_year = %s AND season_quarter = %s
+                    """, (season_year, season_quarter))
+
+                    result = cur.fetchone()
+                    if not result or result['days_of_data'] < 7:
+                        return None  # Not enough data yet
+
+                    # Get aggregated data for current quarter
+                    cur.execute("""
+                        SELECT series_name,
+                               MAX(participant_count) as max_participants
+                        FROM iracing_participation_history
+                        WHERE season_year = %s AND season_quarter = %s
+                        GROUP BY series_name
+                        ORDER BY max_participants DESC
+                        LIMIT %s
+                    """, (season_year, season_quarter, limit))
+
+                elif time_range == 'yearly':
+                    # All quarters of current year - need at least 30 days
+                    cur.execute("""
+                        SELECT COUNT(DISTINCT snapshot_date) as days_of_data
+                        FROM iracing_participation_history
+                        WHERE season_year = %s
+                    """, (season_year,))
+
+                    result = cur.fetchone()
+                    if not result or result['days_of_data'] < 30:
+                        return None
+
+                    # Aggregate across all quarters of the year
+                    cur.execute("""
+                        SELECT series_name,
+                               SUM(max_participants) as total_participants
+                        FROM (
+                            SELECT series_name, season_quarter,
+                                   MAX(participant_count) as max_participants
+                            FROM iracing_participation_history
+                            WHERE season_year = %s
+                            GROUP BY series_name, season_quarter
+                        ) subquery
+                        GROUP BY series_name
+                        ORDER BY total_participants DESC
+                        LIMIT %s
+                    """, (season_year, limit))
+
+                else:  # all_time
+                    # Need at least 90 days of historical data
+                    cur.execute("""
+                        SELECT COUNT(DISTINCT snapshot_date) as days_of_data
+                        FROM iracing_participation_history
+                    """)
+
+                    result = cur.fetchone()
+                    if not result or result['days_of_data'] < 90:
+                        return None
+
+                    # Aggregate across all years and quarters
+                    cur.execute("""
+                        SELECT series_name,
+                               SUM(max_participants) as total_participants
+                        FROM (
+                            SELECT series_name, season_year, season_quarter,
+                                   MAX(participant_count) as max_participants
+                            FROM iracing_participation_history
+                            GROUP BY series_name, season_year, season_quarter
+                        ) subquery
+                        GROUP BY series_name
+                        ORDER BY total_participants DESC
+                        LIMIT %s
+                    """, (limit,))
+
+                results = cur.fetchall()
+                if not results:
+                    return None
+
+                # Convert to list of tuples
+                return [(row['series_name'], int(row.get('max_participants') or row.get('total_participants', 0)))
+                        for row in results]
+
+        except Exception as e:
+            print(f"❌ Error getting participation data: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
+
+    def get_data_availability_info(self, season_year: int, season_quarter: int):
+        """Get information about available historical data"""
+        try:
+            with self.conn.cursor(cursor_factory=RealDictCursor) as cur:
+                # Check days of data for current quarter
+                cur.execute("""
+                    SELECT COUNT(DISTINCT snapshot_date) as days_of_data,
+                           MIN(snapshot_date) as first_snapshot,
+                           MAX(snapshot_date) as last_snapshot
+                    FROM iracing_participation_history
+                    WHERE season_year = %s AND season_quarter = %s
+                """, (season_year, season_quarter))
+
+                quarter_data = cur.fetchone()
+
+                # Check total days across all data
+                cur.execute("""
+                    SELECT COUNT(DISTINCT snapshot_date) as total_days,
+                           MIN(snapshot_date) as first_snapshot,
+                           MAX(snapshot_date) as last_snapshot
+                    FROM iracing_participation_history
+                """)
+
+                total_data = cur.fetchone()
+
+                return {
+                    'quarter_days': quarter_data['days_of_data'] if quarter_data else 0,
+                    'quarter_first': quarter_data['first_snapshot'] if quarter_data else None,
+                    'quarter_last': quarter_data['last_snapshot'] if quarter_data else None,
+                    'total_days': total_data['total_days'] if total_data else 0,
+                    'total_first': total_data['first_snapshot'] if total_data else None,
+                    'total_last': total_data['last_snapshot'] if total_data else None,
+                }
+        except Exception as e:
+            print(f"❌ Error checking data availability: {e}")
+            return None
+
     def close(self):
         """Close database connection"""
         if self.conn:

@@ -694,20 +694,44 @@ class iRacingIntegration:
         cache_key = f'schedule_{series_id}_{season_id}'
         cached = self._get_cache(cache_key)
         if cached:
+            print(f"✅ Schedule cache hit for series {series_id}, season {season_id}: {len(cached)} entries")
             return cached
 
         try:
+            # Get all series seasons
             client = await self._get_client()
-            schedule = await client.get_series_race_schedule(season_id)
+            print(f"🔍 Getting series seasons data")
+            all_seasons = await client.get_series_seasons()
 
-            if schedule:
-                self._set_cache(cache_key, schedule, ttl_minutes=60)
-                return schedule
+            if not all_seasons:
+                print(f"❌ No seasons data returned")
+                return []
+
+            # Find the matching season
+            target_season = None
+            for season in all_seasons:
+                if season.get('season_id') == season_id:
+                    target_season = season
+                    break
+
+            if not target_season:
+                print(f"❌ Season {season_id} not found in seasons data")
+                return []
+
+            # Extract schedules from the season
+            schedules = target_season.get('schedules', [])
+            print(f"📅 Found {len(schedules)} schedule entries for season {season_id}")
+
+            if schedules:
+                self._set_cache(cache_key, schedules, ttl_minutes=60)
+                return schedules
 
             return []
 
         except Exception as e:
             print(f"❌ Error getting series schedule: {e}")
+            import traceback
+            traceback.print_exc()
             return []
 
     async def close(self):
