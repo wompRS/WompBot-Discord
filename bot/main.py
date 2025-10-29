@@ -2,7 +2,8 @@ import discord
 from discord import app_commands
 from discord.ext import commands, tasks
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from typing import List, Tuple
 from database import Database
 from llm import LLMClient
 from search import SearchEngine
@@ -77,6 +78,205 @@ iracing_team_manager = iRacingTeamManager(db)
 print("✅ iRacing Team Manager loaded")
 
 WOMPIE_USERNAME = "Wompie__"
+
+# iRacing series popularity cache
+iracing_popularity_cache = {}  # {time_range: {'data': [(series, count), ...], 'timestamp': datetime}}
+
+# Background task for updating iRacing series popularity weekly
+@tasks.loop(hours=168)  # Run every week (7 days * 24 hours)
+async def update_iracing_popularity():
+    """Background task to update iRacing series popularity data"""
+    if not iracing:
+        return
+
+    try:
+        print("📊 Starting weekly iRacing series popularity update...")
+
+        # Update all time ranges
+        time_ranges = ['season', 'yearly', 'all_time']
+
+        for time_range in time_ranges:
+            try:
+                popularity_data = await compute_series_popularity(time_range)
+                if popularity_data:
+                    iracing_popularity_cache[time_range] = {
+                        'data': popularity_data,
+                        'timestamp': datetime.now()
+                    }
+                    print(f"  ✅ Cached {time_range} popularity data ({len(popularity_data)} series)")
+            except Exception as e:
+                print(f"  ❌ Error computing {time_range} popularity: {e}")
+
+        print("✅ iRacing popularity cache updated successfully")
+
+    except Exception as e:
+        print(f"❌ Error updating iRacing popularity cache: {e}")
+        import traceback
+        traceback.print_exc()
+
+# Background task for daily participation snapshot
+@tasks.loop(hours=24)  # Run every 24 hours
+async def snapshot_participation_data():
+    """Daily task to snapshot current participation data for historical tracking"""
+    if not iracing or not db:
+        return
+
+    try:
+        print("📸 Starting daily iRacing participation snapshot...")
+
+        client = await iracing._get_client()
+        all_seasons = await client.get_series_seasons()
+
+        if not all_seasons:
+            print("  ❌ No seasons data available")
+            return
+
+        now = datetime.now(timezone.utc)
+        current_year = now.year
+        current_quarter = (now.month - 1) // 3 + 1
+
+        snapshot_count = 0
+        error_count = 0
+
+        # Snapshot only CURRENTLY ACTIVE series (all ~147 series running right now)
+        active_seasons = [s for s in all_seasons if s.get('active', False)]
+
+        print(f"  Found {len(active_seasons)} active series to snapshot")
+
+        for season in active_seasons[:100]:  # Limit to 100 to avoid rate limit
+            series_id = season.get('series_id')
+            season_id = season.get('season_id')
+            season_year = season.get('season_year', current_year)
+            season_quarter = season.get('season_quarter', current_quarter)
+            car_class_ids = season.get('car_class_ids', [])
+
+            if not car_class_ids:
+                continue
+
+            car_class_id = car_class_ids[0]
+
+            try:
+                # Get current standings
+                standings = await client.get_series_stats(season_id, car_class_id)
+
+                if standings and isinstance(standings, dict):
+                    series_name = standings.get('series_name', f'Series {series_id}')
+                    participant_count = 0
+
+                    if 'chunk_info' in standings:
+                        chunk_info = standings['chunk_info']
+                        if isinstance(chunk_info, dict) and 'rows' in chunk_info:
+                            participant_count = chunk_info['rows']
+
+                    if participant_count > 0:
+                        # Store in database
+                        success = db.store_participation_snapshot(
+                            series_name=series_name,
+                            series_id=series_id,
+                            season_id=season_id,
+                            season_year=season_year,
+                            season_quarter=season_quarter,
+                            participant_count=participant_count
+                        )
+
+                        if success:
+                            snapshot_count += 1
+                        else:
+                            error_count += 1
+
+            except Exception as e:
+                error_count += 1
+                continue
+
+        print(f"✅ Participation snapshot complete: {snapshot_count} series recorded, {error_count} errors")
+
+    except Exception as e:
+        print(f"❌ Error in participation snapshot: {e}")
+        import traceback
+        traceback.print_exc()
+
+async def compute_series_popularity(time_range: str, limit: int = 10) -> List[Tuple[str, int]]:
+    """
+    Compute series popularity by participant count.
+    First checks database for historical data, falls back to live API if insufficient data.
+
+    Args:
+        time_range: 'season', 'weekly', 'yearly', or 'all_time'
+        limit: Number of top series to return
+
+    Returns:
+        List of (series_name, participant_count) tuples sorted by popularity
+    """
+    if not iracing:
+        return []
+
+    # Get current time info
+    now = datetime.now(timezone.utc)
+    current_year = now.year
+    current_quarter = (now.month - 1) // 3 + 1  # 1-4
+
+    # Try database first (for historical tracking)
+    if db:
+        try:
+            historical_data = db.get_participation_data(time_range, current_year, current_quarter, limit)
+            if historical_data:
+                print(f"📊 Using historical data from database for {time_range}")
+                return historical_data
+        except Exception as e:
+            print(f"⚠️ Error fetching historical data, falling back to live API: {e}")
+
+    # Fall back to live API (ONLY works for currently active series)
+    # Note: iRacing API doesn't provide historical standings data
+    print(f"📡 Fetching live participation data from iRacing API")
+    client = await iracing._get_client()
+    all_seasons = await client.get_series_seasons()
+
+    if not all_seasons:
+        return []
+
+    # Get only currently ACTIVE series (all ~147 series running right now)
+    active_seasons = [s for s in all_seasons if s.get('active', False)]
+    print(f"  Found {len(active_seasons)} currently active series")
+
+    # Count participants per series
+    series_participation = {}
+
+    # Limit to avoid rate limiting (process top 100)
+    seasons_to_check = active_seasons[:100]
+
+    for season in seasons_to_check:
+        series_id = season.get('series_id')
+        season_id = season.get('season_id')
+        car_class_ids = season.get('car_class_ids', [])
+
+        if not car_class_ids:
+            continue
+
+        car_class_id = car_class_ids[0]
+
+        try:
+            standings = await client.get_series_stats(season_id, car_class_id)
+
+            if standings and isinstance(standings, dict):
+                series_name = standings.get('series_name', f'Series {series_id}')
+                participant_count = 0
+
+                if 'chunk_info' in standings:
+                    chunk_info = standings['chunk_info']
+                    if isinstance(chunk_info, dict) and 'rows' in chunk_info:
+                        participant_count = chunk_info['rows']
+
+                if participant_count > 0:
+                    if series_name not in series_participation:
+                        series_participation[series_name] = 0
+                    series_participation[series_name] += participant_count
+
+        except Exception:
+            continue
+
+    # Sort and return top N
+    sorted_series = sorted(series_participation.items(), key=lambda x: x[1], reverse=True)[:limit]
+    return sorted_series
 
 # Background task for pre-computing statistics
 @tasks.loop(hours=1)  # Run every hour (can adjust to minutes=30 for 30-min intervals)
@@ -480,6 +680,16 @@ async def on_ready():
     if not gdpr_cleanup.is_running():
         gdpr_cleanup.start()
         print("🧹 GDPR data cleanup enabled (runs daily)")
+
+    # Start iRacing popularity update task
+    if iracing and not update_iracing_popularity.is_running():
+        update_iracing_popularity.start()
+        print("📊 iRacing popularity updates enabled (runs weekly)")
+
+    # Start daily participation snapshot task
+    if iracing and db and not snapshot_participation_data.is_running():
+        snapshot_participation_data.start()
+        print("📸 iRacing participation snapshots enabled (runs daily)")
 
     # Pre-warm series autocomplete cache (runs in background)
     if iracing:
@@ -2698,104 +2908,6 @@ async def iracing_profile(interaction: discord.Interaction, driver_name: str = N
         import traceback
         traceback.print_exc()
 
-@bot.tree.command(name="iracing_schedule", description="View upcoming iRacing race schedule")
-@app_commands.describe(
-    series="Filter by series name (optional)",
-    hours="Look ahead this many hours (default: 24)"
-)
-async def iracing_schedule(interaction: discord.Interaction, series: str = None, hours: int = 24):
-    """View upcoming race schedule"""
-    if not iracing:
-        await interaction.response.send_message("❌ iRacing integration is not configured on this bot")
-        return
-
-    await interaction.response.defer()
-
-    try:
-        upcoming = await iracing.get_upcoming_schedule(series_name=series, hours=hours)
-
-        if not upcoming or len(upcoming) == 0:
-            msg = f"❌ No upcoming races found"
-            if series:
-                msg += f" for series '{series}'"
-            await interaction.followup.send(msg)
-            return
-
-        # Create embed
-        embed = discord.Embed(
-            title=f"🏁 Upcoming iRacing Schedule",
-            description=f"Next {len(upcoming)} races in the next {hours} hours",
-            color=discord.Color.blue()
-        )
-
-        if series:
-            embed.description = f"Series: **{series}**\n{embed.description}"
-
-        # Add races (limit to 10 to avoid embed size limits)
-        for i, race in enumerate(upcoming[:10]):
-            series_name = race.get('series_name', 'Unknown Series')
-            track_name = race.get('track_name', 'Unknown Track')
-            start_time = race.get('start_time', 'TBD')
-
-            embed.add_field(
-                name=f"{i+1}. {series_name}",
-                value=f"**Track:** {track_name}\n**Time:** {start_time}",
-                inline=False
-            )
-
-        if len(upcoming) > 10:
-            embed.set_footer(text=f"Showing 10 of {len(upcoming)} races")
-
-        await interaction.followup.send(embed=embed)
-
-    except Exception as e:
-        await interaction.followup.send(f"❌ Error getting schedule: {str(e)}")
-        print(f"❌ iRacing schedule error: {e}")
-
-@bot.tree.command(name="iracing_series", description="List all active iRacing series")
-async def iracing_series_list(interaction: discord.Interaction):
-    """List all active iRacing series"""
-    if not iracing:
-        await interaction.response.send_message("❌ iRacing integration is not configured on this bot")
-        return
-
-    await interaction.response.defer()
-
-    try:
-        series = await iracing.get_current_series()
-
-        if not series or len(series) == 0:
-            await interaction.followup.send("❌ No active series found")
-            return
-
-        # Create embed
-        embed = discord.Embed(
-            title="🏁 Active iRacing Series",
-            description=f"Found {len(series)} active series",
-            color=discord.Color.blue()
-        )
-
-        # Group by category if available, or just list them (limit to 25 fields)
-        for i, s in enumerate(series[:25]):
-            series_name = s.get('series_name', 'Unknown')
-            season_id = s.get('season_id', 'N/A')
-            category = s.get('category', 'N/A')
-
-            embed.add_field(
-                name=series_name,
-                value=f"Category: {category}\nSeason ID: {season_id}",
-                inline=True
-            )
-
-        if len(series) > 25:
-            embed.set_footer(text=f"Showing 25 of {len(series)} series")
-
-        await interaction.followup.send(embed=embed)
-
-    except Exception as e:
-        await interaction.followup.send(f"❌ Error getting series list: {str(e)}")
-        print(f"❌ iRacing series error: {e}")
-
 # Cache for series autocomplete to prevent repeated API calls
 _series_autocomplete_cache = None
 _series_cache_time = None
@@ -2889,6 +3001,196 @@ async def series_autocomplete(
         import traceback
         traceback.print_exc()
         return []
+
+@bot.tree.command(name="iracing_schedule", description="View iRacing race schedule for a series or category")
+@app_commands.describe(
+    series="Series name (leave blank if using category)",
+    category="Show all series in this category for current week",
+    week="Which week to show (current = this week, upcoming = next week, full = entire season)"
+)
+@app_commands.choices(
+    category=[
+        app_commands.Choice(name="Oval", value="oval"),
+        app_commands.Choice(name="Sports Car", value="sports_car"),
+        app_commands.Choice(name="Formula Car", value="formula_car"),
+        app_commands.Choice(name="Dirt Oval", value="dirt_oval"),
+        app_commands.Choice(name="Dirt Road", value="dirt_road")
+    ],
+    week=[
+        app_commands.Choice(name="Current Week", value="current"),
+        app_commands.Choice(name="Upcoming Week", value="upcoming"),
+        app_commands.Choice(name="Full Season", value="full")
+    ]
+)
+@app_commands.autocomplete(series=series_autocomplete)
+async def iracing_schedule(interaction: discord.Interaction, series: str = None, category: str = None, week: str = "full"):
+    """View series race schedule or category overview"""
+    if not iracing:
+        await interaction.response.send_message("❌ iRacing integration is not configured on this bot")
+        return
+
+    await interaction.response.defer()
+
+    try:
+        # Get all series
+        all_series = await iracing.get_current_series()
+        if not all_series:
+            await interaction.followup.send("❌ Failed to retrieve series data")
+            return
+
+        # Handle series-based schedule (takes priority if both series and category are provided)
+        if series:
+            # Find matching series (use partial match like meta command)
+            series_match = None
+            for s in all_series:
+                if series.lower() in s.get('series_name', '').lower():
+                    series_match = s
+                    break
+
+            if not series_match:
+                await interaction.followup.send(f"❌ Series not found: '{series}'")
+                return
+
+            series_id = series_match.get('series_id')
+            series_name = series_match.get('series_name')
+            season_id = series_match.get('season_id')
+
+            print(f"🔍 Schedule request: series_id={series_id}, season_id={season_id}, series_name={series_name}")
+
+            # Get schedule for this series
+            schedule = await iracing.get_series_schedule(series_id, season_id)
+
+            print(f"📅 Schedule API returned {len(schedule) if schedule else 0} entries")
+
+            if not schedule or len(schedule) == 0:
+                await interaction.followup.send(f"❌ No schedule found for {series_name}")
+                return
+
+            # Create visualization
+            image_buffer = iracing_viz.create_schedule_table(series_name, schedule, week)
+
+            # Send image
+            file = discord.File(fp=image_buffer, filename="schedule.png")
+            await interaction.followup.send(file=file)
+
+        # Handle category-based schedule
+        elif category:
+            # Filter series by category (category_id is a string, not a number)
+            category_series = [s for s in all_series if s.get('category_id') == category]
+
+            print(f"🔍 Looking for category_id='{category}', found {len(category_series)} series (before dedup)")
+
+            # Deduplicate by series_id - keep only one season per series (prefer active=True)
+            series_dict = {}
+            for s in category_series:
+                series_id = s.get('series_id')
+                # If we haven't seen this series, or this one is active, use it
+                if series_id not in series_dict or s.get('active'):
+                    series_dict[series_id] = s
+
+            category_series = list(series_dict.values())
+            print(f"🔍 After deduplication: {len(category_series)} unique series")
+
+            if not category_series:
+                await interaction.followup.send(f"❌ No series found for category: {category}")
+                return
+
+            # Get current week track for each series (using cached data from get_current_series)
+            import datetime
+            series_tracks = []
+
+            # Get all seasons data once (this contains schedules already)
+            client = await iracing._get_client()
+            all_seasons = await client.get_series_seasons()
+
+            # Build a map of season_id -> season data for fast lookup
+            seasons_map = {season.get('season_id'): season for season in all_seasons}
+
+            for s in category_series:
+                series_name = s.get('series_name')
+                season_id = s.get('season_id')
+
+                # Get the full season data with schedules
+                season_data = seasons_map.get(season_id)
+                if not season_data:
+                    continue
+
+                schedules = season_data.get('schedules', [])
+                if not schedules:
+                    continue
+
+                # Calculate current week based on dates
+                now = datetime.now(timezone.utc)
+                current_week_num = 0
+
+                # Debug: check first schedule entry
+                if schedules and series_name == category_series[0].get('series_name'):
+                    first_week = schedules[0]
+                    print(f"🔍 First schedule entry keys for {series_name}: {list(first_week.keys())}")
+                    print(f"🔍 First week start_date: {first_week.get('start_date')}")
+                    print(f"🔍 First week race_week_num: {first_week.get('race_week_num')}")
+                    print(f"🔍 Total schedules: {len(schedules)}")
+                    print(f"🔍 Current time: {now}")
+
+                for week_data in schedules:
+                    start_date = week_data.get('start_date')
+                    if start_date:
+                        try:
+                            # Parse date string (format: "2025-10-28") and make it timezone-aware
+                            week_start = datetime.fromisoformat(start_date)
+                            # Make it timezone-aware (UTC)
+                            week_start = week_start.replace(tzinfo=timezone.utc)
+                            week_end = week_start + timedelta(days=7)
+
+                            if week_start <= now < week_end:
+                                current_week_num = week_data.get('race_week_num', 0)
+                                print(f"✅ Found current week {current_week_num} for {series_name} (dates: {week_start.date()} to {week_end.date()})")
+                                break
+                        except Exception as e:
+                            print(f"⚠️ Error parsing date {start_date}: {e}")
+                            pass
+
+                if current_week_num == 0 and series_name == category_series[0].get('series_name'):
+                    print(f"⚠️ No current week found for {series_name}, defaulting to 0")
+
+                # Find the current week's track
+                for week_data in schedules:
+                    if week_data.get('race_week_num') == current_week_num:
+                        track = week_data.get('track', {})
+                        track_name = track.get('track_name', 'Unknown') if isinstance(track, dict) else 'Unknown'
+                        config_name = track.get('config_name', '') if isinstance(track, dict) else ''
+
+                        if config_name and config_name not in track_name:
+                            full_track_name = f"{track_name} - {config_name}"
+                        else:
+                            full_track_name = track_name
+
+                        series_tracks.append({
+                            'series_name': series_name,
+                            'track_name': full_track_name,
+                            'week_num': current_week_num + 1
+                        })
+                        break
+
+            if not series_tracks:
+                await interaction.followup.send(f"❌ No schedule data found for {category} series")
+                return
+
+            # Create category schedule visualization
+            category_display_name = category.replace('_', ' ').title()
+            image_buffer = iracing_viz.create_category_schedule_table(category_display_name, series_tracks)
+
+            file = discord.File(fp=image_buffer, filename="category_schedule.png")
+            await interaction.followup.send(file=file)
+
+        else:
+            await interaction.followup.send("❌ Please specify either a series name or a category")
+
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error getting schedule: {str(e)}")
+        print(f"❌ iRacing schedule error: {e}")
+        import traceback
+        traceback.print_exc()
 
 async def week_autocomplete(
     interaction: discord.Interaction,
@@ -3614,28 +3916,39 @@ async def iracing_server_leaderboard(interaction: discord.Interaction, category:
         # Sort by iRating
         leaderboard_data.sort(key=lambda x: x['irating'], reverse=True)
 
-        # Create embed
+        # Create visualization
         category_display = category.replace('_', ' ').title()
-        embed = discord.Embed(
-            title=f"🏆 {interaction.guild.name} - {category_display} Leaderboard",
-            description=f"{len(leaderboard_data)} linked drivers",
-            color=discord.Color.gold()
-        )
 
-        # Add top 10 (or all if less)
-        for i, driver in enumerate(leaderboard_data[:10]):
-            rank_emoji = ["🥇", "🥈", "🥉"][i] if i < 3 else f"**{i+1}.**"
-
-            embed.add_field(
-                name=f"{rank_emoji} {driver['discord_name']}",
-                value=f"iR: {driver['irating']:,} | SR: {driver['safety_rating']:.2f}\n*{driver['iracing_name']}*",
-                inline=False
+        if not iracing_viz:
+            # Fallback to embed if visualizer not available
+            embed = discord.Embed(
+                title=f"🏆 {interaction.guild.name} - {category_display} Leaderboard",
+                description=f"{len(leaderboard_data)} linked drivers",
+                color=discord.Color.gold()
             )
 
-        if len(leaderboard_data) > 10:
-            embed.set_footer(text=f"Showing top 10 of {len(leaderboard_data)} drivers")
+            for i, driver in enumerate(leaderboard_data[:10]):
+                rank_emoji = ["🥇", "🥈", "🥉"][i] if i < 3 else f"**{i+1}.**"
+                embed.add_field(
+                    name=f"{rank_emoji} {driver['discord_name']}",
+                    value=f"iR: {driver['irating']:,} | SR: {driver['safety_rating']:.2f}\n*{driver['iracing_name']}*",
+                    inline=False
+                )
 
-        await interaction.followup.send(embed=embed)
+            if len(leaderboard_data) > 10:
+                embed.set_footer(text=f"Showing top 10 of {len(leaderboard_data)} drivers")
+
+            await interaction.followup.send(embed=embed)
+        else:
+            # Use visualization
+            image_buffer = iracing_viz.create_server_leaderboard_table(
+                interaction.guild.name,
+                category_display,
+                leaderboard_data
+            )
+
+            file = discord.File(fp=image_buffer, filename="server_leaderboard.png")
+            await interaction.followup.send(file=file)
 
     except Exception as e:
         await interaction.followup.send(f"❌ Error generating leaderboard: {str(e)}")
@@ -4051,8 +4364,17 @@ async def iracing_compare_drivers(interaction: discord.Interaction, driver1: str
 
 
 @bot.tree.command(name="iracing_series_popularity", description="View most popular series by participation")
-async def iracing_series_popularity(interaction: discord.Interaction):
-    """Show series popularity rankings"""
+@app_commands.describe(
+    time_range="Time period for popularity analysis"
+)
+@app_commands.choices(time_range=[
+    app_commands.Choice(name="This Season", value="season"),
+    app_commands.Choice(name="This Week", value="weekly"),
+    app_commands.Choice(name="This Year", value="yearly"),
+    app_commands.Choice(name="All Seasons", value="all_time")
+])
+async def iracing_series_popularity(interaction: discord.Interaction, time_range: str = "season"):
+    """Show series popularity rankings based on driver participation"""
     if not iracing:
         await interaction.response.send_message("❌ iRacing integration not configured")
         return
@@ -4060,43 +4382,93 @@ async def iracing_series_popularity(interaction: discord.Interaction):
     await interaction.response.defer()
 
     try:
-        all_series = await iracing.get_current_series()
-        if not all_series:
-            await interaction.followup.send("❌ Failed to retrieve series data")
+        # Get current time info
+        now = datetime.now(timezone.utc)
+        current_year = now.year
+        current_quarter = (now.month - 1) // 3 + 1
+
+        # Check if we have enough historical data for this time range
+        availability_info = None
+        if db:
+            availability_info = db.get_data_availability_info(current_year, current_quarter)
+
+        # Determine if we can show this time range
+        can_show = True
+        warning_message = None
+
+        if availability_info and time_range != "season":
+            quarter_days = availability_info.get('quarter_days', 0)
+            total_days = availability_info.get('total_days', 0)
+
+            if time_range == "yearly" and total_days < 30:
+                can_show = False
+                warning_message = (
+                    f"📊 **Historical Data Not Yet Available**\n\n"
+                    f"Yearly statistics require at least 30 days of data collection. "
+                    f"Currently collected: **{total_days} days**\n\n"
+                    f"The bot is collecting participation data daily. Check back in **{30 - total_days} days** "
+                    f"to see yearly trends!\n\n"
+                    f"*Showing current season data instead:*"
+                )
+                time_range = "season"  # Fall back to season
+            elif time_range == "all_time" and total_days < 90:
+                can_show = False
+                warning_message = (
+                    f"📊 **Historical Data Not Yet Available**\n\n"
+                    f"All-time statistics require at least 90 days of data collection. "
+                    f"Currently collected: **{total_days} days**\n\n"
+                    f"The bot is collecting participation data daily. Check back in **{90 - total_days} days** "
+                    f"to see all-time trends!\n\n"
+                    f"*Showing current season data instead:*"
+                )
+                time_range = "season"
+
+        # Check cache first
+        if time_range in iracing_popularity_cache:
+            cache_entry = iracing_popularity_cache[time_range]
+            sorted_series = cache_entry['data']
+            cache_age = (datetime.now() - cache_entry['timestamp']).total_seconds() / 3600
+            print(f"📊 Using cached {time_range} popularity data (age: {cache_age:.1f} hours)")
+        else:
+            # Compute if not cached
+            print(f"📊 Computing {time_range} popularity (not in cache)")
+            sorted_series = await compute_series_popularity(time_range)
+
+        # Check if we have data
+        if not sorted_series:
+            await interaction.followup.send("❌ No participation data available")
             return
 
-        # For now, show basic participation info from series data
-        # TODO: Implement proper tracking over time in database
-        series_data = []
-        for s in all_series:
-            series_data.append({
-                'name': s.get('series_name', 'Unknown'),
-                'total_drivers': s.get('active', 0),  # Placeholder
-                'avg_splits': 1,  # Placeholder
-                'avg_sof': s.get('min_license_level', 0) * 500  # Rough estimate
-            })
+        print(f"📈 Top {len(sorted_series)} series by participation:")
+        for name, count in sorted_series:
+            print(f"  {name}: {count:,} drivers")
 
-        embed = discord.Embed(
-            title="📈 iRacing Series Activity",
-            description=f"Currently tracking {len(series_data)} series",
-            color=discord.Color.blue()
+        # Create visualization
+        time_range_names = {
+            "season": "This Season",
+            "weekly": "This Week",
+            "yearly": "This Year",
+            "all_time": "All Seasons"
+        }
+
+        image_buffer = iracing_viz.create_popularity_chart(
+            sorted_series,
+            time_range_names.get(time_range, "This Season")
         )
 
-        # Sort by estimated activity
-        series_data.sort(key=lambda x: x['total_drivers'], reverse=True)
+        file = discord.File(fp=image_buffer, filename="series_popularity.png")
 
-        for i, s in enumerate(series_data[:10]):
-            embed.add_field(
-                name=f"{i+1}. {s['name']}",
-                value=f"Activity Level: {s['total_drivers']}",
-                inline=False
-            )
-
-        await interaction.followup.send(embed=embed)
+        # Send with warning message if applicable
+        if warning_message:
+            await interaction.followup.send(content=warning_message, file=file)
+        else:
+            await interaction.followup.send(file=file)
 
     except Exception as e:
         await interaction.followup.send(f"❌ Error: {str(e)}")
         print(f"❌ Popularity error: {e}")
+        import traceback
+        traceback.print_exc()
 
 
 # Error handling

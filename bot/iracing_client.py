@@ -546,6 +546,108 @@ class iRacingClient:
         params = {'subsession_id': subsession_id}
         return await self._get("/data/results/get", params)
 
+    async def download_chunk_data(self, chunk_info: Dict) -> Optional[List[Dict]]:
+        """
+        Download and parse chunked standings data (gzipped JSON).
+
+        Args:
+            chunk_info: The chunk_info dict from standings response
+
+        Returns:
+            List of driver standing records, or None if failed
+        """
+        if not isinstance(chunk_info, dict):
+            return None
+
+        base_url = chunk_info.get('base_download_url')
+        chunk_files = chunk_info.get('chunk_file_names', [])
+
+        if not base_url or not chunk_files:
+            return None
+
+        await self._ensure_authenticated()
+        session = await self._get_session()
+
+        all_data = []
+
+        try:
+            import gzip
+
+            # Download first chunk only (to save bandwidth/time)
+            # For full data, we'd loop through all chunks
+            chunk_file = chunk_files[0]
+            url = f"{base_url}{chunk_file}"
+
+            async with session.get(url) as response:
+                if response.status == 200:
+                    # Read raw bytes
+                    raw_data = await response.read()
+
+                    # Try to parse as plain JSON first
+                    try:
+                        data = json.loads(raw_data.decode('utf-8'))
+                    except (json.JSONDecodeError, UnicodeDecodeError):
+                        # If that fails, try gzip decompression
+                        try:
+                            decompressed = gzip.decompress(raw_data)
+                            data = json.loads(decompressed.decode('utf-8'))
+                        except Exception:
+                            return None
+
+                    if isinstance(data, list):
+                        all_data.extend(data)
+                    return all_data
+                else:
+                    print(f"⚠️ Failed to download chunk: {response.status}")
+                    return None
+
+        except Exception as e:
+            print(f"❌ Error downloading chunk data: {e}")
+            return None
+
+    async def get_series_average_incidents(self, season_id: int, car_class_id: int) -> Optional[float]:
+        """
+        Get average incidents per race for a series by sampling driver data.
+
+        Args:
+            season_id: Season ID
+            car_class_id: Car class ID
+
+        Returns:
+            Average incidents per race, or None if unavailable
+        """
+        try:
+            standings = await self.get_series_stats(season_id, car_class_id)
+
+            if not standings or 'chunk_info' in standings:
+                chunk_info = standings.get('chunk_info')
+                if chunk_info:
+                    driver_data = await self.download_chunk_data(chunk_info)
+
+                    if driver_data and len(driver_data) > 0:
+                        # Calculate average incidents from driver data
+                        total_incidents = 0
+                        total_races = 0
+
+                        for driver in driver_data[:100]:  # Sample first 100 drivers
+                            # Look for incident-related fields
+                            incidents = driver.get('incidents', 0) or driver.get('avg_incidents', 0)
+                            races = driver.get('starts', 1) or 1  # Avoid division by zero
+
+                            if incidents and races:
+                                total_incidents += incidents
+                                total_races += races
+
+                        if total_races > 0:
+                            avg_incidents = total_incidents / total_races
+                            return round(avg_incidents, 2)
+
+            return None
+
+        except Exception as e:
+            print(f"⚠️ Error calculating average incidents: {e}")
+            return None
+
     async def close(self):
         """Close the aiohttp session"""
         if self.session and not self.session.closed:

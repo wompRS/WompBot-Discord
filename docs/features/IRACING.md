@@ -8,9 +8,10 @@ Complete integration with iRacing's official API for driver stats, race schedule
 - **Driver Profiles** - View detailed stats across all license categories
 - **Driver Comparison** - Side-by-side visual comparisons with professional charts
 - **Rating History** - Track iRating and Safety Rating progression over time
+- **Series Popularity Analytics** - Daily participation snapshots power season/year/all-time trends
 - **Server Leaderboards** - Rankings for Discord server members by category
 - **Meta Analysis** - Best car performance data for any series/track combination
-- **Race Schedules** - Upcoming official races with series filtering
+- **Schedule Visualizations** - Series and category schedules rendered as polished tables
 - **Account Linking** - Connect Discord accounts to iRacing profiles
 - **Recent Results** - View latest race performance
 
@@ -190,34 +191,65 @@ View meta analysis showing best performing cars for a series.
 
 ---
 
-### `/iracing_schedule [series] [hours]`
-View upcoming official race schedule.
+### `/iracing_schedule [series] [category] [week]`
+Render race schedules as a polished table image.
 
 **Parameters:**
-- `series` (optional) - Filter by series name
-- `hours` (optional) - How many hours ahead to show (default: 24)
+- `series` (optional) - Series name (partial match supported, takes priority over category)
+- `category` (optional) - Show current-week highlights for Oval, Sports Car, Formula Car, Dirt Oval, or Dirt Road
+- `week` (optional) - `current`, `upcoming`, or `full` (default) to control how many weeks are shown
 
-**Example:**
+**Examples:**
 ```
-/iracing_schedule
-/iracing_schedule "GT3 Sprint Series"
-/iracing_schedule hours:48
+/iracing_schedule series:"IMSA Michelin Pilot Challenge"
+/iracing_schedule category:oval week:current
+/iracing_schedule week:upcoming
 ```
+
+**Output:**
+- High-resolution PNG table with track, dates, and car class details
+- Automatic fallbacks if historical data is still collecting
+- Category view highlights every active series for the selected discipline
 
 ---
 
-### `/iracing_series`
-List all active iRacing series and seasons.
+### `/iracing_series_popularity [time_range]`
+Show the most popular series by unique participants, backed by daily snapshots.
 
-**Example:**
+**Parameters:**
+- `time_range` (optional) - `season` (default), `yearly`, or `all_time`
+
+**Examples:**
 ```
-/iracing_series
+/iracing_series_popularity
+/iracing_series_popularity time_range:yearly
 ```
 
-**Shows:**
-- Series names
-- Current season information
-- Available categories
+**How it works:**
+- Season view requires at least **7 days** of data for the current quarter
+- Yearly view unlocks after **30 days** of snapshots
+- All-time view unlocks after **90 days** of snapshots
+- Falls back to the current season with a friendly notice until thresholds are met
+- Outputs an analytics-style chart ranked by participant counts
+
+---
+
+### `/iracing_season_schedule <series_name> [season]`
+View the full season track rotation for a series.
+
+**Parameters:**
+- `series_name` - Series name (partial match supported)
+- `season` (optional) - Specific season in `YYYY S#` format (defaults to current)
+
+**Examples:**
+```
+/iracing_season_schedule "GT3 Sprint Series"
+/iracing_season_schedule "IMSA Michelin Pilot Challenge" season:"2025 S1"
+```
+
+**Output:**
+- Discord embed listing every week and track layout
+- Automatically splits into multiple embeds for long seasons
 
 ---
 
@@ -232,6 +264,16 @@ View recent race results and performance.
 /iracing_results
 /iracing_results "Rinde Andrew"
 ```
+
+## Historical Participation Tracking & Caching
+
+- **Daily snapshots** store participant counts for every active series in `iracing_participation_history`.
+- **Weekly cache refreshes** pre-compute popularity rankings for season, yearly, and all-time views.
+- Commands automatically fall back to live API data until enough history is collected.
+- Keep the bot running to accumulate data; the longer it runs, the richer the analytics become.
+- Snapshot tasks respect rate limits by sampling up to 100 active series per day.
+
+---
 
 ## License Categories
 
