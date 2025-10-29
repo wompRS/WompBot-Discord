@@ -98,17 +98,16 @@ A Discord bot powered by OpenRouter LLMs (Hermes/Dolphin models) with conversati
 - **Driver Profiles**: View any iRacing driver's stats across all license categories
 - **Driver Comparison**: Side-by-side comparison charts with license ratings and career stats
 - **Rating History**: Track iRating and Safety Rating progression over time
+- **Series Popularity Analytics**: Daily participation snapshots power season/year/all-time charts
 - **Server Leaderboards**: See who's the fastest in your Discord server by category
 - **Meta Analysis**: View best cars for any series with performance statistics
 - **Account Linking**: Link your Discord account to your iRacing profile
-- **Race Schedule**: View upcoming official races across all series
-- **Series Information**: Browse all active iRacing series and seasons with autocomplete
+- **Race Schedule Visuals**: Generate schedule tables by series or category with week filters
 - **Recent Results**: Check recent race results and performance
 - **Smart Search**: Automatically finds drivers by name
 - **Category Autocomplete**: Easy selection of Oval, Sports Car, Formula Car, Dirt Oval, Dirt Road
 - **Professional Visualizations**: Charts matching iRacing Reports style
-- **Live Data**: Direct integration with iRacing's official API
-- **Response Caching**: Intelligent caching to minimize API requests
+- **Live Data + Background Caching**: Direct API integration with scheduled cache refreshes
 - **Optional Feature**: Only enabled if credentials are provided
 - **Zero Cost**: No LLM usage, pure API calls
 
@@ -236,8 +235,9 @@ docker-compose down
 - **/iracing_history [driver_name] [category] [days]**: View rating progression chart (default: 30 days)
 - **/iracing_server_leaderboard [category]**: Show iRating rankings for linked Discord members
 - **/iracing_meta <series> [season] [week] [track]**: View meta analysis showing best cars for a series
-- **/iracing_schedule [series] [hours]**: View upcoming race schedule (default: next 24 hours)
-- **/iracing_series**: List all active iRacing series and seasons
+- **/iracing_schedule [series] [category] [week]**: View schedules by series or category with chart output
+- **/iracing_series_popularity [time_range]**: Show most popular series (season/yearly/all_time) with charts
+- **/iracing_season_schedule <series_name> [season]**: View the full season track rotation
 - **/iracing_results [driver_name]**: View recent race results (uses linked account if no name provided)
 
 ### iRacing Team Management
@@ -251,7 +251,6 @@ docker-compose down
 - **/iracing_team_events <team_id>**: View upcoming events for a team
 - **/iracing_event_availability <event_id> <status> [notes]**: Mark your availability (available/unavailable/maybe/confirmed)
 - **/iracing_event_roster <event_id>**: View driver availability for an event
-- **/iracing_upcoming_races [hours] [series]**: Browse upcoming official iRacing races
 
 ### User Analytics & Leaderboards
 - **!stats [@user]**: View user statistics and behavior analysis
@@ -333,6 +332,7 @@ Use `/analyze` command to run analysis.
 - `iracing_team_events`: Scheduled team events (practice, races, endurance)
 - `iracing_driver_availability`: Driver availability per event
 - `iracing_stint_schedule`: Driver stint rotations for endurance races
+- `iracing_participation_history`: Daily participation snapshots for series popularity analytics
 - `user_consent`: GDPR consent tracking and versioning
 - `data_audit_log`: Complete audit trail (7-year retention)
 - `data_export_requests`: Data export request tracking
