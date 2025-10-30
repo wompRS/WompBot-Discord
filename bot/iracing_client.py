@@ -298,8 +298,24 @@ class iRacingClient:
             List of scheduled races
         """
         params = {'season_id': season_id}
-        response = await self._get("/data/series/race_guide", params)
-        return response.get('sessions', []) if response else []
+        response = await self._get("/data/season/race_guide", params)
+
+        if not response:
+            response = await self._get("/data/series/race_guide", params)
+
+        if not response:
+            return []
+
+        if isinstance(response, list):
+            return response
+
+        if isinstance(response, dict):
+            if 'sessions' in response and isinstance(response['sessions'], list):
+                return response['sessions']
+            if 'races' in response and isinstance(response['races'], list):
+                return response['races']
+
+        return []
 
     async def get_current_series(self) -> Optional[List[Dict]]:
         """

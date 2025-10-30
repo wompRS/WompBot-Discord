@@ -666,10 +666,13 @@ class iRacingIntegration:
         Returns:
             Track name with config, or "Unknown Track" if not found
         """
-        tracks = await self.get_tracks()
+        tracks = await self.get_all_tracks()
 
         for track in tracks:
-            if track.get('track_id') == track_id:
+            tid = track.get('track_id')
+            if isinstance(tid, str) and tid.isdigit():
+                tid = int(tid)
+            if tid == track_id:
                 track_name = track.get('track_name', 'Unknown Track')
                 config_name = track.get('config_name', '')
 
@@ -679,6 +682,183 @@ class iRacingIntegration:
                 return track_name
 
         return "Unknown Track"
+
+    async def _enrich_schedule_entries(self, schedule_entries: List[Dict]) -> List[Dict]:
+        """Normalize schedule entries and attach friendly track metadata."""
+        if not schedule_entries:
+            return []
+
+        tracks = await self.get_all_tracks()
+        track_lookup_by_id: Dict[int, Dict] = {}
+        track_lookup_by_config: Dict[tuple, Dict] = {}
+
+        for track in tracks:
+            track_id = track.get('track_id')
+            if isinstance(track_id, str) and track_id.isdigit():
+                track_id = int(track_id)
+            if track_id is None:
+                continue
+
+            track_lookup_by_id.setdefault(track_id, track)
+
+            config_id = track.get('track_config') or track.get('track_config_id')
+            if isinstance(config_id, str) and config_id.isdigit():
+                config_id = int(config_id)
+            if config_id is not None:
+                track_lookup_by_config[(track_id, config_id)] = track
+
+            config_name = track.get('config_name') or track.get('track_config_name')
+            if config_name:
+                track_lookup_by_config[(track_id, config_name.strip().lower())] = track
+
+        print(f"🧪 Raw schedule entries received: {len(schedule_entries)}")
+        unique_weeks: Dict[int, Dict] = {}
+
+        def _is_unknown(entry: Dict) -> bool:
+            track_name = entry.get('track_name')
+            return not track_name or track_name == "Unknown Track"
+
+        def _parse_date(value):
+            if not value:
+                return None
+            try:
+                if isinstance(value, (int, float)):
+                    return datetime.fromtimestamp(value)
+                cleaned = str(value).replace("Z", "+00:00")
+                return datetime.fromisoformat(cleaned)
+            except Exception:
+                return None
+
+        for index, raw_entry in enumerate(schedule_entries):
+            entry = dict(raw_entry)
+
+            if index < 3:
+                print(f"📄 Raw entry {index}: {entry}")
+
+            week_num = entry.get('race_week_num')
+            if week_num in (None, ''):
+                week_num = entry.get('race_week_number')
+            if week_num in (None, ''):
+                week_num = entry.get('week')
+            if week_num in (None, ''):
+                week_num = entry.get('raceweeknum')
+
+            if isinstance(week_num, str):
+                digits = ''.join(ch for ch in week_num if ch.isdigit())
+                if digits:
+                    week_num = int(digits)
+                else:
+                    try:
+                        week_num = int(float(week_num))
+                    except (ValueError, TypeError):
+                        week_num = None
+
+            if isinstance(week_num, float):
+                week_num = int(week_num)
+
+            if week_num is None:
+                week_num = index
+
+            entry['race_week_num'] = week_num
+
+            track_info = entry.get('track') or {}
+            if not isinstance(track_info, dict):
+                track_info = {}
+
+            track_id = (
+                track_info.get('track_id')
+                or entry.get('track_id')
+                or entry.get('trackid')
+                or entry.get('track')
+            )
+            if isinstance(track_id, str) and track_id.isdigit():
+                track_id = int(track_id)
+
+            config_name = (
+                track_info.get('config_name')
+                or track_info.get('track_config_name')
+                or entry.get('config_name')
+                or entry.get('track_config_name')
+                or entry.get('config')
+                or ''
+            )
+
+            track_config_id = (
+                track_info.get('track_config')
+                or track_info.get('track_config_id')
+                or entry.get('track_config')
+                or entry.get('track_config_id')
+                or entry.get('config_id')
+            )
+            if isinstance(track_config_id, str) and track_config_id.isdigit():
+                track_config_id = int(track_config_id)
+
+            base_name = (
+                track_info.get('track_name')
+                or entry.get('track_name')
+            )
+
+            track_data = None
+            if isinstance(track_id, int):
+                track_data = track_lookup_by_id.get(track_id)
+
+                if track_config_id is not None:
+                    track_data = track_lookup_by_config.get((track_id, track_config_id), track_data)
+
+                if not track_data and config_name:
+                    track_data = track_lookup_by_config.get((track_id, config_name.strip().lower()), track_data)
+
+                if track_data:
+                    base_name = base_name or track_data.get('track_name')
+                    config_name = config_name or track_data.get('config_name') or track_data.get('track_config_name') or ''
+
+            if not base_name and isinstance(track_id, int):
+                track_display = await self.get_track_name(track_id)
+                if " - " in track_display:
+                    base_name, config_name = track_display.split(" - ", 1)
+                else:
+                    base_name = track_display
+
+            display_name = base_name or "Unknown Track"
+            if config_name and config_name not in display_name:
+                display_name = f"{display_name} - {config_name}"
+
+            normalized_track = dict(track_info)
+            normalized_track['track_id'] = track_id
+            normalized_track['track_name'] = base_name or display_name
+            normalized_track['config_name'] = config_name
+            normalized_track['track_config'] = track_config_id
+            normalized_track['display_name'] = display_name
+
+            entry['track'] = normalized_track
+            entry['track_name'] = display_name
+            entry['track_layout'] = config_name
+
+            existing = unique_weeks.get(week_num)
+            if existing:
+                existing_unknown = _is_unknown(existing)
+                current_unknown = _is_unknown(entry)
+
+                if existing_unknown and not current_unknown:
+                    unique_weeks[week_num] = entry
+                elif existing_unknown == current_unknown:
+                    existing_date = _parse_date(existing.get('start_date') or existing.get('start_time'))
+                    current_date = _parse_date(entry.get('start_date') or entry.get('start_time'))
+
+                    if existing_date and current_date:
+                        if current_date < existing_date:
+                            unique_weeks[week_num] = entry
+                    elif not existing_date and current_date:
+                        unique_weeks[week_num] = entry
+            else:
+                unique_weeks[week_num] = entry
+
+            if len(unique_weeks) <= 5:
+                print(f"➡️ Week {week_num} track_id={track_id} config={track_config_id} name='{display_name}'")
+
+        weeks = [unique_weeks[key] for key in sorted(unique_weeks.keys())]
+        print(f"🧮 Normalized to {len(weeks)} unique weeks")
+        return weeks[:12]
 
     async def get_series_schedule(self, series_id: int, season_id: int) -> List[Dict]:
         """
@@ -691,6 +871,7 @@ class iRacingIntegration:
         Returns:
             List of schedule entries (one per week)
         """
+        print(f"📣 Fetching schedule for series_id={series_id}, season_id={season_id}")
         cache_key = f'schedule_{series_id}_{season_id}'
         cached = self._get_cache(cache_key)
         if cached:
@@ -698,8 +879,29 @@ class iRacingIntegration:
             return cached
 
         try:
-            # Get all series seasons
             client = await self._get_client()
+
+            # Try race guide endpoint first for detailed historical data
+            try:
+                race_sessions = await client.get_series_race_schedule(season_id)
+                print(f"📦 Race guide returned {len(race_sessions) if race_sessions else 0} sessions")
+            except Exception as e:
+                print(f"⚠️ Race guide lookup failed for season {season_id}: {e}")
+                race_sessions = None
+
+            if race_sessions:
+                filtered_sessions = [s for s in race_sessions if s.get('series_id') == series_id and s.get('season_id') == season_id]
+                if filtered_sessions:
+                    print(f"🧭 Race guide sessions after filtering: {len(filtered_sessions)}")
+                    enriched = await self._enrich_schedule_entries(filtered_sessions)
+                    if enriched and len(enriched) >= 12 and all(e.get('track_name') != 'Unknown Track' for e in enriched):
+                        self._set_cache(cache_key, enriched, ttl_minutes=60)
+                        return enriched
+                    else:
+                        print(f"ℹ️ Race guide returned {len(enriched) if enriched else 0} usable weeks; falling back to season schedules")
+                else:
+                    print("ℹ️ Race guide returned no sessions for requested series/season")
+
             print(f"🔍 Getting series seasons data")
             all_seasons = await client.get_series_seasons()
 
@@ -721,10 +923,28 @@ class iRacingIntegration:
             # Extract schedules from the season
             schedules = target_season.get('schedules', [])
             print(f"📅 Found {len(schedules)} schedule entries for season {season_id}")
-
             if schedules:
-                self._set_cache(cache_key, schedules, ttl_minutes=60)
-                return schedules
+                print(f"🧾 Season schedule sample: {schedules[0]}")
+
+            filtered_schedules: List[Dict] = []
+            for schedule_entry in schedules:
+                schedule_series_id = schedule_entry.get('series_id') or schedule_entry.get('seriesid')
+                if isinstance(schedule_series_id, str) and schedule_series_id.isdigit():
+                    schedule_series_id = int(schedule_series_id)
+
+                if schedule_series_id == series_id:
+                    filtered_schedules.append(schedule_entry)
+
+            if filtered_schedules:
+                print(f"✅ Filtered to {len(filtered_schedules)} schedule entries for series {series_id}")
+            elif schedules:
+                print(f"⚠️ No schedule entries matched series_id {series_id}; using all {len(schedules)} entries")
+                filtered_schedules = schedules
+
+            if filtered_schedules:
+                enriched = await self._enrich_schedule_entries(filtered_schedules)
+                self._set_cache(cache_key, enriched, ttl_minutes=60)
+                return enriched
 
             return []
 

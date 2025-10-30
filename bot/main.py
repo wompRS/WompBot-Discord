@@ -1,3 +1,4 @@
+import re
 import discord
 from discord import app_commands
 from discord.ext import commands, tasks
@@ -3313,6 +3314,40 @@ def season_id_to_year_quarter(season_id: int) -> str:
 
     return f"{year} S{quarter}"
 
+def season_string_to_id(season_str: str) -> int:
+    """
+    Convert a human-friendly season label (e.g., "2025 S1") into the numeric season_id.
+
+    Accepts forms like "2025 S1", "2025 season 1", or the raw numeric id.
+    """
+    if not season_str:
+        raise ValueError("Season string cannot be empty")
+
+    normalized = season_str.strip().upper()
+
+    if normalized.isdigit():
+        return int(normalized)
+
+    normalized = normalized.replace("SEASON", "S")
+    normalized = re.sub(r"\s+", "", normalized)
+
+    match = re.match(r"^(\d{4})S([1-4])$", normalized)
+    if not match:
+        raise ValueError(f"Invalid season format '{season_str}'. Use values like '2025 S1'.")
+
+    year = int(match.group(1))
+    quarter = int(match.group(2))
+
+    reference_season = 5513  # 2025 Season 1
+    reference_year = 2025
+    reference_quarter = 1
+
+    years_offset = year - reference_year
+    quarters_offset = quarter - reference_quarter
+    total_offset = years_offset * 4 + quarters_offset
+
+    return reference_season + total_offset
+
 async def season_autocomplete(
     interaction: discord.Interaction,
     current: str,
@@ -3402,6 +3437,34 @@ async def season_autocomplete(
             season_choices.append(app_commands.Choice(name=year_quarter, value=season_id))
 
         return season_choices[:10]
+
+async def season_label_autocomplete(
+    interaction: discord.Interaction,
+    current: str,
+) -> list[app_commands.Choice[str]]:
+    """
+    Wrapper around season_autocomplete that returns string labels (e.g., '2025 S1').
+    Useful for commands that accept the human-readable label instead of the raw ID.
+    """
+    base_choices = await season_autocomplete(interaction, current)
+
+    label_choices: list[app_commands.Choice[str]] = []
+    seen_labels: set[str] = set()
+
+    for choice in base_choices:
+        season_id = choice.value
+        try:
+            label = season_id_to_year_quarter(season_id)
+        except Exception:
+            continue
+
+        if label in seen_labels:
+            continue
+
+        label_choices.append(app_commands.Choice(name=choice.name, value=label))
+        seen_labels.add(label)
+
+    return label_choices[:25]
 
 async def track_autocomplete(
     interaction: discord.Interaction,
@@ -3742,6 +3805,10 @@ async def iracing_results(interaction: discord.Interaction, driver_name: str = N
     series_name="Series name",
     season="Season (e.g., '2025 S1', optional - uses current if not specified)"
 )
+@app_commands.autocomplete(
+    series_name=series_autocomplete,
+    season=season_label_autocomplete
+)
 async def iracing_season_schedule(interaction: discord.Interaction, series_name: str, season: str = None):
     """View complete season track rotation"""
     if not iracing:
@@ -3773,8 +3840,11 @@ async def iracing_season_schedule(interaction: discord.Interaction, series_name:
 
         # If season not specified, use current
         if season:
-            # Parse season string to find season_id
-            season_id = season_string_to_id(season)
+            try:
+                season_id = season_string_to_id(season)
+            except ValueError as err:
+                await interaction.followup.send(f"❌ {err}")
+                return
         else:
             season_id = series_match.get('season_id')
 
@@ -3792,8 +3862,11 @@ async def iracing_season_schedule(interaction: discord.Interaction, series_name:
             color=discord.Color.blue()
         )
 
-        # Group by week and display
-        for i, week in enumerate(schedule[:12]):  # First 12 weeks
+        # Discord embeds can only contain up to 25 fields. Display the first 25 weeks inline
+        # and send any remaining weeks as simple text blocks.
+        display_limit = min(len(schedule), 12)
+
+        for i, week in enumerate(schedule[:display_limit]):
             week_num = week.get('race_week_num', i)
             track_name = week.get('track_name', 'Unknown Track')
             layout = week.get('track_layout', '')
@@ -3809,21 +3882,15 @@ async def iracing_season_schedule(interaction: discord.Interaction, series_name:
                 inline=True
             )
 
-        # If more than 12 weeks, add second embed
-        if len(schedule) > 12:
-            embed.set_footer(text=f"Showing first 12 of {len(schedule)} weeks")
+        if len(schedule) > display_limit:
+            embed.set_footer(text=f"Showing first {display_limit} of {len(schedule)} weeks")
 
         await interaction.followup.send(embed=embed)
 
-        # Send second embed if needed
-        if len(schedule) > 12:
-            embed2 = discord.Embed(
-                title=f"📅 {series_full_name} (continued)",
-                description="Remaining weeks",
-                color=discord.Color.blue()
-            )
-
-            for i, week in enumerate(schedule[12:], start=12):
+        # Send any remaining weeks as plain text to avoid exceeding the 25-field limit
+        if len(schedule) > display_limit:
+            remaining_lines = []
+            for i, week in enumerate(schedule[display_limit:], start=display_limit):
                 week_num = week.get('race_week_num', i)
                 track_name = week.get('track_name', 'Unknown Track')
                 layout = week.get('track_layout', '')
@@ -3833,13 +3900,26 @@ async def iracing_season_schedule(interaction: discord.Interaction, series_name:
                 else:
                     track_display = track_name
 
-                embed2.add_field(
-                    name=f"Week {week_num + 1}",
-                    value=track_display,
-                    inline=True
-                )
+                remaining_lines.append(f"Week {week_num + 1}: {track_display}")
 
-            await interaction.followup.send(embed=embed2)
+            chunks = []
+            chunk = []
+            total_chars = 0
+
+            for line in remaining_lines:
+                if total_chars + len(line) + 1 > 1900:  # keep a little buffer under 2000
+                    chunks.append("\n".join(chunk))
+                    chunk = [line]
+                    total_chars = len(line)
+                else:
+                    chunk.append(line)
+                    total_chars += len(line) + 1
+
+            if chunk:
+                chunks.append("\n".join(chunk))
+
+            for text_chunk in chunks:
+                await interaction.followup.send(f"```\n{text_chunk}\n```")
 
     except Exception as e:
         await interaction.followup.send(f"❌ Error getting schedule: {str(e)}")
