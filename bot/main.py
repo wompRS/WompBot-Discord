@@ -4,7 +4,8 @@ from discord import app_commands
 from discord.ext import commands, tasks
 import os
 from datetime import datetime, timedelta, timezone
-from typing import List, Tuple
+from typing import List, Tuple, Optional, Dict
+from collections import Counter
 from database import Database
 from llm import LLMClient
 from search import SearchEngine
@@ -4092,13 +4093,40 @@ async def iracing_server_leaderboard(interaction: discord.Interaction, category:
         traceback.print_exc()
 
 
-@bot.tree.command(name="iracing_history", description="View your iRating and Safety Rating history from recent races")
+IRACING_HISTORY_TIMEFRAMES = {
+    "day": ("Last 24 Hours", timedelta(days=1)),
+    "week": ("Last 7 Days", timedelta(days=7)),
+    "month": ("Last 30 Days", timedelta(days=30)),
+    "season": ("Last Season", timedelta(weeks=12)),
+    "year": ("Last Year", timedelta(days=365)),
+    "all": ("Recent History", None),
+}
+
+
+@bot.tree.command(
+    name="iracing_history",
+    description="Analyze rating and safety trends across your recent races",
+)
 @app_commands.describe(
     driver_name="iRacing display name (optional if you've linked your account)",
-    days="Number of days of history to show (default: 30)"
+    timeframe="Time range to analyze (default: Last 7 Days)",
 )
-async def iracing_history(interaction: discord.Interaction, driver_name: str = None, days: int = 30):
-    """View rating progression chart"""
+@app_commands.choices(
+    timeframe=[
+        app_commands.Choice(name="Last 24 Hours", value="day"),
+        app_commands.Choice(name="Last 7 Days", value="week"),
+        app_commands.Choice(name="Last 30 Days", value="month"),
+        app_commands.Choice(name="Last Season (~12 weeks)", value="season"),
+        app_commands.Choice(name="Last Year", value="year"),
+        app_commands.Choice(name="All Recent Races", value="all"),
+    ]
+)
+async def iracing_history(
+    interaction: discord.Interaction,
+    driver_name: str = None,
+    timeframe: Optional[app_commands.Choice[str]] = None,
+):
+    """Render a performance dashboard with iRating/Safety trends and key stats."""
     if not iracing or not iracing_viz:
         await interaction.response.send_message("❌ iRacing integration is not configured on this bot")
         return
@@ -4109,7 +4137,12 @@ async def iracing_history(interaction: discord.Interaction, driver_name: str = N
         cust_id = None
         display_name = driver_name
 
-        # If no driver name provided, check for linked account
+        timeframe_key = timeframe.value if timeframe else "week"
+        timeframe_label, delta = IRACING_HISTORY_TIMEFRAMES.get(
+            timeframe_key, IRACING_HISTORY_TIMEFRAMES["week"]
+        )
+
+        # Resolve driver identity
         if not driver_name:
             linked = await iracing.get_linked_iracing_id(interaction.user.id)
             if linked:
@@ -4121,9 +4154,8 @@ async def iracing_history(interaction: discord.Interaction, driver_name: str = N
                 )
                 return
         else:
-            # Search for driver
             results = await iracing.search_driver(driver_name)
-            if not results or len(results) == 0:
+            if not results:
                 await interaction.followup.send(
                     f"❌ No driver found with name '{driver_name}'\n"
                     f"💡 Tip: Try the driver's customer ID for reliable results"
@@ -4132,103 +4164,170 @@ async def iracing_history(interaction: discord.Interaction, driver_name: str = N
             cust_id = results[0].get('cust_id')
             display_name = results[0].get('display_name', driver_name)
 
-        # Get recent races to build history from
-        races = await iracing.get_driver_recent_races(cust_id, limit=min(days, 50))
-
-        if not races or len(races) == 0:
+        races = await iracing.get_driver_recent_races(cust_id, limit=200)
+        if not races:
             await interaction.followup.send(f"❌ No race history found for {display_name}")
             return
 
-        # Extract rating history from ALL races (don't filter by category - it's unreliable)
-        history_data = []
+        now = datetime.now(timezone.utc)
+        cutoff = now - delta if delta else None
 
-        for race in reversed(races):  # Oldest first
-            # Only include races with rating data
-            if 'newi_rating' in race and race.get('newi_rating'):
-                history_data.append({
-                    'date': race.get('session_start_time', 'Unknown'),
-                    'irating': race.get('newi_rating', 0),
-                    'safety_rating': race.get('new_sub_level', 0) / 100.0 if race.get('new_sub_level') else 0
-                })
+        def parse_race_start(race: Dict) -> Optional[datetime]:
+            for key in ("session_start_time", "start_time", "start_time_utc"):
+                raw = race.get(key)
+                if raw is None:
+                    continue
+                if isinstance(raw, (int, float)):
+                    return datetime.fromtimestamp(raw, tz=timezone.utc)
+                if isinstance(raw, str):
+                    try:
+                        dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+                    except ValueError:
+                        try:
+                            dt = datetime.strptime(raw, "%Y-%m-%d %H:%M:%S")
+                        except ValueError:
+                            continue
+                        dt = dt.replace(tzinfo=timezone.utc)
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=timezone.utc)
+                    else:
+                        dt = dt.astimezone(timezone.utc)
+                    return dt
+            return None
 
-        if len(history_data) == 0:
-            await interaction.followup.send("❌ Not enough rating history data available")
+        def to_int(value):
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                return None
+
+        processed: List[Dict] = []
+        for race in races:
+            start_dt = parse_race_start(race)
+            if start_dt is None:
+                continue
+            if cutoff and start_dt < cutoff:
+                continue
+            race_copy = dict(race)
+            race_copy["_start_dt"] = start_dt
+            processed.append(race_copy)
+
+        if not processed:
+            await interaction.followup.send(
+                f"❌ No races for {display_name} in the selected timeframe ({timeframe_label})."
+            )
             return
 
-        # Generate chart
-        image_buffer = iracing_viz.create_rating_history_chart(display_name, history_data, "All Races")
+        processed.sort(key=lambda r: r["_start_dt"])
 
-        # Send as Discord file attachment
+        total_races = len(processed)
+        finish_values = []
+        incident_values = []
+        ir_changes = []
+        sr_changes = []
+        series_counter: Counter[str] = Counter()
+        car_counter: Counter[str] = Counter()
+        rating_points: List[Dict] = []
+
+        baseline_added = False
+        for race in processed:
+            start_dt = race["_start_dt"]
+            finish = to_int(race.get("finish_position"))
+            if finish is not None:
+                finish_values.append(finish)
+            incidents = to_int(race.get("incidents"))
+            if incidents is not None:
+                incident_values.append(incidents)
+
+            old_ir = to_int(race.get("oldi_rating"))
+            new_ir = to_int(race.get("newi_rating"))
+            old_sr_raw = to_int(race.get("old_sub_level"))
+            new_sr_raw = to_int(race.get("new_sub_level"))
+
+            if not baseline_added and old_ir is not None and old_sr_raw is not None:
+                rating_points.append({
+                    "date": start_dt - timedelta(seconds=1),
+                    "irating": old_ir,
+                    "safety_rating": old_sr_raw / 100.0,
+                })
+                baseline_added = True
+
+            if new_ir is not None and old_ir is not None:
+                ir_changes.append(new_ir - old_ir)
+            if new_sr_raw is not None and old_sr_raw is not None:
+                sr_changes.append((new_sr_raw - old_sr_raw) / 100.0)
+
+            sr_for_point = None
+            if new_sr_raw is not None:
+                sr_for_point = new_sr_raw / 100.0
+            elif old_sr_raw is not None:
+                sr_for_point = old_sr_raw / 100.0
+
+            if new_ir is not None and sr_for_point is not None:
+                rating_points.append({
+                    "date": start_dt,
+                    "irating": new_ir,
+                    "safety_rating": sr_for_point,
+                })
+            elif new_ir is not None:
+                rating_points.append({
+                    "date": start_dt,
+                    "irating": new_ir,
+                    "safety_rating": sr_for_point or 0.0,
+                })
+
+            series_name = (race.get("series_name") or race.get("series") or "Unknown Series").strip()
+            series_counter[series_name] += 1
+
+            car_name = (
+                race.get("car_name")
+                or race.get("display_car_name")
+                or race.get("car")
+                or "Unknown Car"
+            )
+            car_counter[str(car_name).strip()] += 1
+
+        if not rating_points:
+            await interaction.followup.send(
+                f"❌ Not enough rating data available for {display_name} in {timeframe_label}."
+            )
+            return
+
+        wins = sum(1 for value in finish_values if value == 1)
+        podiums = sum(1 for value in finish_values if value is not None and value <= 3)
+        avg_finish = sum(finish_values) / len(finish_values) if finish_values else 0
+        avg_incidents = sum(incident_values) / len(incident_values) if incident_values else 0
+        total_ir_change = sum(ir_changes)
+        total_sr_change = sum(sr_changes)
+
+        summary_stats = {
+            "timeframe_label": timeframe_label,
+            "total_races": total_races,
+            "wins": wins,
+            "podiums": podiums,
+            "avg_finish": avg_finish,
+            "avg_incidents": avg_incidents,
+            "ir_change": total_ir_change,
+            "sr_change": total_sr_change,
+            "ir_per_race": total_ir_change / total_races if total_races else 0.0,
+            "sr_per_race": total_sr_change / total_races if total_races else 0.0,
+            "series_counts": series_counter.most_common(5),
+            "car_counts": car_counter.most_common(5),
+        }
+
+        image_buffer = iracing_viz.create_rating_performance_dashboard(
+            display_name,
+            timeframe_label,
+            rating_points,
+            summary_stats,
+        )
+
         file = discord.File(fp=image_buffer, filename=f"rating_history_{cust_id}.png")
         await interaction.followup.send(file=file)
 
     except Exception as e:
-        await interaction.followup.send(f"❌ Error getting rating history: {str(e)}")
+        await interaction.followup.send(f"❌ Error generating history dashboard: {str(e)}")
         print(f"❌ iRacing history error: {e}")
-        import traceback
-        traceback.print_exc()
-
-
-@bot.tree.command(name="iracing_recent", description="View dashboard of your recent race performance")
-@app_commands.describe(
-    driver_name="iRacing display name (optional if you've linked your account)",
-    limit="Number of recent races to analyze (default: 10, max: 20)"
-)
-async def iracing_recent(interaction: discord.Interaction, driver_name: str = None, limit: int = 10):
-    """View recent races dashboard"""
-    if not iracing or not iracing_viz:
-        await interaction.response.send_message("❌ iRacing integration is not configured on this bot")
-        return
-
-    await interaction.response.defer()
-
-    try:
-        cust_id = None
-        display_name = driver_name
-
-        # If no driver name provided, check for linked account
-        if not driver_name:
-            linked = await iracing.get_linked_iracing_id(interaction.user.id)
-            if linked:
-                cust_id, display_name = linked
-            else:
-                await interaction.followup.send(
-                    "❌ No driver name provided and no linked account found.\n"
-                    "Use `/iracing_link` to link your account or provide a driver name."
-                )
-                return
-        else:
-            # Search for driver
-            results = await iracing.search_driver(driver_name)
-            if not results or len(results) == 0:
-                await interaction.followup.send(
-                    f"❌ No driver found with name '{driver_name}'\n"
-                    f"💡 Tip: Try the driver's customer ID for reliable results"
-                )
-                return
-            cust_id = results[0].get('cust_id')
-            display_name = results[0].get('display_name', driver_name)
-
-        # Limit to reasonable number
-        limit = min(max(limit, 1), 20)
-
-        # Get recent races
-        races = await iracing.get_driver_recent_races(cust_id, limit=limit)
-
-        if not races or len(races) == 0:
-            await interaction.followup.send(f"❌ No recent races found for {display_name}")
-            return
-
-        # Generate dashboard
-        image_buffer = iracing_viz.create_recent_races_dashboard(display_name, races)
-
-        # Send as Discord file attachment
-        file = discord.File(fp=image_buffer, filename=f"recent_races_{cust_id}.png")
-        await interaction.followup.send(file=file)
-
-    except Exception as e:
-        await interaction.followup.send(f"❌ Error generating dashboard: {str(e)}")
-        print(f"❌ iRacing recent error: {e}")
         import traceback
         traceback.print_exc()
 
