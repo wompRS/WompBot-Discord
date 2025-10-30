@@ -6,6 +6,7 @@ Creates charts and graphics matching iracingreports.com style
 import matplotlib
 matplotlib.use('Agg')  # Non-interactive backend for server
 import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
 import seaborn as sns
 import numpy as np
 import pandas as pd
@@ -234,6 +235,256 @@ class iRacingVisualizer:
         plt.close()
         buffer.seek(0)
 
+        return buffer
+
+    def create_rating_performance_dashboard(
+        self,
+        driver_name: str,
+        timeframe_label: str,
+        rating_points: List[Dict],
+        summary_stats: Dict,
+    ) -> BytesIO:
+        """Create combined rating history and performance summary dashboard."""
+        if not rating_points:
+            fig, ax = plt.subplots(figsize=(10, 6), facecolor=self.COLORS['bg_dark'])
+            ax.text(
+                0.5,
+                0.5,
+                "No rating data available for the selected timeframe",
+                ha='center',
+                va='center',
+                fontsize=16,
+                color=self.COLORS['text_white'],
+            )
+            ax.axis('off')
+            buffer = BytesIO()
+            plt.savefig(buffer, format='png', dpi=150, facecolor=self.COLORS['bg_dark'])
+            plt.close()
+            buffer.seek(0)
+            return buffer
+
+        rating_points = sorted(rating_points, key=lambda p: p['date'])
+        dates = [point['date'] for point in rating_points]
+        date_nums = mdates.date2num(dates)
+        ir_values = [point['irating'] for point in rating_points]
+        sr_values = [point['safety_rating'] for point in rating_points]
+
+        fig = plt.figure(figsize=(16, 9.5), facecolor=self.COLORS['bg_dark'])
+        fig.suptitle(
+            f"{driver_name} • Performance Overview ({timeframe_label})",
+            fontsize=22,
+            fontweight='bold',
+            color=self.COLORS['text_white'],
+            y=0.94,
+        )
+
+        gs = fig.add_gridspec(
+            2,
+            3,
+            height_ratios=[2.5, 1.3],
+            width_ratios=[2.4, 1.2, 1.2],
+            hspace=0.32,
+            wspace=0.28,
+            left=0.06,
+            right=0.97,
+            top=0.9,
+            bottom=0.08,
+        )
+
+        # Rating history
+        ax_line = fig.add_subplot(gs[0, :])
+        ax_line.set_facecolor(self.COLORS['bg_card'])
+        ax_line.plot(
+            date_nums,
+            ir_values,
+            color=self.COLORS['accent_blue'],
+            linewidth=3.2,
+            marker='o',
+            markersize=7,
+            markeredgecolor='white',
+            markeredgewidth=2,
+            label='iRating',
+        )
+        ax_line.fill_between(
+            date_nums,
+            ir_values,
+            alpha=0.12,
+            color=self.COLORS['accent_blue'],
+        )
+        ax_line.set_ylabel("iRating", fontsize=13, color=self.COLORS['accent_blue'], fontweight='bold')
+        ax_line.tick_params(axis='y', labelcolor=self.COLORS['accent_blue'], labelsize=11)
+        ax_line.tick_params(axis='x', labelcolor=self.COLORS['text_gray'], labelsize=10, rotation=35)
+        ax_line.grid(True, alpha=0.15, color=self.COLORS['text_gray'], linestyle='--', linewidth=0.6)
+        ax_line.xaxis.set_major_locator(mdates.AutoDateLocator(minticks=4, maxticks=10))
+        ax_line.xaxis.set_major_formatter(mdates.DateFormatter('%b %d'))
+        fig.autofmt_xdate()
+
+        ax_sr = ax_line.twinx()
+        ax_sr.plot(
+            date_nums,
+            sr_values,
+            color=self.COLORS['accent_green'],
+            linewidth=3.2,
+            linestyle='--',
+            marker='D',
+            markersize=6,
+            markeredgecolor='white',
+            markeredgewidth=2,
+            label='Safety Rating',
+        )
+        ax_sr.fill_between(
+            date_nums,
+            sr_values,
+            alpha=0.1,
+            color=self.COLORS['accent_green'],
+        )
+        ax_sr.set_ylabel("Safety Rating", fontsize=13, color=self.COLORS['accent_green'], fontweight='bold')
+        ax_sr.tick_params(axis='y', labelcolor=self.COLORS['accent_green'], labelsize=11)
+
+        lines1, labels1 = ax_line.get_legend_handles_labels()
+        lines2, labels2 = ax_sr.get_legend_handles_labels()
+        ax_line.legend(
+            lines1 + lines2,
+            labels1 + labels2,
+            loc='upper left',
+            facecolor=self.COLORS['bg_dark'],
+            edgecolor=self.COLORS['accent_gold'],
+            fontsize=11,
+            framealpha=0.9,
+        )
+
+        # Summary stats
+        summary_ax = fig.add_subplot(gs[1, 0])
+        summary_ax.axis('off')
+        summary_ax.set_facecolor(self.COLORS['bg_card'])
+        summary_ax.set_xlim(0, 1)
+        summary_ax.set_ylim(0, 1)
+
+        total_races = summary_stats.get('total_races', 0)
+        wins = summary_stats.get('wins', 0)
+        podiums = summary_stats.get('podiums', 0)
+        avg_finish = summary_stats.get('avg_finish', 0.0)
+        avg_incidents = summary_stats.get('avg_incidents', 0.0)
+        ir_change = summary_stats.get('ir_change', 0.0)
+        sr_change = summary_stats.get('sr_change', 0.0)
+        ir_per_race = summary_stats.get('ir_per_race', 0.0)
+        sr_per_race = summary_stats.get('sr_per_race', 0.0)
+
+        summary_ax.text(
+            0.03,
+            0.78,
+            f"Total Races: {total_races}",
+            fontsize=14,
+            fontweight='bold',
+            color=self.COLORS['text_white'],
+        )
+        summary_ax.text(
+            0.03,
+            0.6,
+            f"Wins: {wins}  |  Podiums: {podiums}  |  Avg Finish: P{avg_finish:.1f}",
+            fontsize=13,
+            color=self.COLORS['text_white'],
+        )
+        summary_ax.text(
+            0.03,
+            0.44,
+            f"Avg Incidents: {avg_incidents:.1f} per race",
+            fontsize=13,
+            color=self.COLORS['text_white'],
+        )
+
+        ir_color = self.COLORS['accent_green'] if ir_change >= 0 else self.COLORS['accent_red']
+        sr_color = self.COLORS['accent_green'] if sr_change >= 0 else self.COLORS['accent_red']
+        summary_ax.text(
+            0.03,
+            0.26,
+            f"iRating Change: {ir_change:+} (avg {ir_per_race:+.1f}/race)",
+            fontsize=13,
+            color=ir_color,
+            fontweight='bold',
+        )
+        summary_ax.text(
+            0.03,
+            0.1,
+            f"Safety Rating Change: {sr_change:+.2f} (avg {sr_per_race:+.3f}/race)",
+            fontsize=13,
+            color=sr_color,
+            fontweight='bold',
+        )
+
+        # Series distribution
+        series_ax = fig.add_subplot(gs[1, 1])
+        series_ax.set_facecolor(self.COLORS['bg_card'])
+        series_ax.spines['top'].set_visible(False)
+        series_ax.spines['right'].set_visible(False)
+        series_ax.set_title("Most Frequent Series", fontsize=13, color=self.COLORS['text_white'], pad=10)
+        series_ax.tick_params(colors=self.COLORS['text_gray'])
+
+        series_data = summary_stats.get('series_counts') or []
+        if series_data:
+            series_labels = [name if len(name) <= 28 else f"{name[:25]}..." for name, _ in series_data][:5]
+            series_values = [count for _, count in series_data][:5]
+            series_labels = series_labels[::-1]
+            series_values = series_values[::-1]
+            series_ax.barh(range(len(series_labels)), series_values, color=self.COLORS['accent_blue'], alpha=0.8)
+            series_ax.set_yticks(range(len(series_labels)))
+            series_ax.set_yticklabels(series_labels, fontsize=11, color=self.COLORS['text_white'])
+            series_ax.set_xlabel("Races", fontsize=11, color=self.COLORS['text_gray'])
+        else:
+            series_ax.text(
+                0.5,
+                0.5,
+                "Insufficient data",
+                ha='center',
+                va='center',
+                fontsize=12,
+                color=self.COLORS['text_gray'],
+            )
+            series_ax.set_xticks([])
+            series_ax.set_yticks([])
+
+        # Car distribution
+        car_ax = fig.add_subplot(gs[1, 2])
+        car_ax.set_facecolor(self.COLORS['bg_card'])
+        car_ax.spines['top'].set_visible(False)
+        car_ax.spines['right'].set_visible(False)
+        car_ax.set_title("Most Frequent Cars", fontsize=13, color=self.COLORS['text_white'], pad=10)
+        car_ax.tick_params(colors=self.COLORS['text_gray'])
+
+        car_data = summary_stats.get('car_counts') or []
+        if car_data:
+            car_labels = [name if len(name) <= 24 else f"{name[:21]}..." for name, _ in car_data][:5]
+            car_values = [count for _, count in car_data][:5]
+            car_labels = car_labels[::-1]
+            car_values = car_values[::-1]
+            car_ax.barh(range(len(car_labels)), car_values, color=self.COLORS['accent_green'], alpha=0.8)
+            car_ax.set_yticks(range(len(car_labels)))
+            car_ax.set_yticklabels(car_labels, fontsize=11, color=self.COLORS['text_white'])
+            car_ax.set_xlabel("Races", fontsize=11, color=self.COLORS['text_gray'])
+        else:
+            car_ax.text(
+                0.5,
+                0.5,
+                "Insufficient data",
+                ha='center',
+                va='center',
+                fontsize=12,
+                color=self.COLORS['text_gray'],
+            )
+            car_ax.set_xticks([])
+            car_ax.set_yticks([])
+
+        buffer = BytesIO()
+        plt.savefig(
+            buffer,
+            format='png',
+            dpi=160,
+            facecolor=self.COLORS['bg_dark'],
+            bbox_inches='tight',
+            pad_inches=0.3,
+        )
+        plt.close()
+        buffer.seek(0)
         return buffer
 
     def create_driver_stats_card(self, driver_data: Dict) -> BytesIO:
@@ -1329,8 +1580,8 @@ class iRacingVisualizer:
                fontweight='bold', ha='center', va='center')
         ax.text(opens_col_x, header_text_y, "Opens (UTC)", fontsize=14, color='#60a5fa',
                fontweight='bold', ha='center', va='center')
-        ax.text(track_col_center, header_text_y, "Track", fontsize=14, color='#60a5fa',
-               fontweight='bold', ha='center', va='center')
+        ax.text(track_text_x, header_text_y, "Track", fontsize=14, color='#60a5fa',
+               fontweight='bold', ha='left', va='center')
 
         # Week rows
         y_pos = headers_y - 0.75
