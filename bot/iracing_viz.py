@@ -1323,7 +1323,7 @@ class iRacingVisualizer:
         week_col_x = table_left + (week_width / 2)
         opens_col_x = table_left + week_width + (opens_width / 2)
         track_col_center = table_left + week_width + opens_width + (track_width / 2)
-        track_text_x = table_left + week_width + opens_width + 0.2
+        track_text_x = table_left + week_width + opens_width + 0.15
 
         ax.text(week_col_x, header_text_y, "Week", fontsize=14, color='#60a5fa',
                fontweight='bold', ha='center', va='center')
