@@ -1,4 +1,5 @@
 import re
+import random
 import discord
 from discord import app_commands
 from discord.ext import commands, tasks
@@ -974,8 +975,45 @@ async def handle_bot_mention(message, opted_out):
             await message.channel.send("Yeah? What's up?")
             return
 
-        # Check for leaderboard triggers in natural language
         content_lower = content.lower()
+        normalized_plain = re.sub(r'[^a-z0-9\s]', ' ', content_lower).strip()
+        tokens = [tok for tok in normalized_plain.split() if tok]
+
+        greeting_phrases = {
+            "hi",
+            "hello",
+            "hey",
+            "yo",
+            "sup",
+            "what's up",
+            "whats up",
+            "what is up",
+            "morning",
+            "good morning",
+            "good evening",
+            "good afternoon",
+        }
+        casual_starts = {"hi", "hello", "hey", "yo"}
+
+        basic_greeting = False
+        if normalized_plain in greeting_phrases:
+            basic_greeting = True
+        elif tokens and tokens[0] in casual_starts and len(tokens) <= 3:
+            basic_greeting = True
+        elif len(tokens) <= 4 and tokens[:2] in (["whats", "up"], ["what", "up"], ["what", "is"], ["how", "are"]):
+            basic_greeting = True
+
+        if basic_greeting:
+            responses = [
+                "Not much, just spinning up the servers. What's new with you?",
+                "All systems go! Need anything?",
+                "Living the bot life. How can I help?",
+                "Just crunching data and sipping electrons. You?",
+            ]
+            await message.channel.send(random.choice(responses))
+            return
+
+        # Check for leaderboard triggers in natural language
         leaderboard_triggers = {
             'messages': ['who talks the most', 'who messages the most', 'most active', 'most messages', 'who chats the most'],
             'questions': ['who asks the most questions', 'most questions', 'most curious', 'who questions'],

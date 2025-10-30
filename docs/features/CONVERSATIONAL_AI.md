@@ -30,6 +30,9 @@ wompbot what's the weather like?
 
 **Case insensitive:** Works with WompBot, wompbot, Wompbot, etc.
 
+### Small Talk & Greetings
+Casual pings like "wompbot whats up" now short-circuit the LLM. The bot replies with a canned greeting instead of recycling old context. Any message that reduces to simple greetings (`hi`, `hello`, `what's up`, etc.) triggers the lightweight handler and never reaches the LLM.
+
 ---
 
 ## Personality System
