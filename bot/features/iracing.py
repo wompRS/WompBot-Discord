@@ -3,6 +3,7 @@ iRacing Integration Feature
 View race schedules, series info, and driver statistics from iRacing
 """
 
+import asyncio
 import discord
 from datetime import datetime, timedelta
 from typing import Dict, Optional, List
@@ -19,6 +20,7 @@ class iRacingIntegration:
         self.email = email
         self.password = password
         self.client = None
+        self._client_lock = asyncio.Lock()
         self._cache = {}
         self._cache_expiry = {}
 
@@ -31,10 +33,13 @@ class iRacingIntegration:
         self._meta_analyzer = None
 
     async def _get_client(self) -> iRacingClient:
-        """Get or create iRacing client"""
-        if self.client is None:
-            self.client = iRacingClient(self.email, self.password)
-            await self.client.authenticate()
+        """Get or create iRacing client with serialized initialization."""
+        async with self._client_lock:
+            if self.client is None:
+                self.client = iRacingClient(self.email, self.password)
+                await self.client.authenticate()
+            elif not self.client.authenticated:
+                await self.client.authenticate()
         return self.client
 
     def _is_cache_valid(self, key: str, ttl_minutes: int = 15) -> bool:
