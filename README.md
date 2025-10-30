@@ -9,6 +9,7 @@ A Discord bot powered by OpenRouter LLMs (Hermes/Dolphin models) with conversati
 - **Smart Response Detection**: Only responds when "wompbot" mentioned or @tagged
 - **Web Search Integration**: Automatic Tavily API search when facts are needed
 - **Message Storage**: PostgreSQL database tracks all conversations
+- **Small Talk Aware**: Greetings get a quick canned reply before the LLM fires
 
 ### 📋 Claims & Accountability
 - **Auto Claims Detection**: LLM detects bold predictions, facts, and guarantees
@@ -97,13 +98,12 @@ A Discord bot powered by OpenRouter LLMs (Hermes/Dolphin models) with conversati
 ### 🏁 iRacing Integration (NEW!)
 - **Driver Profiles**: View any iRacing driver's stats across all license categories
 - **Driver Comparison**: Side-by-side comparison charts with license ratings and career stats
-- **Rating History**: Track iRating and Safety Rating progression over time
+- **Performance Dashboard**: /iracing_history shows rating trends, per-race deltas, wins/podiums, and your top series & cars for any timeframe
 - **Series Popularity Analytics**: Daily participation snapshots power season/year/all-time charts
 - **Server Leaderboards**: See who's the fastest in your Discord server by category
 - **Meta Analysis**: View best cars for any series with performance statistics
 - **Account Linking**: Link your Discord account to your iRacing profile
-- **Race Schedule Visuals**: Generate schedule tables by series or category with week filters
-- **Recent Results**: Check recent race results and performance
+- **Schedule Visuals**: Highlight the current week, show UTC open times, and include season date ranges
 - **Smart Search**: Automatically finds drivers by name
 - **Category Autocomplete**: Easy selection of Oval, Sports Car, Formula Car, Dirt Oval, Dirt Road
 - **Professional Visualizations**: Charts matching iRacing Reports style
@@ -239,6 +239,8 @@ docker-compose down
 - **/iracing_series_popularity [time_range]**: Show most popular series (season/yearly/all_time) with charts
 - **/iracing_season_schedule <series_name> [season]**: View the full season track rotation
 - **/iracing_results [driver_name]**: View recent race results (uses linked account if no name provided)
+
+> Adaptive rate limiting: the iRacing client now retries gently after a 429 response and otherwise fires requests at full speed, keeping schedule and dashboard commands snappy while staying within API limits.
 
 ### iRacing Team Management
 - **/iracing_team_create <name> <tag> [description]**: Create a new racing team

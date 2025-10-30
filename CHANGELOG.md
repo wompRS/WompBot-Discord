@@ -24,6 +24,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **iRacing Profile Improvements**
   - Fixed license overview display (all 5 categories)
   - Proper license data structure conversion
+- **iRacing Performance Dashboard**
+  - `/iracing_history` now combines rating history and recent results
+  - Timeframe filters for last day, week, month, season, year, or all recent races
+  - Summaries include wins, podiums, incidents, IR/SR deltas, and usage charts for series/cars
+- **Greeting Intercept**
+  - Friendly canned replies for simple greetings prevent the LLM from re-using stale context
 - **iRacing History**
   - Rating progression charts for all recent races
   - Simplified interface without category filtering
@@ -55,6 +61,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **BREAKING**: Users must provide explicit consent via `/wompbot_consent` for most features
 - **BREAKING**: Consent commands renamed from `/give_consent` and `/withdraw_consent` to `/wompbot_consent` and `/wompbot_noconsent`
 - **BREAKING**: Role-based opt-out system (NoDataCollection role) removed in favor of consent commands
+- **iRacing Schedule Visuals** now highlight the current week, show UTC open times, and include season date ranges
+- **iRacing API Client** uses an adaptive lock/backoff and only throttles after receiving a 429 response
 - Bot personality changed from "sarcastic" Feyd-Rautha persona to "professional but friendly" tone
 - Updated all Python dependencies to latest secure versions
 - Database port no longer exposed to host network (Docker internal only)
@@ -62,6 +70,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Data retention policies now configurable per data type
 
 ### Fixed
+- Restored `privacy_manager.get_consent_status` helper so mention handling no longer crashes when GDPR consent is checked
 - **SECURITY**: SQL injection vulnerability in `database.py` (CWE-89, CVSS 9.8)
 - **SECURITY**: PostgreSQL database publicly exposed (removed port binding)
 - **SECURITY**: Containers running as root (privilege escalation risk)

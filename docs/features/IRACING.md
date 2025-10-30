@@ -7,14 +7,12 @@ Complete integration with iRacing's official API for driver stats, race schedule
 ### 🏁 Core Features
 - **Driver Profiles** - View detailed stats across all license categories
 - **Driver Comparison** - Side-by-side visual comparisons with professional charts
-- **Rating History** - Track iRating and Safety Rating progression over time
+- **Performance Dashboard** - Analyze rating trends, per-race deltas, wins/podiums, and incident averages over selectable timeframes
 - **Series Popularity Analytics** - Daily participation snapshots power season/year/all-time trends
 - **Server Leaderboards** - Rankings for Discord server members by category
 - **Meta Analysis** - Best car performance data for any series/track combination
-- **Schedule Visualizations** - Series and category schedules rendered as polished tables
+- **Schedule Visualizations** - Season tables highlight the current week, display UTC open times, and include season date ranges
 - **Account Linking** - Connect Discord accounts to iRacing profiles
-- **Recent Results** - View latest race performance
-
 ### 🎨 Professional Visualizations
 - Charts styled after iRacing Reports
 - Dark theme with gold accents
@@ -97,32 +95,31 @@ Generate side-by-side comparison chart for two drivers.
 
 ---
 
-### `/iracing_history [driver_name] [category] [days]`
-View rating progression chart showing iRating and Safety Rating history.
+### `/iracing_history [driver_name] [timeframe]`
+Unified performance dashboard showing rating trends, per-race deltas, and usage breakdowns.
 
 **Parameters:**
 - `driver_name` (optional) - Driver name (uses linked account if omitted)
-- `category` (optional) - License category (default: sports_car_road)
-  - Use autocomplete: Oval, Sports Car (Road), Formula Car (Road), Dirt Oval, Dirt Road
-- `days` (optional) - Number of days of history (default: 30)
+- `timeframe` (optional) - One of `day`, `week`, `month`, `season`, `year`, `all` (defaults to `week`)
 
 **Example:**
 ```
 /iracing_history
-/iracing_history "Blair Winters" sports_car_road 90
-/iracing_history category:oval days:60
+/iracing_history "Blair Winters" timeframe:month
+/iracing_history timeframe:season
 ```
 
-**Chart Features:**
-- Dual y-axis (iRating on left, Safety Rating on right)
-- Line plots with markers and filled areas
-- Period change summary showing gains/losses
-- Professional dark theme with gold accents
+**Dashboard Includes:**
+- Dual-axis chart with iRating (left) and Safety Rating (right)
+- Period change summary showing total and per-race IR/SR deltas
+- Wins, podiums, average finish, and average incidents for the selected window
+- Bar charts highlighting the most-used series and cars
+- Friendly message when insufficient data exists for the timeframe
 
 **Notes:**
-- Shows "not enough data" if fewer than 2 data points
-- Filters by specific category (e.g., oval, sports_car_road)
-- Debug logging available if category filtering issues occur
+- Pulls up to the most recent 200 races before timeframe filtering
+- Automatically uses linked account if `driver_name` omitted
+- Caches API requests to avoid hitting the adaptive rate limiter
 
 ---
 
@@ -207,9 +204,13 @@ Render race schedules as a polished table image.
 ```
 
 **Output:**
-- High-resolution PNG table with track, dates, and car class details
-- Automatic fallbacks if historical data is still collecting
+- High-resolution PNG table with week number, UTC open time, and full track layout
+- Current week highlighted with a blue accent box
+- Season date range and weekly reset note displayed above the table
 - Category view highlights every active series for the selected discipline
+- Intelligent fallback when the race guide lacks complete historical data
+
+---
 
 ---
 
@@ -248,8 +249,12 @@ View the full season track rotation for a series.
 ```
 
 **Output:**
-- Discord embed listing every week and track layout
-- Automatically splits into multiple embeds for long seasons
+- Embed plus attached PNG table highlighting the current week
+- Season date range, weekly reset note, and total weeks displayed in the header
+- Track column widened to reduce truncation and show configuration names
+- Adaptive fallback to text-based embeds if the visualizer is unavailable
+
+---
 
 ---
 
@@ -347,10 +352,10 @@ iRacing has 5 distinct license categories:
 - Response caching prevents rate limiting
 
 ### Rate Limiting
-- Intelligent caching minimizes API calls
-- Pre-warms series cache on bot startup
-- Background task loads series data
-- Avoids redundant profile lookups within same command
+- Shared asyncio lock serializes outbound requests per process
+- 429 responses respect the API-provided `Retry-After` header before retrying
+- Standard requests fire without delay once the lock releases
+- Existing caching strategy still pre-warms series data and avoids duplicate profile lookups
 
 ## Database Schema
 

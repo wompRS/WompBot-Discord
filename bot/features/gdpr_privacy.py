@@ -138,6 +138,31 @@ class GDPRPrivacyManager:
             print(f"❌ Error checking consent: {e}")
             return None
 
+    def get_consent_status(self, user_id: int) -> Dict:
+        """
+        Convenience wrapper used by runtime pathways.
+
+        Returns:
+            dict with `has_consent` and other metadata keys.
+        """
+        record = self.check_consent(user_id)
+        if not record:
+            return {
+                'has_consent': False,
+                'extended_retention': False,
+                'consent_date': None,
+                'consent_version': None,
+            }
+
+        has_consent = bool(record.get('consent_given')) and not record.get('consent_withdrawn')
+        return {
+            'has_consent': has_consent,
+            'consent_date': record.get('consent_date'),
+            'extended_retention': record.get('extended_retention', False),
+            'consent_version': record.get('consent_version'),
+            'consent_withdrawn': record.get('consent_withdrawn', False),
+        }
+
     def export_user_data(self, user_id: int) -> Optional[Dict]:
         """
         Export all user data in machine-readable format (GDPR Art. 15 - Right of Access)
