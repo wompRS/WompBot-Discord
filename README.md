@@ -242,6 +242,8 @@ docker-compose down
 
 > Adaptive rate limiting: the iRacing client now retries gently after a 429 response and otherwise fires requests at full speed, keeping schedule and dashboard commands snappy while staying within API limits.
 
+> Need everything pre-cached before a broadcast or league night? Run `docker-compose exec bot python -m bot.scripts.warm_iracing_cache` to prefetch schedules and meta statistics for every active series in the current season. Add `--limit N` to test with a subset or `--sleep 1.0` to slow requests.
+
 ### iRacing Team Management
 - **/iracing_team_create <name> <tag> [description]**: Create a new racing team
 - **/iracing_team_invite <team_id> <member> [role]**: Invite a member to your team (roles: driver, manager, crew_chief, spotter)
