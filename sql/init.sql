@@ -249,6 +249,31 @@ CREATE TABLE IF NOT EXISTS iracing_links (
     linked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- iRacing meta cache (series/week performance results)
+CREATE TABLE IF NOT EXISTS iracing_meta_cache (
+    cache_key TEXT PRIMARY KEY,
+    series_id INT NOT NULL,
+    season_id INT NOT NULL,
+    week_num INT NOT NULL,
+    track_id INT,
+    meta_data JSONB NOT NULL,
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    last_accessed TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Cached driver history dashboards
+CREATE TABLE IF NOT EXISTS iracing_history_cache (
+    cust_id BIGINT NOT NULL,
+    timeframe VARCHAR(32) NOT NULL,
+    payload JSONB NOT NULL,
+    cached_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    PRIMARY KEY (cust_id, timeframe)
+);
+
+CREATE INDEX IF NOT EXISTS idx_iracing_history_cache_exp ON iracing_history_cache(expires_at);
+
 -- Create indexes for common queries
 CREATE INDEX IF NOT EXISTS idx_messages_user_id ON messages(user_id);
 CREATE INDEX IF NOT EXISTS idx_messages_channel_id ON messages(channel_id);

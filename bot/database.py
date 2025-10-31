@@ -447,6 +447,64 @@ class Database:
             print(f"⚠️ Error cleaning meta cache: {e}")
             return 0
 
+    def get_iracing_history_cache(self, cust_id: int, timeframe: str):
+        """Retrieve cached rating history if fresh."""
+        try:
+            with self.conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    SELECT payload
+                    FROM iracing_history_cache
+                    WHERE cust_id = %s
+                      AND timeframe = %s
+                      AND expires_at > NOW()
+                """, (cust_id, timeframe))
+
+                row = cur.fetchone()
+                if not row:
+                    return None
+
+                import json
+                return json.loads(row['payload'])
+        except Exception as e:
+            print(f"⚠️ Error reading history cache: {e}")
+            return None
+
+    def store_iracing_history_cache(self, cust_id: int, timeframe: str, payload: dict, ttl_hours: float = 2.0):
+        """Persist rating history analysis results for reuse."""
+        try:
+            from datetime import timedelta
+            import json
+
+            expires_at = datetime.now(timezone.utc) + timedelta(hours=ttl_hours)
+
+            with self.conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO iracing_history_cache (cust_id, timeframe, payload, expires_at, cached_at)
+                    VALUES (%s, %s, %s, %s, NOW())
+                    ON CONFLICT (cust_id, timeframe)
+                    DO UPDATE SET
+                        payload = EXCLUDED.payload,
+                        expires_at = EXCLUDED.expires_at,
+                        cached_at = NOW()
+                """, (cust_id, timeframe, json.dumps(payload), expires_at))
+        except Exception as e:
+            print(f"⚠️ Error storing history cache: {e}")
+
+    def cleanup_expired_history_cache(self):
+        """Remove stale history cache rows."""
+        try:
+            with self.conn.cursor() as cur:
+                cur.execute("""
+                    DELETE FROM iracing_history_cache
+                    WHERE expires_at < NOW()
+                    RETURNING cust_id
+                """)
+                deleted = cur.fetchall()
+                return len(deleted)
+        except Exception as e:
+            print(f"⚠️ Error cleaning history cache: {e}")
+            return 0
+
     def store_participation_snapshot(self, series_name: str, series_id: int, season_id: int,
                                      season_year: int, season_quarter: int, participant_count: int,
                                      snapshot_date=None):

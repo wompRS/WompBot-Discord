@@ -587,6 +587,15 @@ async def gdpr_cleanup():
                 if count > 0:
                     print(f"      • {data_type}: {count:,} records deleted")
 
+        if db:
+            removed_meta = db.cleanup_expired_meta_cache()
+            if removed_meta:
+                print(f"   🧹 Removed {removed_meta} expired iRacing meta cache entries")
+
+            removed_history = db.cleanup_expired_history_cache()
+            if removed_history:
+                print(f"   🧹 Removed {removed_history} expired iRacing history cache entries")
+
         print("✅ GDPR compliance cleanup complete")
         if db:
             db.update_job_last_run("gdpr_cleanup")
@@ -4200,6 +4209,15 @@ IRACING_HISTORY_TIMEFRAMES = {
     "all": ("Recent History", None),
 }
 
+IRACING_HISTORY_CACHE_TTLS = {
+    "day": 0.5,
+    "week": 2,
+    "month": 6,
+    "season": 12,
+    "year": 24,
+    "all": 24,
+}
+
 
 @bot.tree.command(
     name="iracing_history",
@@ -4262,156 +4280,222 @@ async def iracing_history(
             cust_id = results[0].get('cust_id')
             display_name = results[0].get('display_name', driver_name)
 
-        races = await iracing.get_driver_recent_races(cust_id, limit=200)
-        if not races:
-            await interaction.followup.send(f"❌ No race history found for {display_name}")
-            return
+        cache_hit = False
+        rating_points: List[Dict] = []
+        summary_stats: Dict = {}
 
-        now = datetime.now(timezone.utc)
-        cutoff = now - delta if delta else None
-
-        def parse_race_start(race: Dict) -> Optional[datetime]:
-            for key in ("session_start_time", "start_time", "start_time_utc"):
-                raw = race.get(key)
-                if raw is None:
-                    continue
-                if isinstance(raw, (int, float)):
-                    return datetime.fromtimestamp(raw, tz=timezone.utc)
-                if isinstance(raw, str):
-                    try:
-                        dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
-                    except ValueError:
-                        try:
-                            dt = datetime.strptime(raw, "%Y-%m-%d %H:%M:%S")
-                        except ValueError:
-                            continue
-                        dt = dt.replace(tzinfo=timezone.utc)
-                    if dt.tzinfo is None:
-                        dt = dt.replace(tzinfo=timezone.utc)
-                    else:
-                        dt = dt.astimezone(timezone.utc)
-                    return dt
-            return None
-
-        def to_int(value):
+        cache_payload = db.get_iracing_history_cache(cust_id, timeframe_key) if db else None
+        if cache_payload:
             try:
-                return int(value)
-            except (TypeError, ValueError):
+                rating_points = [
+                    {
+                        "date": datetime.fromisoformat(point["date"]),
+                        "irating": point["irating"],
+                        "safety_rating": point["safety_rating"],
+                    }
+                    for point in cache_payload.get("rating_points", [])
+                ]
+
+                summary_stats = cache_payload.get("summary_stats", {})
+                summary_stats["series_counts"] = [
+                    (entry["name"], entry["count"])
+                    for entry in summary_stats.get("series_counts", [])
+                ]
+                summary_stats["car_counts"] = [
+                    (entry["name"], entry["count"])
+                    for entry in summary_stats.get("car_counts", [])
+                ]
+
+                if rating_points and summary_stats:
+                    timeframe_label = cache_payload.get("timeframe_label", timeframe_label)
+                    display_name = cache_payload.get("display_name", display_name)
+                    cache_hit = True
+                    print(f"📦 Using cached history for driver {cust_id} ({timeframe_key})")
+            except Exception as cache_error:
+                print(f"⚠️ Failed to deserialize history cache: {cache_error}")
+                cache_hit = False
+
+        if not cache_hit:
+            races = await iracing.get_driver_recent_races(cust_id, limit=200)
+            if not races:
+                await interaction.followup.send(f"❌ No race history found for {display_name}")
+                return
+
+            now = datetime.now(timezone.utc)
+            cutoff = now - delta if delta else None
+
+            def parse_race_start(race: Dict) -> Optional[datetime]:
+                for key in ("session_start_time", "start_time", "start_time_utc"):
+                    raw = race.get(key)
+                    if raw is None:
+                        continue
+                    if isinstance(raw, (int, float)):
+                        return datetime.fromtimestamp(raw, tz=timezone.utc)
+                    if isinstance(raw, str):
+                        try:
+                            dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+                        except ValueError:
+                            try:
+                                dt = datetime.strptime(raw, "%Y-%m-%d %H:%M:%S")
+                            except ValueError:
+                                continue
+                            dt = dt.replace(tzinfo=timezone.utc)
+                        if dt.tzinfo is None:
+                            dt = dt.replace(tzinfo=timezone.utc)
+                        else:
+                            dt = dt.astimezone(timezone.utc)
+                        return dt
                 return None
 
-        processed: List[Dict] = []
-        for race in races:
-            start_dt = parse_race_start(race)
-            if start_dt is None:
-                continue
-            if cutoff and start_dt < cutoff:
-                continue
-            race_copy = dict(race)
-            race_copy["_start_dt"] = start_dt
-            processed.append(race_copy)
+            def to_int(value):
+                try:
+                    return int(value)
+                except (TypeError, ValueError):
+                    return None
 
-        if not processed:
-            await interaction.followup.send(
-                f"❌ No races for {display_name} in the selected timeframe ({timeframe_label})."
-            )
-            return
+            processed: List[Dict] = []
+            for race in races:
+                start_dt = parse_race_start(race)
+                if start_dt is None:
+                    continue
+                if cutoff and start_dt < cutoff:
+                    continue
+                race_copy = dict(race)
+                race_copy["_start_dt"] = start_dt
+                processed.append(race_copy)
 
-        processed.sort(key=lambda r: r["_start_dt"])
+            if not processed:
+                await interaction.followup.send(
+                    f"❌ No races for {display_name} in the selected timeframe ({timeframe_label})."
+                )
+                return
 
-        total_races = len(processed)
-        finish_values = []
-        incident_values = []
-        ir_changes = []
-        sr_changes = []
-        series_counter: Counter[str] = Counter()
-        car_counter: Counter[str] = Counter()
-        rating_points: List[Dict] = []
+            processed.sort(key=lambda r: r["_start_dt"])
 
-        baseline_added = False
-        for race in processed:
-            start_dt = race["_start_dt"]
-            finish = to_int(race.get("finish_position"))
-            if finish is not None:
-                finish_values.append(finish)
-            incidents = to_int(race.get("incidents"))
-            if incidents is not None:
-                incident_values.append(incidents)
+            total_races = len(processed)
+            finish_values = []
+            incident_values = []
+            ir_changes = []
+            sr_changes = []
+            series_counter: Counter[str] = Counter()
+            car_counter: Counter[str] = Counter()
+            rating_points = []
 
-            old_ir = to_int(race.get("oldi_rating"))
-            new_ir = to_int(race.get("newi_rating"))
-            old_sr_raw = to_int(race.get("old_sub_level"))
-            new_sr_raw = to_int(race.get("new_sub_level"))
+            baseline_added = False
+            for race in processed:
+                start_dt = race["_start_dt"]
+                finish = to_int(race.get("finish_position"))
+                if finish is not None:
+                    finish_values.append(finish)
+                incidents = to_int(race.get("incidents"))
+                if incidents is not None:
+                    incident_values.append(incidents)
 
-            if not baseline_added and old_ir is not None and old_sr_raw is not None:
-                rating_points.append({
-                    "date": start_dt - timedelta(seconds=1),
-                    "irating": old_ir,
-                    "safety_rating": old_sr_raw / 100.0,
-                })
-                baseline_added = True
+                old_ir = to_int(race.get("oldi_rating"))
+                new_ir = to_int(race.get("newi_rating"))
+                old_sr_raw = to_int(race.get("old_sub_level"))
+                new_sr_raw = to_int(race.get("new_sub_level"))
 
-            if new_ir is not None and old_ir is not None:
-                ir_changes.append(new_ir - old_ir)
-            if new_sr_raw is not None and old_sr_raw is not None:
-                sr_changes.append((new_sr_raw - old_sr_raw) / 100.0)
+                if not baseline_added and old_ir is not None and old_sr_raw is not None:
+                    rating_points.append({
+                        "date": start_dt - timedelta(seconds=1),
+                        "irating": old_ir,
+                        "safety_rating": old_sr_raw / 100.0,
+                    })
+                    baseline_added = True
 
-            sr_for_point = None
-            if new_sr_raw is not None:
-                sr_for_point = new_sr_raw / 100.0
-            elif old_sr_raw is not None:
-                sr_for_point = old_sr_raw / 100.0
+                if new_ir is not None and old_ir is not None:
+                    ir_changes.append(new_ir - old_ir)
+                if new_sr_raw is not None and old_sr_raw is not None:
+                    sr_changes.append((new_sr_raw - old_sr_raw) / 100.0)
 
-            if new_ir is not None and sr_for_point is not None:
-                rating_points.append({
-                    "date": start_dt,
-                    "irating": new_ir,
-                    "safety_rating": sr_for_point,
-                })
-            elif new_ir is not None:
-                rating_points.append({
-                    "date": start_dt,
-                    "irating": new_ir,
-                    "safety_rating": sr_for_point or 0.0,
-                })
+                sr_for_point = None
+                if new_sr_raw is not None:
+                    sr_for_point = new_sr_raw / 100.0
+                elif old_sr_raw is not None:
+                    sr_for_point = old_sr_raw / 100.0
 
-            series_name = (race.get("series_name") or race.get("series") or "Unknown Series").strip()
-            series_counter[series_name] += 1
+                if new_ir is not None and sr_for_point is not None:
+                    rating_points.append({
+                        "date": start_dt,
+                        "irating": new_ir,
+                        "safety_rating": sr_for_point,
+                    })
+                elif new_ir is not None:
+                    rating_points.append({
+                        "date": start_dt,
+                        "irating": new_ir,
+                        "safety_rating": sr_for_point or 0.0,
+                    })
 
-            car_name = (
-                race.get("car_name")
-                or race.get("display_car_name")
-                or race.get("car")
-                or "Unknown Car"
-            )
-            car_counter[str(car_name).strip()] += 1
+                series_name = (race.get("series_name") or race.get("series") or "Unknown Series").strip()
+                series_counter[series_name] += 1
 
-        if not rating_points:
-            await interaction.followup.send(
-                f"❌ Not enough rating data available for {display_name} in {timeframe_label}."
-            )
-            return
+                car_name = (
+                    race.get("car_name")
+                    or race.get("display_car_name")
+                    or race.get("car")
+                    or "Unknown Car"
+                )
+                car_counter[str(car_name).strip()] += 1
 
-        wins = sum(1 for value in finish_values if value == 1)
-        podiums = sum(1 for value in finish_values if value is not None and value <= 3)
-        avg_finish = sum(finish_values) / len(finish_values) if finish_values else 0
-        avg_incidents = sum(incident_values) / len(incident_values) if incident_values else 0
-        total_ir_change = sum(ir_changes)
-        total_sr_change = sum(sr_changes)
+            if not rating_points:
+                await interaction.followup.send(
+                    f"❌ Not enough rating data available for {display_name} in {timeframe_label}."
+                )
+                return
 
-        summary_stats = {
-            "timeframe_label": timeframe_label,
-            "total_races": total_races,
-            "wins": wins,
-            "podiums": podiums,
-            "avg_finish": avg_finish,
-            "avg_incidents": avg_incidents,
-            "ir_change": total_ir_change,
-            "sr_change": total_sr_change,
-            "ir_per_race": total_ir_change / total_races if total_races else 0.0,
-            "sr_per_race": total_sr_change / total_races if total_races else 0.0,
-            "series_counts": series_counter.most_common(5),
-            "car_counts": car_counter.most_common(5),
-        }
+            wins = sum(1 for value in finish_values if value == 1)
+            podiums = sum(1 for value in finish_values if value is not None and value <= 3)
+            avg_finish = sum(finish_values) / len(finish_values) if finish_values else 0
+            avg_incidents = sum(incident_values) / len(incident_values) if incident_values else 0
+            total_ir_change = sum(ir_changes)
+            total_sr_change = sum(sr_changes)
+
+            series_counts = series_counter.most_common(5)
+            car_counts = car_counter.most_common(5)
+
+            summary_stats = {
+                "timeframe_label": timeframe_label,
+                "total_races": total_races,
+                "wins": wins,
+                "podiums": podiums,
+                "avg_finish": avg_finish,
+                "avg_incidents": avg_incidents,
+                "ir_change": total_ir_change,
+                "sr_change": total_sr_change,
+                "ir_per_race": total_ir_change / total_races if total_races else 0.0,
+                "sr_per_race": total_sr_change / total_races if total_races else 0.0,
+                "series_counts": series_counts,
+                "car_counts": car_counts,
+            }
+
+            if db:
+                serialized_points = [
+                    {
+                        "date": point["date"].isoformat(),
+                        "irating": point["irating"],
+                        "safety_rating": point["safety_rating"],
+                    }
+                    for point in rating_points
+                ]
+                serialized_summary = dict(summary_stats)
+                serialized_summary["series_counts"] = [
+                    {"name": name, "count": count} for name, count in series_counts
+                ]
+                serialized_summary["car_counts"] = [
+                    {"name": name, "count": count} for name, count in car_counts
+                ]
+
+                payload = {
+                    "display_name": display_name,
+                    "timeframe_label": timeframe_label,
+                    "rating_points": serialized_points,
+                    "summary_stats": serialized_summary,
+                }
+
+                ttl_hours = IRACING_HISTORY_CACHE_TTLS.get(timeframe_key, 2)
+                db.store_iracing_history_cache(cust_id, timeframe_key, payload, ttl_hours=ttl_hours)
 
         image_buffer = iracing_viz.create_rating_performance_dashboard(
             display_name,
@@ -4765,6 +4849,11 @@ async def iracing_series_popularity(interaction: discord.Interaction, time_range
             # Compute if not cached
             print(f"📊 Computing {time_range} popularity (not in cache)")
             sorted_series = await compute_series_popularity(time_range)
+            if sorted_series:
+                iracing_popularity_cache[time_range] = {
+                    'data': sorted_series,
+                    'timestamp': datetime.now()
+                }
 
         # Check if we have data
         if not sorted_series:
