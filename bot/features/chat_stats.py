@@ -99,12 +99,13 @@ class ChatStatistics:
                     SELECT m.message_id, m.user_id, m.username, m.content,
                            m.timestamp, m.channel_id
                     FROM messages m
+                    LEFT JOIN user_profiles up ON up.user_id = m.user_id
                     WHERE m.timestamp BETWEEN %s AND %s
                 """
                 params = [start_date, end_date]
 
                 if exclude_opted_out:
-                    query += " AND m.opted_out = FALSE"
+                    query += " AND COALESCE(m.opted_out, FALSE) = FALSE AND COALESCE(up.opted_out, FALSE) = FALSE"
 
                 if channel_id:
                     query += " AND m.channel_id = %s"

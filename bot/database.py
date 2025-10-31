@@ -1,6 +1,6 @@
 import psycopg2
 from psycopg2.extras import RealDictCursor
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 import os
 import time
 
@@ -34,49 +34,113 @@ class Database:
                 else:
                     raise
     
-    def store_message(self, message, opted_out=False):
-        """Store a Discord message"""
+    def get_job_last_run(self, job_name: str):
+        """Return the last recorded run time for a scheduled job."""
         try:
             with self.conn.cursor() as cur:
                 cur.execute("""
-                    INSERT INTO messages (message_id, user_id, username, channel_id, channel_name, content, timestamp, opted_out)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (message_id) DO NOTHING
-                    RETURNING message_id
-                """, (
-                    message.id,
-                    message.author.id,
-                    str(message.author),
-                    message.channel.id,
-                    message.channel.name,
-                    message.content,
-                    message.created_at,
-                    opted_out
-                ))
-                
+                    SELECT last_run
+                    FROM job_last_run
+                    WHERE job_name = %s
+                """, (job_name,))
                 result = cur.fetchone()
-                if result:
-                    print(f"💾 Stored message from {message.author}: {message.content[:50]}")
-                
-                # Update user profile
+                return result[0] if result else None
+        except Exception as e:
+            print(f"⚠️ Error fetching last run for {job_name}: {e}")
+            return None
+
+    def update_job_last_run(self, job_name: str, run_time: datetime | None = None):
+        """Persist the completion timestamp for a scheduled job."""
+        run_time = run_time or datetime.now(timezone.utc)
+        try:
+            with self.conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO job_last_run (job_name, last_run)
+                    VALUES (%s, %s)
+                    ON CONFLICT (job_name) DO UPDATE SET
+                        last_run = EXCLUDED.last_run
+                """, (job_name, run_time))
+        except Exception as e:
+            print(f"⚠️ Error updating last run for {job_name}: {e}")
+
+    def should_run_job(self, job_name: str, interval: timedelta):
+        """
+        Determine whether a scheduled job should execute based on the persisted last run time.
+
+        Returns:
+            (should_run: bool, last_run: datetime | None)
+        """
+        if not isinstance(interval, timedelta):
+            raise ValueError("interval must be a datetime.timedelta instance")
+
+        last_run = self.get_job_last_run(job_name)
+        if not last_run:
+            return True, None
+
+        now = datetime.now(timezone.utc)
+        elapsed = now - last_run
+        if elapsed >= interval:
+            return True, last_run
+
+        return False, last_run
+    
+    def store_message(self, message, opted_out=False):
+        """Store a Discord message while respecting privacy settings."""
+        try:
+            profile_username = str(message.author) if not opted_out else "[redacted]"
+            timestamp = message.created_at
+
+            with self.conn.cursor() as cur:
+                stored_id = None
+
+                if not opted_out:
+                    cur.execute("""
+                        INSERT INTO messages (message_id, user_id, username, channel_id, channel_name, content, timestamp, opted_out)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, FALSE)
+                        ON CONFLICT (message_id) DO NOTHING
+                        RETURNING message_id
+                    """, (
+                        message.id,
+                        message.author.id,
+                        profile_username,
+                        message.channel.id,
+                        message.channel.name,
+                        message.content,
+                        timestamp
+                    ))
+                    fetch = cur.fetchone()
+                    stored_id = fetch[0] if fetch else None
+
                 cur.execute("""
                     INSERT INTO user_profiles (user_id, username, total_messages, first_seen, last_seen, opted_out)
-                    VALUES (%s, %s, 1, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s)
                     ON CONFLICT (user_id) DO UPDATE SET
                         username = EXCLUDED.username,
-                        total_messages = user_profiles.total_messages + 1,
-                        last_seen = EXCLUDED.last_seen,
+                        total_messages = CASE
+                            WHEN EXCLUDED.opted_out THEN user_profiles.total_messages
+                            ELSE user_profiles.total_messages + 1
+                        END,
+                        last_seen = CASE
+                            WHEN EXCLUDED.opted_out THEN user_profiles.last_seen
+                            ELSE EXCLUDED.last_seen
+                        END,
                         opted_out = EXCLUDED.opted_out,
                         updated_at = CURRENT_TIMESTAMP
                 """, (
                     message.author.id,
-                    str(message.author),
-                    message.created_at,
-                    message.created_at,
+                    profile_username,
+                    1 if not opted_out else 0,
+                    timestamp,
+                    timestamp,
                     opted_out
                 ))
+
+                if stored_id:
+                    preview = (message.content or "")[:50]
+                    print(f"📥 Stored message {stored_id} from {message.author}: {preview}")
+
         except Exception as e:
-            print(f"❌ Error storing message: {e}")
+            print(f"⚠️ Error storing message: {e}")
     
     def get_recent_messages(self, channel_id, limit=10, exclude_opted_out=True, exclude_bot_id=None):
         """Get recent messages from a channel for context"""
@@ -84,20 +148,21 @@ class Database:
             with self.conn.cursor(cursor_factory=RealDictCursor) as cur:
                 # Build query with parameterized statements (SECURE - prevents SQL injection)
                 query = """
-                    SELECT message_id, user_id, username, content, timestamp
-                    FROM messages
-                    WHERE channel_id = %s
+                    SELECT m.message_id, m.user_id, m.username, m.content, m.timestamp
+                    FROM messages m
+                    LEFT JOIN user_profiles up ON up.user_id = m.user_id
+                    WHERE m.channel_id = %s
                 """
                 params = [channel_id]
 
                 if exclude_opted_out:
-                    query += " AND opted_out = FALSE"
+                    query += " AND COALESCE(m.opted_out, FALSE) = FALSE AND COALESCE(up.opted_out, FALSE) = FALSE"
 
                 if exclude_bot_id:
-                    query += " AND user_id != %s"
+                    query += " AND m.user_id != %s"
                     params.append(exclude_bot_id)
 
-                query += " ORDER BY timestamp DESC LIMIT %s"
+                query += " ORDER BY m.timestamp DESC LIMIT %s"
                 params.append(limit)
 
                 cur.execute(query, tuple(params))
@@ -168,12 +233,14 @@ class Database:
         try:
             with self.conn.cursor(cursor_factory=RealDictCursor) as cur:
                 cur.execute("""
-                    SELECT content, timestamp
-                    FROM messages
-                    WHERE user_id = %s 
-                    AND opted_out = FALSE
-                    AND timestamp > CURRENT_TIMESTAMP - INTERVAL '%s days'
-                    ORDER BY timestamp DESC
+                    SELECT m.content, m.timestamp
+                    FROM messages m
+                    LEFT JOIN user_profiles up ON up.user_id = m.user_id
+                    WHERE m.user_id = %s 
+                    AND COALESCE(m.opted_out, FALSE) = FALSE
+                    AND COALESCE(up.opted_out, FALSE) = FALSE
+                    AND m.timestamp > CURRENT_TIMESTAMP - INTERVAL '%s days'
+                    ORDER BY m.timestamp DESC
                 """, (user_id, days))
                 return cur.fetchall()
         except Exception as e:
@@ -185,10 +252,12 @@ class Database:
         try:
             with self.conn.cursor(cursor_factory=RealDictCursor) as cur:
                 cur.execute("""
-                    SELECT DISTINCT user_id, username
-                    FROM messages
-                    WHERE opted_out = FALSE
-                    AND timestamp > CURRENT_TIMESTAMP - INTERVAL '%s days'
+                    SELECT DISTINCT m.user_id, m.username
+                    FROM messages m
+                    LEFT JOIN user_profiles up ON up.user_id = m.user_id
+                    WHERE COALESCE(m.opted_out, FALSE) = FALSE
+                    AND COALESCE(up.opted_out, FALSE) = FALSE
+                    AND m.timestamp > CURRENT_TIMESTAMP - INTERVAL '%s days'
                 """, (days,))
                 return cur.fetchall()
         except Exception as e:
@@ -201,13 +270,15 @@ class Database:
             with self.conn.cursor(cursor_factory=RealDictCursor) as cur:
                 cur.execute("""
                     SELECT 
-                        username,
+                        m.username,
                         COUNT(*) as message_count,
-                        COUNT(DISTINCT DATE(timestamp)) as active_days
-                    FROM messages
-                    WHERE opted_out = FALSE
-                    AND timestamp > CURRENT_TIMESTAMP - INTERVAL '%s days'
-                    GROUP BY user_id, username
+                        COUNT(DISTINCT DATE(m.timestamp)) as active_days
+                    FROM messages m
+                    LEFT JOIN user_profiles up ON up.user_id = m.user_id
+                    WHERE COALESCE(m.opted_out, FALSE) = FALSE
+                    AND COALESCE(up.opted_out, FALSE) = FALSE
+                    AND m.timestamp > CURRENT_TIMESTAMP - INTERVAL '%s days'
+                    GROUP BY m.user_id, m.username
                     ORDER BY message_count DESC
                     LIMIT %s
                 """, (days, limit))
@@ -222,14 +293,16 @@ class Database:
             with self.conn.cursor(cursor_factory=RealDictCursor) as cur:
                 cur.execute("""
                     SELECT 
-                        user_id,
-                        username,
-                        content,
-                        timestamp
-                    FROM messages
-                    WHERE opted_out = FALSE
-                    AND timestamp > CURRENT_TIMESTAMP - INTERVAL '%s days'
-                    ORDER BY timestamp DESC
+                        m.user_id,
+                        m.username,
+                        m.content,
+                        m.timestamp
+                    FROM messages m
+                    LEFT JOIN user_profiles up ON up.user_id = m.user_id
+                    WHERE COALESCE(m.opted_out, FALSE) = FALSE
+                    AND COALESCE(up.opted_out, FALSE) = FALSE
+                    AND m.timestamp > CURRENT_TIMESTAMP - INTERVAL '%s days'
+                    ORDER BY m.timestamp DESC
                 """, (days,))
                 return cur.fetchall()
         except Exception as e:

@@ -273,10 +273,16 @@ Users control their data through slash commands:
 - **/privacy_policy**: View the complete privacy policy
 
 **Without consent:**
+- Message content and usernames are redacted before storage (only metadata retained)
 - Messages are flagged as opted-out
 - Excluded from behavior analysis
-- Not included in conversation context
+- Not included in conversation context or LLM prompts
 - Most bot features unavailable
+
+**Background jobs respect consent & rate limits:**
+- Scheduled tasks persist their last successful run in `job_last_run`
+- On startup each loop checks the stored timestamp and skips work until the interval (hourly/daily/weekly) elapses
+- Prevents duplicate GDPR cleanup or iRacing snapshots after restarts while keeping cron cadence predictable
 
 ## Behavior Analysis
 
@@ -316,6 +322,7 @@ Use `/analyze` command to run analysis.
 - `user_profiles`: User metadata and message counts
 - `user_behavior`: Analysis results (profanity, tone, patterns)
 - `search_logs`: Web search history
+- `job_last_run`: Last successful timestamp for each background job
 - `claims`: Tracked claims with edit/delete history
 - `hot_takes`: Controversial claims with community tracking and vindication
 - `quotes`: Saved quotes with reaction counts

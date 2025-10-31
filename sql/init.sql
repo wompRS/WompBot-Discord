@@ -13,6 +13,11 @@ CREATE TABLE IF NOT EXISTS messages (
 );
 
 -- User profiles table
+CREATE TABLE IF NOT EXISTS job_last_run (
+    job_name TEXT PRIMARY KEY,
+    last_run TIMESTAMP WITH TIME ZONE NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS user_profiles (
     user_id BIGINT PRIMARY KEY,
     username VARCHAR(255) NOT NULL,

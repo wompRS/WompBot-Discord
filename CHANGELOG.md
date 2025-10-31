@@ -63,6 +63,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **BREAKING**: Role-based opt-out system (NoDataCollection role) removed in favor of consent commands
 - **iRacing Schedule Visuals** now highlight the current week, show UTC open times, and include season date ranges
 - **iRacing API Client** uses an adaptive lock/backoff and only throttles after receiving a 429 response
+- Message storage redacts content/usernames for opted-out users and conversation context excludes sanitized rows
+- Background jobs persist `job_last_run` timestamps so hourly/daily/weekly tasks resume gracefully after restarts instead of double-running
 - Bot personality changed from "sarcastic" Feyd-Rautha persona to "professional but friendly" tone
 - Updated all Python dependencies to latest secure versions
 - Database port no longer exposed to host network (Docker internal only)

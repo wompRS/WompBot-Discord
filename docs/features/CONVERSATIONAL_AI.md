@@ -109,6 +109,7 @@ When triggered, bot gathers:
 - Last 6 messages from channel (configurable)
 - Excludes bot's own messages
 - Excludes opted-out users
+- Skips redacted rows with no content so sanitized messages never reach the LLM
 - Provides context for natural conversation
 
 **B. User Context** (if not opted-out)

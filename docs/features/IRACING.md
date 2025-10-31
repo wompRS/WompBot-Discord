@@ -13,6 +13,11 @@ Complete integration with iRacing's official API for driver stats, race schedule
 - **Meta Analysis** - Best car performance data for any series/track combination
 - **Schedule Visualizations** - Season tables highlight the current week, display UTC open times, and include season date ranges
 - **Account Linking** - Connect Discord accounts to iRacing profiles
+
+### ⏱️ Background Jobs & Rate Limits
+- Daily participation snapshot, weekly popularity refresh, and cache warm-ups record their last run in the database (`job_last_run`)
+- On restart the bot skips each loop until its interval elapses, preventing multiple API bursts after crashes or deploys
+- Adaptive throttling still kicks in when the iRacing API returns a 429, but normal polling runs at full speed when healthy
 ### 🎨 Professional Visualizations
 - Charts styled after iRacing Reports
 - Dark theme with gold accents
