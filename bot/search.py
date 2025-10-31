@@ -28,18 +28,28 @@ class SearchEngine:
             print(f"✅ Found {len(results)} results")
             return results
         except Exception as e:
-            print(f"❌ Search error: {e}")
+            print(f"❌ Search error: {type(e).__name__}: {e}")
             return []
-    
+
     def format_results_for_llm(self, results):
         """Format search results for inclusion in LLM prompt"""
         if not results:
             return "No search results found."
-        
-        formatted = "Search Results:\n\n"
+
+        formatted_lines = ["Search Results:\n"]
+        total_chars = len(formatted_lines[0])
+        max_chars = 1500
+
         for i, result in enumerate(results, 1):
-            formatted += f"{i}. {result['title']}\n"
-            formatted += f"   URL: {result['url']}\n"
-            formatted += f"   {result['content'][:300]}...\n\n"
-        
-        return formatted
+            snippet = result.get("content", "")[:300].strip()
+            entry = (
+                f"{i}. {result.get('title', 'Untitled')}\n"
+                f"   URL: {result.get('url', 'N/A')}\n"
+                f"   {snippet}...\n\n"
+            )
+            formatted_lines.append(entry)
+            total_chars += len(entry)
+            if total_chars >= max_chars:
+                break
+
+        return "".join(formatted_lines)
