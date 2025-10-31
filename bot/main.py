@@ -85,6 +85,7 @@ WOMPIE_USERNAME = "Wompie__"
 
 # iRacing series popularity cache
 iracing_popularity_cache = {}  # {time_range: {'data': [(series, count), ...], 'timestamp': datetime}}
+MENTION_RATE_STATE = {}  # user_id -> {'count': int, 'window_start': float}
 
 async def _job_guard(job_name: str, interval: timedelta, jitter_seconds: int = 0) -> bool:
     """
@@ -875,6 +876,37 @@ async def on_message(message):
     await bot.process_commands(message)
 
 @bot.event
+async def on_member_join(member):
+    """Send privacy notice to new members when they join a guild with WompBot."""
+    if member.bot:
+        return
+
+    notice_setting = os.getenv("PRIVACY_DM_NEW_MEMBERS", "1").strip().lower()
+    if notice_setting in {"0", "false", "no"}:
+        return
+
+    try:
+        embed = discord.Embed(
+            title="👋 Welcome! Let's talk privacy.",
+            description=(
+                "WompBot can help with stats, reminders, iRacing analytics, and more.\n\n"
+                "**Your choices:**\n"
+                "• Run `/wompbot_consent` to enable full functionality.\n"
+                "• Run `/wompbot_noconsent` if you prefer that we collect nothing.\n"
+                "• Use `/privacy_policy` or `/privacy_settings` for details.\n\n"
+                "You can change your mind anytime, and there are commands to export or delete your data."
+            ),
+            color=discord.Color.blue(),
+        )
+        embed.set_footer(text="Thank you for helping us keep your data safe.")
+        await member.send(embed=embed)
+    except discord.Forbidden:
+        # Member has DMs closed; nothing to do.
+        pass
+    except Exception as exc:
+        print(f"⚠️ Failed to send privacy DM to {member}: {exc}")
+
+@bot.event
 async def on_message_edit(before, after):
     """Track edits to messages with claims"""
     if before.author == bot.user:
@@ -1103,6 +1135,25 @@ async def handle_bot_mention(message, opted_out):
                 # Generate leaderboard
                 await generate_leaderboard_response(message.channel, stat_type, days)
                 return
+
+        # Rate limiting (per user to avoid abuse)
+        rate_window = float(os.getenv("MENTION_RATE_WINDOW_SECONDS", "6"))
+        max_per_window = int(os.getenv("MENTION_RATE_MAX_CALLS", "3"))
+        if rate_window > 0 and max_per_window > 0:
+            now_ts = datetime.now(timezone.utc).timestamp()
+            user_bucket = MENTION_RATE_STATE.get(message.author.id)
+            if user_bucket and now_ts - user_bucket["window_start"] <= rate_window:
+                if user_bucket["count"] >= max_per_window:
+                    await message.channel.send(
+                        "⏱️ Let's take a breather. Try again in a few seconds."
+                    )
+                    return
+                user_bucket["count"] += 1
+            else:
+                MENTION_RATE_STATE[message.author.id] = {
+                    "count": 1,
+                    "window_start": now_ts,
+                }
 
         # Start typing indicator
         async with message.channel.typing():

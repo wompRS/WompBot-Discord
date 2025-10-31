@@ -238,6 +238,8 @@ data_retention_config (
 - `/privacy_policy` - View full privacy policy
 - `/my_privacy_status` - View current status
 - `/privacy_support` - Get help
+- `/privacy_settings` *(Admin)* - Live overview of consent + stored data volumes
+- `/privacy_audit` *(Admin)* - Generate JSON privacy audit snapshot
 
 ### 4.3 Background Tasks
 
