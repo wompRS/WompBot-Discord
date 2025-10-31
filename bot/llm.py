@@ -60,6 +60,8 @@ Just answer the question. Don't explain yourself."""
 
             # Add conversation history
             for msg in conversation_history[-6:]:  # Last 6 messages
+                if not msg.get('content'):
+                    continue
                 role = "assistant" if msg.get('username', '').startswith('Bot') else "user"
                 # Only add username prefix for user messages, not assistant messages
                 if role == "assistant":

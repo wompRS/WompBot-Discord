@@ -1,3 +1,4 @@
+import asyncio
 import re
 import random
 import discord
@@ -85,11 +86,46 @@ WOMPIE_USERNAME = "Wompie__"
 # iRacing series popularity cache
 iracing_popularity_cache = {}  # {time_range: {'data': [(series, count), ...], 'timestamp': datetime}}
 
+async def _job_guard(job_name: str, interval: timedelta, jitter_seconds: int = 0) -> bool:
+    """
+    Determine if a background job should run based on persisted run history.
+    Returns True when the job should execute.
+    """
+    if jitter_seconds:
+        delay = random.uniform(0, jitter_seconds)
+        if delay > 0:
+            await asyncio.sleep(delay)
+
+    if not db:
+        return True
+
+    try:
+        should_run, last_run = db.should_run_job(job_name, interval)
+    except Exception as exc:
+        print(f"⚠️ Job guard fallback for {job_name}: {exc}")
+        return True
+
+    if should_run:
+        return True
+
+    if last_run:
+        next_run = last_run + interval
+        remaining = next_run - datetime.now(timezone.utc)
+        remaining_minutes = max(int(remaining.total_seconds() // 60), 0)
+        print(f"⏭️ Skipping {job_name}; ran recently. Next run in ~{remaining_minutes} minutes.")
+    else:
+        print(f"⏭️ Skipping {job_name}; run history unavailable.")
+
+    return False
+
 # Background task for updating iRacing series popularity weekly
 @tasks.loop(hours=168)  # Run every week (7 days * 24 hours)
 async def update_iracing_popularity():
     """Background task to update iRacing series popularity data"""
     if not iracing:
+        return
+
+    if not await _job_guard("update_iracing_popularity", timedelta(days=7), jitter_seconds=120):
         return
 
     try:
@@ -111,6 +147,8 @@ async def update_iracing_popularity():
                 print(f"  ❌ Error computing {time_range} popularity: {e}")
 
         print("✅ iRacing popularity cache updated successfully")
+        if db:
+            db.update_job_last_run("update_iracing_popularity")
 
     except Exception as e:
         print(f"❌ Error updating iRacing popularity cache: {e}")
@@ -122,6 +160,9 @@ async def update_iracing_popularity():
 async def snapshot_participation_data():
     """Daily task to snapshot current participation data for historical tracking"""
     if not iracing or not db:
+        return
+
+    if not await _job_guard("snapshot_participation_data", timedelta(days=1), jitter_seconds=90):
         return
 
     try:
@@ -192,6 +233,7 @@ async def snapshot_participation_data():
                 continue
 
         print(f"✅ Participation snapshot complete: {snapshot_count} series recorded, {error_count} errors")
+        db.update_job_last_run("snapshot_participation_data")
 
     except Exception as e:
         print(f"❌ Error in participation snapshot: {e}")
@@ -285,6 +327,9 @@ async def compute_series_popularity(time_range: str, limit: int = 10) -> List[Tu
 @tasks.loop(hours=1)  # Run every hour (can adjust to minutes=30 for 30-min intervals)
 async def precompute_stats():
     """Background task to pre-compute common statistics"""
+    if not await _job_guard("precompute_stats", timedelta(hours=1), jitter_seconds=45):
+        return
+
     try:
         print("🔄 Starting background stats computation...")
 
@@ -344,6 +389,8 @@ async def precompute_stats():
                     print(f"  ❌ Engagement stats failed: {e}")
 
         print("✅ Background stats computation complete!")
+        if db:
+            db.update_job_last_run("precompute_stats")
 
     except Exception as e:
         print(f"❌ Background stats computation error: {e}")
@@ -521,6 +568,9 @@ async def before_check_event_reminders():
 @tasks.loop(hours=24)  # Run once daily
 async def gdpr_cleanup():
     """Process GDPR-related tasks: scheduled deletions, data retention cleanup"""
+    if not await _job_guard("gdpr_cleanup", timedelta(days=1), jitter_seconds=120):
+        return
+
     try:
         print("🧹 Starting GDPR compliance cleanup...")
 
@@ -538,6 +588,8 @@ async def gdpr_cleanup():
                     print(f"      • {data_type}: {count:,} records deleted")
 
         print("✅ GDPR compliance cleanup complete")
+        if db:
+            db.update_job_last_run("gdpr_cleanup")
 
     except Exception as e:
         print(f"❌ Error during GDPR cleanup: {e}")
@@ -699,6 +751,12 @@ async def on_ready():
         async def warm_series_cache():
             global _series_autocomplete_cache, _series_cache_time
             try:
+                if db:
+                    should_run, last_run = db.should_run_job("warm_series_cache", timedelta(hours=1))
+                    if not should_run:
+                        print("⏭️ Skipping series cache warm-up; ran recently.")
+                        return
+
                 print("🏎️ Pre-warming iRacing series cache...")
                 import time
                 series = await iracing.get_current_series()
@@ -706,6 +764,8 @@ async def on_ready():
                     _series_autocomplete_cache = series
                     _series_cache_time = time.time()
                     print(f"✅ Series cache ready ({len(series)} series loaded)")
+                    if db:
+                        db.update_job_last_run("warm_series_cache")
                 else:
                     print("⚠️ Failed to pre-warm series cache")
             except Exception as e:
@@ -730,7 +790,7 @@ async def on_message(message):
     consent_status = privacy_manager.get_consent_status(message.author.id)
     opted_out = not consent_status.get('has_consent', False) if consent_status else True
 
-    # Store ALL messages (even if opted out, we flag them)
+    # Store consenting messages (opted-out users are tracked without content)
     db.store_message(message, opted_out=opted_out)
 
     # Track messages for active debates

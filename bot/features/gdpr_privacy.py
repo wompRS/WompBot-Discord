@@ -88,9 +88,10 @@ class GDPRPrivacyManager:
                         SET consent_given = TRUE,
                             consent_date = NOW(),
                             data_processing_allowed = TRUE,
-                            opted_out = FALSE
+                            opted_out = FALSE,
+                            username = %s
                         WHERE user_id = %s
-                    """, (user_id,))
+                    """, (username, user_id))
                 else:
                     # Withdrawing consent
                     cur.execute("""
@@ -106,6 +107,16 @@ class GDPRPrivacyManager:
                         UPDATE user_profiles
                         SET consent_given = FALSE,
                             data_processing_allowed = FALSE,
+                            opted_out = TRUE,
+                            username = '[redacted]'
+                        WHERE user_id = %s
+                    """, (user_id,))
+
+                    # Immediately redact all stored messages for the user
+                    cur.execute("""
+                        UPDATE messages
+                        SET content = NULL,
+                            username = '[redacted]',
                             opted_out = TRUE
                         WHERE user_id = %s
                     """, (user_id,))
