@@ -42,86 +42,123 @@ Just answer the question. Don't explain yourself."""
         response_lower = response_text.lower()
         return any(phrase in response_lower for phrase in uncertainty_phrases)
     
-    def generate_response(self, user_message, conversation_history, user_context=None, search_results=None, retry_count=0):
+    MAX_HISTORY_CHARS = 6000
+
+    def generate_response(
+        self,
+        user_message,
+        conversation_history,
+        user_context=None,
+        search_results=None,
+        retry_count=0,
+        bot_user_id=None,
+    ):
         """Generate response using OpenRouter with automatic retry on empty responses"""
         import time
 
         try:
             messages = [{"role": "system", "content": self.system_prompt}]
 
-            # Add user context if available
-            if user_context and user_context.get('behavior'):
-                behavior = user_context['behavior']
-                context_note = f"\n\nUser context for {user_context['profile']['username']}:\n"
+            profile = None
+            behavior = None
+            if user_context:
+                profile = user_context.get("profile")
+                behavior = user_context.get("behavior")
+
+            if profile and behavior:
+                username = profile.get("username") or profile.get("user_id", "Unknown user")
+                context_note = f"\n\nUser context for {username}:\n"
                 context_note += f"- Profanity level: {behavior.get('profanity_score', 0)}/10\n"
                 context_note += f"- Tone: {behavior.get('tone_analysis', 'Unknown')}\n"
                 context_note += f"- Style: {behavior.get('conversation_style', 'Unknown')}"
                 messages[0]["content"] += context_note
 
-            # Add conversation history
             for msg in conversation_history[-6:]:  # Last 6 messages
-                if not msg.get('content'):
+                if not msg.get("content"):
                     continue
-                role = "assistant" if msg.get('username', '').startswith('Bot') else "user"
-                # Only add username prefix for user messages, not assistant messages
+
+                role = "user"
+                msg_user_id = msg.get("user_id")
+                if bot_user_id is not None and msg_user_id == bot_user_id:
+                    role = "assistant"
+
                 if role == "assistant":
-                    content = msg['content']
+                    content = msg["content"]
                 else:
-                    content = f"{msg['username']}: {msg['content']}"
+                    display_name = msg.get("username", "User")
+                    content = f"{display_name}: {msg['content']}"
                 messages.append({"role": role, "content": content})
 
-            # Add search results if available
             if search_results:
-                search_context = "\n\nWeb Search Results:\n" + search_results
-                messages.append({"role": "system", "content": search_context})
+                search_context = "\n\nSearch Results:\n" + search_results
+                messages.append({"role": "assistant", "content": search_context})
 
-            # Add current user message
             messages.append({"role": "user", "content": user_message})
+
+            total_chars = sum(len(entry["content"]) for entry in messages)
+            while total_chars > self.MAX_HISTORY_CHARS and len(messages) > 3:
+                removed = messages.pop(1)
+                total_chars -= len(removed["content"])
 
             retry_text = f" (retry {retry_count + 1}/3)" if retry_count > 0 else ""
             print(f"🤖 Sending to {self.model}{retry_text}")
 
             headers = {
                 "Authorization": f"Bearer {self.api_key}",
-                "Content-Type": "application/json"
+                "Content-Type": "application/json",
             }
 
             payload = {
                 "model": self.model,
                 "messages": messages,
                 "max_tokens": 800,
-                "temperature": 0.7
+                "temperature": 0.7,
             }
 
             response = requests.post(self.base_url, headers=headers, json=payload, timeout=60)
-            response.raise_for_status()
+            try:
+                response.raise_for_status()
+            except requests.HTTPError as http_err:
+                body_preview = response.text[:500] if hasattr(response, "text") else "no body"
+                print(f"❌ LLM HTTP error {response.status_code}: {body_preview}")
+                raise http_err
 
             result = response.json()
-            response_text = result['choices'][0]['message']['content']
+            response_text = result["choices"][0]["message"]["content"]
 
             print(f"✅ LLM response length: {len(response_text)} chars")
 
-            # Check for empty response and retry
             if not response_text or len(response_text.strip()) == 0:
                 print(f"⚠️  WARNING: Empty response from LLM. Full result: {result}")
-
-                # Retry up to 3 times with 2 second delay
                 if retry_count < 2:
-                    print(f"🔄 Retrying in 2 seconds...")
+                    print("🔄 Retrying in 2 seconds...")
                     time.sleep(2)
-                    return self.generate_response(user_message, conversation_history, user_context, search_results, retry_count + 1)
+                    return self.generate_response(
+                        user_message,
+                        conversation_history,
+                        user_context,
+                        search_results,
+                        retry_count + 1,
+                        bot_user_id=bot_user_id,
+                    )
                 else:
                     print(f"❌ Failed after {retry_count + 1} attempts")
                     return None
 
             return response_text
         except Exception as e:
-            print(f"❌ LLM error: {e}")
-            # Retry on exceptions too (network issues, timeouts, etc.)
+            print(f"❌ LLM error: {type(e).__name__}: {e}")
             if retry_count < 2:
-                print(f"🔄 Retrying in 2 seconds due to error...")
+                print("🔄 Retrying in 2 seconds due to error...")
                 time.sleep(2)
-                return self.generate_response(user_message, conversation_history, user_context, search_results, retry_count + 1)
+                return self.generate_response(
+                    user_message,
+                    conversation_history,
+                    user_context,
+                    search_results,
+                    retry_count + 1,
+                    bot_user_id=bot_user_id,
+                )
             return None
     
     def analyze_user_behavior(self, messages):

@@ -1113,10 +1113,10 @@ async def handle_bot_mention(message, opted_out):
                 exclude_opted_out=True,
                 exclude_bot_id=bot.user.id
             )
-            
+
             # Get user context (if not opted out)
             user_context = None if opted_out else db.get_user_context(message.author.id)
-            
+
             # Check if search is needed
             search_results = None
             search_msg = None
@@ -1124,17 +1124,20 @@ async def handle_bot_mention(message, opted_out):
             if llm.should_search(content, conversation_history):
                 search_msg = await message.channel.send("🔍 Searching for current info...")
 
-                search_results_raw = search.search(content)
+                search_results_raw = await asyncio.to_thread(search.search, content)
                 search_results = search.format_results_for_llm(search_results_raw)
 
                 db.store_search_log(content, len(search_results_raw), message.author.id, message.channel.id)
 
             # Generate response
-            response = llm.generate_response(
-                user_message=content,
-                conversation_history=conversation_history,
-                user_context=user_context,
-                search_results=search_results
+            response = await asyncio.to_thread(
+                llm.generate_response,
+                content,
+                conversation_history,
+                user_context,
+                search_results,
+                0,
+                bot.user.id,
             )
 
             # Check if response is empty
@@ -1148,17 +1151,20 @@ async def handle_bot_mention(message, opted_out):
                 else:
                     await search_msg.edit(content="🔍 Let me search for that...")
 
-                search_results_raw = search.search(content)
+                search_results_raw = await asyncio.to_thread(search.search, content)
                 search_results = search.format_results_for_llm(search_results_raw)
 
                 db.store_search_log(content, len(search_results_raw), message.author.id, message.channel.id)
 
                 # Regenerate response with search results
-                response = llm.generate_response(
-                    user_message=content,
-                    conversation_history=conversation_history,
-                    user_context=user_context,
-                    search_results=search_results
+                response = await asyncio.to_thread(
+                    llm.generate_response,
+                    content,
+                    conversation_history,
+                    user_context,
+                    search_results,
+                    0,
+                    bot.user.id,
                 )
 
             # Final check for empty response
@@ -1233,7 +1239,7 @@ async def analyze_users(ctx, days: int = 7):
             
             await ctx.send(f"Analyzing {user['username']}...")
             
-            analysis = llm.analyze_user_behavior(messages)
+            analysis = await asyncio.to_thread(llm.analyze_user_behavior, messages)
             
             if analysis:
                 db.store_behavior_analysis(
@@ -1293,7 +1299,7 @@ async def manual_search(ctx, *, query: str):
     """Manually trigger a web search"""
     async with ctx.typing():
         try:
-            results = search.search(query)
+            results = await asyncio.to_thread(search.search, query)
             
             if not results:
                 await ctx.send("No results found.")
