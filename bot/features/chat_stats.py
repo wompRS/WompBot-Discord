@@ -157,8 +157,8 @@ class ChatStatistics:
                 'wanna', 'kinda', 'sorta'
             }
 
-            # TF-IDF vectorizer
-            vectorizer = TfidfVectorizer(
+            # TF-IDF vectorizer (with graceful fallback for sparse chats)
+            vectorizer_kwargs = dict(
                 max_features=top_n * 2,  # Get more candidates
                 stop_words=list(custom_stopwords),
                 ngram_range=(1, 2),  # Unigrams and bigrams
@@ -167,8 +167,20 @@ class ChatStatistics:
                 token_pattern=r'(?u)\b[a-zA-Z][a-zA-Z]+\b'  # Only alphabetic words
             )
 
-            # Fit and transform
-            tfidf_matrix = vectorizer.fit_transform(texts)
+            vectorizer = TfidfVectorizer(**vectorizer_kwargs)
+
+            # Fit and transform with fallback when the sample is tiny
+            try:
+                tfidf_matrix = vectorizer.fit_transform(texts)
+            except ValueError as err:
+                if "After pruning, no terms remain" in str(err):
+                    fallback_kwargs = dict(vectorizer_kwargs)
+                    fallback_kwargs.update({'min_df': 1, 'max_df': 1.0})
+                    vectorizer = TfidfVectorizer(**fallback_kwargs)
+                    tfidf_matrix = vectorizer.fit_transform(texts)
+                else:
+                    raise
+
             feature_names = vectorizer.get_feature_names_out()
 
             # Calculate average TF-IDF score for each term
