@@ -358,6 +358,111 @@ def setup_privacy_commands(bot, db, privacy_manager):
         view = DeleteConfirmView(privacy_manager, user_id)
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
+    @bot.tree.command(name="privacy_settings", description="Review WompBot privacy posture for this server")
+    @app_commands.default_permissions(administrator=True)
+    async def privacy_settings(interaction: discord.Interaction):
+        summary = db.get_consent_summary()
+        storage = db.get_data_storage_overview()
+
+        policy = privacy_manager.get_privacy_policy()
+        policy_version = policy['version'] if policy else privacy_manager.CURRENT_POLICY_VERSION
+        policy_date = (
+            policy.get('effective_date').strftime('%Y-%m-%d')
+            if policy and policy.get('effective_date')
+            else 'N/A'
+        )
+
+        embed = discord.Embed(
+            title="🔒 WompBot Privacy Settings",
+            description=(
+                "Overview of how WompBot operates in this server."
+                " Use `/privacy_audit` for a detailed export."
+            ),
+            color=discord.Color.blue()
+        )
+
+        embed.add_field(
+            name="Consent Snapshot",
+            value=(
+                f"Active consent: **{summary['active_consent']}**\n"
+                f"Withdrawn / declined: **{summary['withdrawn']}**\n"
+                f"Pending replies: **{summary['pending']}**\n"
+                f"Profiles marked opted-out: **{summary['opted_out_profiles']}**"
+            ),
+            inline=False
+        )
+
+        message_stats = storage.get('messages', {})
+        message_count = message_stats.get('count', 0)
+        last_entry = message_stats.get('last_entry')
+        last_entry_display = last_entry.strftime('%Y-%m-%d %H:%M') if last_entry else 'N/A'
+
+        embed.add_field(
+            name="Stored Data (approx)",
+            value=(
+                f"Messages: **{message_count:,}** (latest: {last_entry_display})\n"
+                f"Claims: **{storage.get('claims', {}).get('count', 0):,}** | "
+                f"Behavior Analyses: **{storage.get('user_behavior', {}).get('count', 0):,}**\n"
+                f"Stats Cache: **{storage.get('stats_cache', {}).get('count', 0):,}** entries\n"
+                f"iRacing Meta Cache: **{storage.get('iracing_meta_cache', {}).get('count', 0):,}** | "
+                f"History Cache: **{storage.get('iracing_history_cache', {}).get('count', 0):,}**"
+            ),
+            inline=False
+        )
+
+        embed.add_field(
+            name="Key Modules Using Data",
+            value=(
+                "• Conversational AI (context up to 6 messages)\n"
+                "• Claims tracking & quotes\n"
+                "• Chat statistics & behavior insights\n"
+                "• iRacing analytics & visualizations"
+            ),
+            inline=False
+        )
+
+        embed.set_footer(text=f"Privacy policy version {policy_version} • Effective {policy_date}")
+
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @bot.tree.command(name="privacy_audit", description="Generate a privacy compliance summary")
+    @app_commands.default_permissions(administrator=True)
+    async def privacy_audit(interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+
+        summary = db.get_consent_summary()
+        storage = db.get_data_storage_overview()
+
+        audit_report = {
+            "generated_at": datetime.utcnow().isoformat(),
+            "guild_id": interaction.guild_id,
+            "consent": summary,
+            "storage": storage,
+            "policy_version": privacy_manager.CURRENT_POLICY_VERSION,
+        }
+
+        policy = privacy_manager.get_privacy_policy()
+        if policy:
+            audit_report["policy"] = {
+                "version": policy.get("version"),
+                "effective_date": policy.get("effective_date").isoformat() if policy.get("effective_date") else None,
+            }
+
+        buffer = io.StringIO()
+        json.dump(audit_report, buffer, indent=2)
+        buffer.seek(0)
+
+        file = discord.File(fp=io.BytesIO(buffer.getvalue().encode('utf-8')), filename="wompbot_privacy_audit.json")
+
+        await interaction.followup.send(
+            content=(
+                "📄 Audit report generated. Share this with server moderators or members "
+                "who want to understand what WompBot stores."
+            ),
+            file=file,
+            ephemeral=True
+        )
+
     @bot.tree.command(name="cancel_deletion", description="Cancel your scheduled data deletion")
     async def cancel_deletion(interaction: discord.Interaction):
         """Cancel a scheduled data deletion"""

@@ -505,6 +505,73 @@ class Database:
             print(f"⚠️ Error cleaning history cache: {e}")
             return 0
 
+    def get_consent_summary(self):
+        """Return aggregated consent statistics for privacy reporting."""
+        summary = {
+            "total_profiles": 0,
+            "active_consent": 0,
+            "withdrawn": 0,
+            "pending": 0,
+            "opted_out_profiles": 0,
+        }
+        try:
+            with self.conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("SELECT COUNT(*) AS total_profiles, SUM(CASE WHEN opted_out THEN 1 ELSE 0 END) AS opted_out FROM user_profiles")
+                profile_row = cur.fetchone() or {}
+                summary["total_profiles"] = profile_row.get("total_profiles", 0) or 0
+                summary["opted_out_profiles"] = profile_row.get("opted_out", 0) or 0
+
+                cur.execute("""
+                    SELECT
+                        SUM(CASE WHEN consent_given AND COALESCE(consent_withdrawn, FALSE) = FALSE THEN 1 ELSE 0 END) AS active_consent,
+                        SUM(CASE WHEN NOT consent_given OR consent_withdrawn THEN 1 ELSE 0 END) AS withdrawn
+                    FROM user_consent
+                """)
+                consent_row = cur.fetchone() or {}
+                summary["active_consent"] = consent_row.get("active_consent", 0) or 0
+                summary["withdrawn"] = consent_row.get("withdrawn", 0) or 0
+
+                summary["pending"] = max(
+                    summary["total_profiles"] - (summary["active_consent"] + summary["withdrawn"]),
+                    0,
+                )
+
+        except Exception as e:
+            print(f"⚠️ Error building consent summary: {e}")
+
+        return summary
+
+    def get_data_storage_overview(self):
+        """Return approximate row counts and recent activity for major tables."""
+        overview = {}
+        try:
+            with self.conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    SELECT COUNT(*) AS count, MAX(timestamp) AS last_entry
+                    FROM messages
+                """)
+                overview["messages"] = cur.fetchone() or {"count": 0, "last_entry": None}
+
+                cur.execute("SELECT COUNT(*) AS count FROM claims")
+                overview["claims"] = cur.fetchone() or {"count": 0}
+
+                cur.execute("SELECT COUNT(*) AS count FROM user_behavior")
+                overview["user_behavior"] = cur.fetchone() or {"count": 0}
+
+                cur.execute("SELECT COUNT(*) AS count FROM stats_cache")
+                overview["stats_cache"] = cur.fetchone() or {"count": 0}
+
+                cur.execute("SELECT COUNT(*) AS count FROM iracing_meta_cache")
+                overview["iracing_meta_cache"] = cur.fetchone() or {"count": 0}
+
+                cur.execute("SELECT COUNT(*) AS count FROM iracing_history_cache")
+                overview["iracing_history_cache"] = cur.fetchone() or {"count": 0}
+
+        except Exception as e:
+            print(f"⚠️ Error getting storage overview: {e}")
+
+        return overview
+
     def store_participation_snapshot(self, series_name: str, series_id: int, season_id: int,
                                      season_year: int, season_quarter: int, participant_count: int,
                                      snapshot_date=None):

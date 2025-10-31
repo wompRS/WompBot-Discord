@@ -273,6 +273,8 @@ Users control their data through slash commands:
 - **/delete_my_data**: Request permanent deletion with 30-day grace period (GDPR Art. 17)
 - **/my_privacy_status**: View your current privacy and consent status
 - **/privacy_policy**: View the complete privacy policy
+- **/privacy_settings** *(Admin)*: Get a live overview of consent counts and stored data
+- **/privacy_audit** *(Admin)*: Download a JSON report summarizing current privacy posture
 
 **Without consent:**
 - Message content and usernames are redacted before storage (only metadata retained)
@@ -285,6 +287,7 @@ Users control their data through slash commands:
 - Scheduled tasks persist their last successful run in `job_last_run`
 - On startup each loop checks the stored timestamp and skips work until the interval (hourly/daily/weekly) elapses
 - Prevents duplicate GDPR cleanup or iRacing snapshots after restarts while keeping cron cadence predictable
+- New members automatically receive a welcome DM outlining consent choices and privacy commands (set `PRIVACY_DM_NEW_MEMBERS=0` to disable)
 
 ## Behavior Analysis
 
