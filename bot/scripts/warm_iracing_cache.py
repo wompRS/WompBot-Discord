@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import sys
 from datetime import datetime
 from typing import List, Optional, Set
 
@@ -21,6 +22,20 @@ from credential_manager import CredentialManager
 from database import Database
 from features.iracing import iRacingIntegration
 from features.iracing_meta import MetaAnalyzer
+
+
+PROGRESS_BAR_WIDTH = 30
+
+
+def _render_progress(completed: int, total: int, label: str) -> None:
+    if total <= 0:
+        total = 1
+    ratio = max(0.0, min(1.0, completed / total))
+    filled = int(PROGRESS_BAR_WIDTH * ratio)
+    bar = '█' * filled + '░' * (PROGRESS_BAR_WIDTH - filled)
+    label_trimmed = label[:40]
+    sys.stdout.write(f"\r[{bar}] {completed}/{total} ({ratio * 100:5.1f}%) {label_trimmed:<40}")
+    sys.stdout.flush()
 
 
 async def _ensure_meta_analyzer(integration: iRacingIntegration) -> MetaAnalyzer:
@@ -133,14 +148,22 @@ async def warm_all_series(limit: Optional[int] = None, sleep_seconds: float = 0.
 
     print(f"🚀 Warming caches for {len(series_list)} active series")
 
+    total_series = len(series_list)
     meta_analyzer = await _ensure_meta_analyzer(integration)
     summaries: List[dict] = []
     started_at = datetime.utcnow()
 
+    _render_progress(0, total_series, "Starting warmup…")
+
     for idx, series in enumerate(series_list, start=1):
-        print(f"\n=== ({idx}/{len(series_list)}) {series.get('series_name')} ===")
+        print(f"\n=== ({idx}/{total_series}) {series.get('series_name')} ===")
         summary = await warm_series(integration, meta_analyzer, series, sleep_seconds=sleep_seconds)
         summaries.append(summary)
+
+        label = f"{summary['series_name']} hits:{summary['meta_hits']} misses:{summary['meta_misses']}"
+        _render_progress(idx, total_series, label)
+
+    sys.stdout.write("\n")
 
     await integration.close()
 
