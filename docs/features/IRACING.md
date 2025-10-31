@@ -18,6 +18,13 @@ Complete integration with iRacing's official API for driver stats, race schedule
 - Daily participation snapshot, weekly popularity refresh, and cache warm-ups record their last run in the database (`job_last_run`)
 - On restart the bot skips each loop until its interval elapses, preventing multiple API bursts after crashes or deploys
 - Adaptive throttling still kicks in when the iRacing API returns a 429, but normal polling runs at full speed when healthy
+
+### 🧊 Pre-warming caches (one-off)
+- To precompute schedules and meta statistics for every active series in the current season run:<br>
+  `docker-compose exec bot python -m bot.scripts.warm_iracing_cache`
+  - Optional flags: `--limit 10` to test against a subset, `--sleep 1.0` to increase the delay between API calls
+- The batch job walks every series, stores season schedules in the in-memory cache, and persists meta analysis for each race week to `iracing_meta_cache`
+- Useful before league events or demos when you want `/iracing_meta`, `/iracing_win_rate`, and schedule commands to respond instantly
 ### 🎨 Professional Visualizations
 - Charts styled after iRacing Reports
 - Dark theme with gold accents
