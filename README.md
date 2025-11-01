@@ -146,7 +146,7 @@ Replace these values:
 
 **Optional - iRacing Integration:**
 To enable iRacing features securely with encrypted credentials:
-1. See **[CREDENTIALS_SETUP.md](CREDENTIALS_SETUP.md)** for detailed instructions
+1. See **[CREDENTIALS_SETUP.md](docs/guides/CREDENTIALS_SETUP.md)** for detailed instructions
 2. Quick start:
    ```bash
    docker-compose build bot  # Install encryption library
@@ -319,6 +319,16 @@ Use `/analyze` command to run analysis.
 - [⚙️ Configuration Guide](docs/CONFIGURATION.md) - All settings, API keys, environment variables
 - [🛠️ Development Guide](docs/DEVELOPMENT.md) - Adding features, database migrations, testing
 - [💰 Cost Optimization](docs/COST_OPTIMIZATION.md) - Two-stage hybrid detection for claims
+
+**Guides:**
+- [🔐 Encrypted Credentials Setup](docs/guides/CREDENTIALS_SETUP.md) - Secure iRacing credential workflow
+- [🧪 iRacing Testing Checklist](docs/guides/IRACING_TESTING.md) - Validation steps before race nights
+
+**Compliance & Security:**
+- [📘 GDPR Compliance Manual](docs/compliance/GDPR_COMPLIANCE.md) - Full breakdown of data rights & flows
+- [📝 GDPR Self-Attestation](docs/compliance/GDPR_SELF_ATTESTATION.md) - Statement for server admins
+- [🛡️ Security & GDPR Release Notes](docs/compliance/SECURITY_AND_GDPR_UPDATE.md) - Details of major hardening release
+- [🔍 Security Audit 2025](docs/compliance/SECURITY_AUDIT_2025.md) - Findings & remediation tracking
 
 ## Database Schema
 
