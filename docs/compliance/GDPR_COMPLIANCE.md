@@ -244,7 +244,7 @@ data_retention_config (
 - `export_user_data()` - Generate data export
 - `delete_user_data()` - Delete/anonymize data
 - `schedule_data_deletion()` - 30-day grace period
-- `cleanup_old_data()` - Automated retention cleanup
+- `cleanup_old_data()` - Cache cleanup + support for user-triggered deletions
 - `log_audit_action()` - GDPR audit trail
 
 **Commands Module**: [`bot/privacy_commands.py`](bot/privacy_commands.py)
@@ -276,11 +276,9 @@ async def gdpr_cleanup():
 
 **Actions Performed**:
 1. Process users with deletion scheduled 30+ days ago
-2. Delete messages older than retention period
-3. Delete behavior analysis older than 1 year
-4. Delete search logs older than 90 days
-5. Clean up expired stats cache
-6. Keep users with extended retention opted-in
+2. Clean up expired stats cache entries (30+ days old)
+3. Leave long-term datasets (messages, behavior analysis, search logs, debates) untouched; administrators review these via privacy dashboards
+4. Respect extended-retention opt-ins when processing user deletions
 
 ---
 
@@ -349,32 +347,21 @@ async def gdpr_cleanup():
 
 ## 6. Retention Policies
 
-### 6.1 Default Retention Periods
+### 6.1 Current Retention Plan
 
-| Data Type | Retention Period | Legal Basis | Auto-Delete |
-|-----------|------------------|-------------|-------------|
-| Messages | 1 year | Legitimate Interest | ✅ Yes |
-| User Behavior | 1 year | Legitimate Interest | ✅ Yes |
-| Claims | 5 years | Contract (UGC) | ❌ No |
-| Quotes | 5 years | Contract (UGC) | ❌ No |
-| Hot Takes | 5 years | Public Interest | ❌ No |
-| Search Logs | 90 days | Legitimate Interest | ✅ Yes |
-| Fact Checks | 2 years | Transparency | ❌ No |
-| Stats Cache | 30 days | Performance | ✅ Yes |
-| Audit Logs | 7 years | Legal Requirement | ❌ No |
-| Debate Records | 3 years | Community Engagement | ✅ Yes |
+| Data Type | Target Retention | Enforcement / Notes |
+|-----------|-----------------|---------------------|
+| Messages | 1 year guideline | **No automatic purge.** Deleted when user withdraws consent or issues `/delete_my_data`. Admins review storage via `/privacy_settings`. |
+| User Behavior | 1 year guideline | Cleared when user opts out or requests deletion. |
+| Claims / Quotes / Hot Takes | 5 years | Treated as user-generated content; retained unless user requests removal. |
+| Search Logs | 90 days guideline | Manually reviewed/cleared during privacy audits; user deletions honoured. |
+| Stats Cache | 30 days | Purged by daily cleanup task (ephemeral data only). |
+| Debate Records | 3 years | Retained for community reference; deleted if user requests erasure. |
+| Audit Logs | 7 years | Legal requirement for accountability. |
 
 ### 6.2 Extended Retention
 
-Users can opt-in for extended retention of messages (prevent auto-deletion):
-```sql
-UPDATE user_consent SET extended_retention = TRUE WHERE user_id = ?;
-```
-
-This is useful for:
-- Active community members
-- Users who want their history preserved
-- Long-term statistics accuracy
+The consent table (`user_consent.extended_retention`) records user preferences for long-term retention. At present it serves as a policy flag; actual deletion occurs only on user request. Future automation can honour these flags once available.
 
 ### 6.3 Legal Retention Exemptions
 
@@ -418,7 +405,7 @@ For any processors outside EU/EEA:
 - [x] **Purpose Limitation**: Data used only for stated purposes
 - [x] **Data Minimization**: Collect only what's necessary
 - [x] **Accuracy**: Users can correct data via commands
-- [x] **Storage Limitation**: Automated retention policies
+- [x] **Storage Limitation**: Retention policies documented + user-controlled deletions
 - [x] **Integrity & Confidentiality**: Encryption + access controls
 - [x] **Accountability**: Audit logs + documentation
 
@@ -670,7 +657,7 @@ This bot implements comprehensive GDPR compliance with:
 
 ✅ All required data subject rights
 ✅ Transparent privacy policy
-✅ Automated data retention
+✅ Documented retention policies with user-controlled deletions
 ✅ Complete audit trail
 ✅ Security best practices
 ✅ Regular compliance monitoring

@@ -14,6 +14,8 @@ class GDPRPrivacyManager:
     """Manages GDPR compliance features for user data"""
 
     CURRENT_POLICY_VERSION = "1.0"
+    # Only ephemeral data types should ever be automatically purged
+    AUTO_PURGE_DATA_TYPES = {"stats_cache"}
 
     def __init__(self, database):
         """
@@ -623,48 +625,24 @@ class GDPRPrivacyManager:
                 for policy in policies:
                     data_type = policy['data_type']
                     retention_days = policy['retention_days']
+                    auto_delete_enabled = policy.get('auto_delete_enabled', False)
+
+                    if not auto_delete_enabled or data_type not in self.AUTO_PURGE_DATA_TYPES:
+                        # Leave persisted datasets untouched; administrators handle retention manually
+                        continue
+
                     cutoff_date = datetime.now() - timedelta(days=retention_days)
 
                     # Delete based on data type
-                    if data_type == 'messages':
-                        cur.execute("""
-                            DELETE FROM messages
-                            WHERE timestamp < %s
-                            AND opted_out = FALSE
-                            AND user_id NOT IN (
-                                SELECT user_id FROM user_consent
-                                WHERE extended_retention = TRUE
-                            )
-                        """, (cutoff_date,))
-                        deleted_counts['messages'] = cur.rowcount
-
-                    elif data_type == 'user_behavior':
-                        cur.execute("""
-                            DELETE FROM user_behavior
-                            WHERE analyzed_at < %s
-                        """, (cutoff_date,))
-                        deleted_counts['user_behavior'] = cur.rowcount
-
-                    elif data_type == 'search_logs':
-                        cur.execute("""
-                            DELETE FROM search_logs
-                            WHERE timestamp < %s
-                        """, (cutoff_date,))
-                        deleted_counts['search_logs'] = cur.rowcount
-
-                    elif data_type == 'stats_cache':
+                    if data_type == 'stats_cache':
                         cur.execute("""
                             DELETE FROM stats_cache
                             WHERE computed_at < %s
                         """, (cutoff_date,))
                         deleted_counts['stats_cache'] = cur.rowcount
-
-                    elif data_type == 'debate_records':
-                        cur.execute("""
-                            DELETE FROM debates
-                            WHERE ended_at < %s
-                        """, (cutoff_date,))
-                        deleted_counts['debate_records'] = cur.rowcount
+                    else:
+                        # All other data types require explicit administrator action.
+                        continue
 
                     # Update last cleanup time
                     cur.execute("""

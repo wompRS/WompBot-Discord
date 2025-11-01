@@ -262,7 +262,7 @@ TOKEN = os.getenv('DISCORD_TOKEN')
 - ✅ **Purpose Limitation**: Data used only for stated purposes
 - ✅ **Data Minimization**: Collect only necessary data
 - ✅ **Accuracy**: User can update data
-- ✅ **Storage Limitation**: Automated retention policies
+- ✅ **Storage Limitation**: Documented retention periods with user-driven deletions and admin review
 - ✅ **Integrity**: Encryption + access controls
 - ✅ **Accountability**: Complete audit trail
 
@@ -280,7 +280,7 @@ TOKEN = os.getenv('DISCORD_TOKEN')
 ✅ **IMPLEMENTED**
 
 - ✅ Privacy policy (versioned)
-- ✅ Data retention policies (automated)
+- ✅ Data retention policies (documented, admin reviewed)
 - ✅ User consent management
 - ✅ Breach notification procedures
 - ✅ Data processing records (Art. 30)

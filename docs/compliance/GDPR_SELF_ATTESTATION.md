@@ -156,27 +156,27 @@ This document provides evidence-based attestation that WompBot is fully complian
 **Requirement**: Data must not be kept longer than necessary.
 
 **Implementation**:
-- ✅ Automated retention policies configured
-- ✅ Daily cleanup task enforces retention limits
-- ✅ User data deleted upon request
-- ✅ Retention periods documented and justified
+- ✅ Retention policies documented in `data_retention_config`
+- ✅ Users can delete data via `/delete_my_data` or withdraw consent (`/wompbot_noconsent`)
+- ✅ Admins review storage footprint via `/privacy_settings` and `/privacy_audit`
+- ✅ Ephemeral caches (stats/history) trimmed in scheduled cleanup; primary messages retained until the user requests removal
 
-**Retention Periods**:
-| Data Type | Retention | Justification | Auto-Delete |
-|-----------|-----------|---------------|-------------|
-| Messages | 1 year | Legitimate Interest | ✅ Yes |
-| User Behavior | 1 year | Abuse prevention | ✅ Yes |
-| Claims/Quotes | 5 years | User content (Contract) | ❌ No (UGC) |
-| Search Logs | 90 days | Service improvement | ✅ Yes |
-| Audit Logs | 7 years | Legal requirement | ❌ No (Legal) |
+**Retention Plan (current state)**:
+| Data Type | Target Retention | Enforcement / Notes |
+|-----------|-----------------|---------------------|
+| Messages | 1 year guideline | Deleted on user request or consent withdrawal; monitored through privacy dashboards. |
+| User Behavior | 1 year guideline | Removed when user opts out / deletes data. |
+| Claims/Quotes | 5 years | Treated as UGC; admins honour deletion requests. |
+| Search Logs | 90 days guideline | Cleared during privacy audits; user deletions honoured. |
+| Audit Logs | 7 years | Mandatory for accountability. |
 
 **Evidence**:
-- File: `bot/features/gdpr_privacy.py` lines 450-530 - Automated cleanup function
-- File: `bot/main.py` lines 314-344 - Daily cleanup background task
-- Database Table: `data_retention_config` - Configurable retention policies
-- SQL: `sql/gdpr_migration.sql` lines 161-172 - Default retention periods
+- File: `bot/features/gdpr_privacy.py` lines 450-530 - Cleanup helpers (cache purges, user-request erasure)
+- File: `bot/main.py` lines 569-601 - Daily cleanup background task (cache enforcement)
+- Commands: `/delete_my_data`, `/wompbot_noconsent`, `/privacy_settings`, `/privacy_audit`
+- Database Table: `data_retention_config` - Policy declarations
 
-**Verification Method**: Review cleanup logs, verify auto-deletion
+**Verification Method**: Review `/privacy_settings` output, audit log entries for deletion requests
 **Status**: ✅ **COMPLIANT**
 
 ---
@@ -1103,6 +1103,7 @@ WHERE user_id = ?;
    - Fields: `data_type`, `retention_days`, `legal_basis`, `auto_delete_enabled`, `last_cleanup_run`
    - Indexes: Yes
    - Retention: Permanent
+   - Notes: Auto-deletion defaults to `FALSE` for user data; only the `stats_cache` entry uses automatic trimming
 
 **Additional Modifications**:
 - `user_profiles`: Added `consent_given`, `consent_date`, `data_processing_allowed`
@@ -1121,7 +1122,7 @@ WHERE user_id = ?;
    - Function: `privacy_manager.process_scheduled_deletions()`
    - Function: `privacy_manager.cleanup_old_data()`
    - Processes: Scheduled user deletions (30+ days old)
-   - Enforces: Retention policies per `data_retention_config`
+   - Handles: Cache trimming for `stats_cache`; primary datasets require explicit admin action
 
 2. **Audit Logging**:
    - Automatic: All GDPR-related actions
@@ -1300,20 +1301,20 @@ Contact: ___________________________________
 
 ### Appendix B: Data Inventory
 
-| Data Category | Legal Basis | Retention | Auto-Delete | Justification |
-|---------------|-------------|-----------|-------------|---------------|
-| Discord User ID | Contract | Indefinite | ❌ | Pseudonymous identifier |
-| Username | Contract | 1 year | ✅ | Display purposes |
-| Message Content | Consent/LI | 1 year | ✅ | Feature functionality |
-| Behavioral Data | LI | 1 year | ✅ | Abuse prevention |
-| Claims/Quotes | Contract | 5 years | ❌ | User-generated content |
-| Hot Takes | Consent | 5 years | ❌ | Public statements |
-| Search Queries | LI | 90 days | ✅ | Service improvement |
-| Reminders | Contract | Until completed | ✅ | Feature delivery |
-| Debate History | Contract | 3 years | ✅ | Community engagement |
-| iRacing Data | Consent | Until unlinked | ❌ | Optional feature |
-| Audit Logs | Legal | 7 years | ❌ | Legal requirement |
-| Consent Records | Legal | 7 years | ❌ | Proof of consent |
+| Data Category | Legal Basis | Target Retention | Enforcement / Notes |
+|---------------|-------------|------------------|---------------------|
+| Discord User ID | Contract | Indefinite | Needed for pseudonymous identification. |
+| Username | Contract | 1 year guideline | Updated automatically; retained until user deletion. |
+| Message Content | Consent/LI | 1 year guideline | Removed when user withdraws consent or issues `/delete_my_data`. |
+| Behavioral Data | LI | 1 year guideline | Removed when user withdraws consent/deletes data. |
+| Claims/Quotes | Contract | 5 years | Treated as user-generated content; removed on request. |
+| Hot Takes | Consent | 5 years | Public statements, retained unless user requests removal. |
+| Search Queries | LI | 90 days guideline | Cleared during privacy reviews; user deletion honoured. |
+| Reminders | Contract | Until completed | Automatically cleared when reminder fires or user deletes. |
+| Debate History | Contract | 3 years | Community reference; deleted on request. |
+| iRacing Data | Consent | Until unlinked | Removed when user unlinks account or deletes data. |
+| Audit Logs | Legal | 7 years | Required for accountability. |
+| Consent Records | Legal | 7 years | Proof of consent/withdrawal. |
 
 ---
 
