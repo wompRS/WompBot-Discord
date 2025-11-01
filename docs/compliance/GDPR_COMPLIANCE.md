@@ -4,9 +4,9 @@
 
 This bot is fully compliant with the **General Data Protection Regulation (GDPR)** EU 2016/679, implementing all required data subject rights and privacy protections.
 
-**Compliance Status**: ✅ **GDPR Compliant** (as of 2025-01-25)
+**Compliance Status**: ✅ **GDPR Compliant** (as of 2025-10-31)
 **Privacy Policy Version**: 1.0
-**Last Audit**: 2025-01-25
+**Last Audit**: 2025-10-31 (automation + manual verification)
 
 ---
 
@@ -156,6 +156,26 @@ Per GDPR Article 6, we process personal data under the following legal bases:
 
 ---
 
+### 3.7 Transparency & Accountability Tools (Art. 12, Art. 30)
+**Commands**:
+- `/privacy_settings` *(Admin)* — Real-time snapshot of consent counts and storage footprint
+- `/privacy_audit` *(Admin)* — JSON export capturing current privacy metrics for documentation
+- Automated privacy welcome DM (configurable via `PRIVACY_DM_NEW_MEMBERS`) sent to new members with consent options
+
+**Implementation**:
+- Commands surface live data from `user_consent`, `data_audit_log`, cache tables, and retention config
+- Every invocation is logged in `data_audit_log` with actor, scope, and timestamp
+- Welcome DM satisfies transparency obligations by delivering Art. 13 information at first contact
+
+**Evidence**:
+- File: `bot/privacy_commands.py` lines 361-458 — Implementation of `/privacy_settings` and `/privacy_audit`
+- File: `bot/main.py` lines 879-907 — Automated privacy DM on guild join
+- Audit Log: Entries tagged `privacy_settings` / `privacy_audit` in `data_audit_log`
+
+**Status**: ✅ **COMPLIANT**
+
+---
+
 ## 4. Technical Implementation
 
 ### 4.1 Database Schema
@@ -278,8 +298,13 @@ async def gdpr_cleanup():
 
 ✅ **Access Controls**:
 - Database not exposed to internet (Docker internal network only)
-- No public endpoints
-- Admin-only commands restricted
+- Discord admin-only commands required for privacy exports/deletions
+- Per-user mention rate limiting to prevent scraping and abuse
+
+✅ **Operational Resilience**:
+- Blocking LLM/search calls isolated via `asyncio.to_thread` to keep the Discord event loop responsive
+- Privacy DM toggle (`PRIVACY_DM_NEW_MEMBERS`) documented for guild-specific transparency needs
+- Observability via `/privacy_settings` and `/privacy_audit` ensures admins can review state at any time
 
 ✅ **SQL Injection Prevention**:
 - Parameterized queries throughout codebase
@@ -288,7 +313,7 @@ async def gdpr_cleanup():
 ✅ **Resource Limits**:
 - Container CPU/memory limits enforced
 - HTTP timeout protection (30s max)
-- Rate limiting on commands (TODO: implement)
+- Mention-based rate limiting enforced (configurable via `MENTION_RATE_*` env vars)
 
 ✅ **Audit Logging**:
 - All data access logged
@@ -455,15 +480,21 @@ For any processors outside EU/EEA:
    - EU supervisory authority (if applicable)
    - Data protection officer (if required)
 
+5. **Configure Transparency DM** *(Optional but recommended)*:
+   - `PRIVACY_DM_NEW_MEMBERS=1` (default) sends an automated privacy notice DM when members join
+   - Set to `0` if the guild provides an alternative onboarding notice; document the alternate process in `/privacy_audit`
+
 ### 9.2 Regular Maintenance
 
 **Daily**:
 - Review GDPR cleanup logs
 - Check for scheduled deletions
+- Run `/privacy_settings` to confirm consent counts and storage footprint
 
 **Weekly**:
 - Review audit logs for suspicious activity
 - Check data export requests
+- Archive `/privacy_audit` JSON output for documentation
 
 **Monthly**:
 - Review data retention policies
@@ -591,6 +622,8 @@ All GDPR-related actions are logged in `data_audit_log`:
 - `data_export_failed` - Export generation failed
 - `data_deletion_started` - User initiated deletion
 - `data_deletion_scheduled` - Deletion scheduled with grace period
+- `privacy_settings_view` - Admin accessed consent/storage dashboard
+- `privacy_audit_export` - Admin generated JSON privacy audit snapshot
 - `data_deletion_completed` - Data permanently deleted
 - `data_deletion_cancelled` - User cancelled scheduled deletion
 - `data_deletion_failed` - Deletion process failed

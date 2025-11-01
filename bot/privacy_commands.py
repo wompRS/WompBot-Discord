@@ -423,6 +423,17 @@ def setup_privacy_commands(bot, db, privacy_manager):
 
         embed.set_footer(text=f"Privacy policy version {policy_version} • Effective {policy_date}")
 
+        try:
+            privacy_manager.log_audit_action(
+                user_id=interaction.user.id,
+                action="privacy_settings_view",
+                details=f"Guild {interaction.guild_id}",
+                performed_by=interaction.user.id,
+                success=True,
+            )
+        except Exception as audit_error:
+            print(f"⚠️ Failed to log privacy_settings audit: {audit_error}")
+
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @bot.tree.command(name="privacy_audit", description="Generate a privacy compliance summary")
@@ -462,6 +473,17 @@ def setup_privacy_commands(bot, db, privacy_manager):
             file=file,
             ephemeral=True
         )
+
+        try:
+            privacy_manager.log_audit_action(
+                user_id=interaction.user.id,
+                action="privacy_audit_export",
+                details=f"Guild {interaction.guild_id}",
+                performed_by=interaction.user.id,
+                success=True,
+            )
+        except Exception as audit_error:
+            print(f"⚠️ Failed to log privacy_audit action: {audit_error}")
 
     @bot.tree.command(name="cancel_deletion", description="Cancel your scheduled data deletion")
     async def cancel_deletion(interaction: discord.Interaction):
