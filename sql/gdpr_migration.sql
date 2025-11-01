@@ -108,16 +108,16 @@ CREATE TABLE IF NOT EXISTS data_retention_config (
 
 -- Insert default retention periods
 INSERT INTO data_retention_config (data_type, retention_days, legal_basis, auto_delete_enabled) VALUES
-    ('messages', 365, 'Legitimate interest for chat statistics and context', TRUE),
-    ('user_behavior', 365, 'Legitimate interest for abuse prevention', TRUE),
+    ('messages', 365, 'Legitimate interest for chat statistics and context', FALSE),
+    ('user_behavior', 365, 'Legitimate interest for abuse prevention', FALSE),
     ('claims', 1825, 'User-generated content with community value (5 years)', FALSE),
     ('quotes', 1825, 'User-generated content with community value (5 years)', FALSE),
     ('hot_takes', 1825, 'Public statements with historical value (5 years)', FALSE),
-    ('search_logs', 90, 'Service improvement and analytics (90 days)', TRUE),
+    ('search_logs', 90, 'Service improvement and analytics (90 days)', FALSE),
     ('fact_checks', 730, 'Educational and transparency purposes (2 years)', FALSE),
     ('stats_cache', 30, 'Performance optimization only (30 days)', TRUE),
     ('audit_logs', 2555, 'Legal and security requirements (7 years)', FALSE),
-    ('debate_records', 1095, 'Community engagement history (3 years)', TRUE)
+    ('debate_records', 1095, 'Community engagement history (3 years)', FALSE)
 ON CONFLICT (data_type) DO NOTHING;
 
 -- Insert initial privacy policy version

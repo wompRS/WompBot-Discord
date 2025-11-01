@@ -118,23 +118,27 @@ Complete implementation of EU GDPR (Regulation 2016/679) with all mandatory data
 - `/wompbot_consent` - Provide data processing consent (required)
 - `/wompbot_noconsent` - Opt out of data collection
 - `/download_my_data` - Export all data in JSON format (Art. 15)
-- `/delete_my_data` - Request permanent deletion with 30-day grace period (Art. 17)
-- `/cancel_deletion` - Cancel scheduled deletion
-- `/privacy_policy` - View complete privacy policy
+- `/delete_my_data` - Request deletion with a 30-day grace period (Art. 17)
+- `/cancel_deletion` - Cancel a pending deletion request
+- `/privacy_policy` - View the complete privacy policy
 - `/my_privacy_status` - Check current privacy settings
 - `/privacy_support` - Get privacy help and information
 
+**Admin & Oversight**:
+- `/privacy_settings` - Review guild-wide consent posture and pending actions
+- `/privacy_audit` - Export an audit snapshot for compliance reviews
+
 ### Data Retention Policies
 
-| Data Type | Retention Period | Auto-Delete | Legal Basis |
-|-----------|------------------|-------------|-------------|
-| Messages | 1 year | ✅ Yes | Legitimate Interest |
-| User Behavior | 1 year | ✅ Yes | Legitimate Interest |
-| Claims/Quotes | 5 years | ❌ No | User Content (Contract) |
-| Search Logs | 90 days | ✅ Yes | Service Improvement |
-| Audit Logs | 7 years | ❌ No | Legal Requirement |
-| Stats Cache | 30 days | ✅ Yes | Performance |
-| Debates | 3 years | ✅ Yes | Community Engagement |
+| Data Type | Target Retention | Enforcement |
+|-----------|-----------------|-------------|
+| Messages | 1 year guideline | Retained until the user requests deletion or withdraws consent; admins review via `/privacy_settings`. |
+| User Behavior | 1 year guideline | Cleared when the user withdraws consent or requests deletion. |
+| Claims/Quotes | 5 years | Treated as user-generated content; removed on explicit request. |
+| Search Logs | 90 days guideline | Cleared during privacy reviews or when users delete their data. |
+| Audit Logs | 7 years | Mandatory for accountability (no auto purge). |
+| Stats Cache | 30 days | Trimmed by daily cleanup task. |
+| Debates | 3 years | Community reference; deleted on request. |
 
 ### Technical Implementation
 
@@ -153,16 +157,17 @@ Complete implementation of EU GDPR (Regulation 2016/679) with all mandatory data
 2. `bot/privacy_commands.py` (580 lines) - User-facing commands
 
 **Background Tasks**:
-- Daily GDPR cleanup (processes scheduled deletions, enforces retention)
+- Daily GDPR cleanup (processes user-scheduled deletions and trims caches)
 - Audit logging for all data access/modification
-- Automated data anonymization
+- Optional anonymization path during deletion workflow
 
 ### Privacy by Design Features
 
 ✅ **Data Minimization**: Only collect necessary data
 ✅ **Purpose Limitation**: Data used only for stated purposes
-✅ **Storage Limitation**: Automatic deletion after retention period
+✅ **Storage Limitation**: Retention periods documented; user-controlled deletions and admin monitoring
 ✅ **Accuracy**: Users can correct their data
+✅ **Transparency**: Automated privacy DM on join (configurable) + admin dashboards (/privacy_settings, /privacy_audit)
 ✅ **Integrity & Confidentiality**: Encryption + access controls
 ✅ **Accountability**: Complete audit trail (7-year retention)
 
@@ -234,11 +239,8 @@ Complete implementation of EU GDPR (Regulation 2016/679) with all mandatory data
 
 **Daily Cleanup Task**:
 - Processes scheduled user deletions
-- Deletes messages >1 year old (non-opted-in users)
-- Deletes behavior analysis >1 year old
-- Deletes search logs >90 days old
-- Cleans stats cache >30 days old
-- Deletes debates >3 years old
+- Trims cached analytics (`stats_cache`) older than 30 days
+- Leaves messages, behavior analysis, search logs, and debates untouched unless an administrator processes them manually
 
 **Audit Trail**:
 - Every data access logged
@@ -380,7 +382,7 @@ docker-compose up -d
 - **User Commands Added**: 8 privacy commands
 - **Audit Coverage**: 100% of data operations
 - **Retention Policies**: 9 data types configured
-- **Auto-Cleanup**: Daily execution
+- **Auto-Cleanup**: Daily job processes user-requested deletions and cache trimming
 
 ### Code Quality
 - **Lines Added**: ~2,300
