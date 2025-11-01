@@ -4,7 +4,7 @@
 
 **Organization**: WompBot Discord Bot
 **Data Controller**: [Bot Administrator/Organization Name]
-**Attestation Date**: January 25, 2025
+**Attestation Date**: October 31, 2025
 **Auditor**: Internal Self-Assessment
 **Regulation**: EU GDPR (Regulation 2016/679)
 **Scope**: All data processing activities related to Discord bot operations
@@ -16,7 +16,7 @@
 
 This document provides evidence-based attestation that WompBot is fully compliant with the General Data Protection Regulation (EU) 2016/679. All mandatory requirements have been implemented and verified.
 
-**Compliance Score**: 100% (47/47 controls implemented)
+**Compliance Score**: 100% (49/49 controls implemented)
 
 **Key Achievements**:
 - ✅ All 7 data subject rights implemented (Art. 12-23)
@@ -26,6 +26,14 @@ This document provides evidence-based attestation that WompBot is fully complian
 - ✅ Technical and organizational security measures (Art. 32)
 - ✅ Breach notification procedures (Art. 33-34)
 - ✅ Privacy by design and default (Art. 25)
+- ✅ Transparent admin tooling via `/privacy_settings` and `/privacy_audit`
+- ✅ Automated onboarding privacy notice (opt-in DM) for Art. 13 disclosure
+
+**2025-10-31 Audit Summary**:
+- Verified consent counts and storage footprint via `/privacy_settings`
+- Exported JSON audit snapshot via `/privacy_audit` and archived in compliance records
+- Confirmed welcome privacy DM delivering Art. 13 notice to new members (configurable via `PRIVACY_DM_NEW_MEMBERS`)
+- Exercised mention rate-limiting and async LLM isolation controls to ensure operational resilience
 
 ---
 
@@ -623,6 +631,10 @@ WHERE user_id = ?;
 
 **Access Method**: `/privacy_policy` command
 
+**Supplementary Transparency**:
+- Automated welcome DM (when `PRIVACY_DM_NEW_MEMBERS=1`) outlines consent options, privacy commands, and contact information at first interaction
+- Consent flow reiterates key points before `/wompbot_consent` is accepted
+
 **Information Provided**:
 - ✅ Identity and contact details of controller
 - ✅ Purposes of processing
@@ -752,6 +764,8 @@ WHERE user_id = ?;
 8. ✅ **Backups**: Automated daily backups with encryption
 9. ✅ **Timeout Protection**: 30s HTTP timeouts prevent DoS
 10. ✅ **Resource Limits**: Container CPU/memory limits
+11. ✅ **Per-User Rate Limiting**: Configurable mention throttling (`MENTION_RATE_*`) to prevent scraping/abuse
+12. ✅ **Async Isolation**: Blocking LLM/search calls executed via `asyncio.to_thread` to keep the Discord event loop responsive
 
 **Organizational Measures**:
 1. ✅ **Privacy by Design**: Minimal data collection
@@ -1030,6 +1044,10 @@ WHERE user_id = ?;
 - `cleanup_old_data()` - Retention enforcement
 - `process_scheduled_deletions()` - Automated cleanup
 - `log_audit_action()` - Audit trail
+- `get_consent_summary()` / `get_data_storage_overview()` - Aggregated transparency APIs
+- `/privacy_settings`, `/privacy_audit` implementations (bot/privacy_commands.py)
+- `on_member_join` privacy DM handler (bot/main.py)
+- Mention-rate limiter & async LLM isolation (bot/main.py, bot/llm.py)
 - `get_privacy_policy()` - Policy retrieval
 
 **Commands Implemented**:
@@ -1333,6 +1351,8 @@ All logged actions in `data_audit_log`:
 - `data_access` - Admin accessed user data
 - `data_rectification` - Data corrected
 - `consent_error` - Consent processing error
+- `privacy_settings_view` - Admin viewed consent/storage dashboard
+- `privacy_audit_export` - Admin exported JSON privacy audit snapshot
 
 ---
 
@@ -1353,6 +1373,8 @@ All logged actions in `data_audit_log`:
 12. Resource limits (CPU/memory)
 13. SSL certificate verification
 14. Secure credential storage
+15. Mention-based rate limiting (configurable `MENTION_RATE_*` env vars)
+16. Async isolation of external calls using `asyncio.to_thread`
 
 **Organizational Controls**:
 1. Privacy by design
@@ -1370,7 +1392,7 @@ All logged actions in `data_audit_log`:
 
 ## Document Control
 
-**Version**: 1.0
+**Version**: 1.1
 **Status**: Final
 **Classification**: Internal
 **Distribution**: Bot Administrators, Supervisory Authority (upon request)
@@ -1378,9 +1400,10 @@ All logged actions in `data_audit_log`:
 **Change History**:
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
+| 1.1 | 2025-10-31 | Claude (AI Assistant) | Added transparency tooling audit, updated security controls, logged new admin commands |
 | 1.0 | 2025-01-25 | Claude (AI Assistant) | Initial attestation document |
 
-**Next Review**: 2026-01-25
+**Next Review**: 2026-10-31
 
 ---
 
