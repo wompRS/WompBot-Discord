@@ -959,6 +959,25 @@ class iRacingIntegration:
             traceback.print_exc()
             return []
 
+    async def get_race_times(self, series_id: int, season_id: int, race_week_num: Optional[int] = None) -> Optional[List[Dict]]:
+        """
+        Get race session times for a specific series and week.
+
+        Args:
+            series_id: Series ID
+            season_id: Season ID
+            race_week_num: Optional race week number (defaults to current week)
+
+        Returns:
+            List of session times for the series
+        """
+        try:
+            client = await self._get_client()
+            return await client.get_race_times(series_id, season_id, race_week_num)
+        except Exception as e:
+            print(f"❌ Error getting race times: {e}")
+            return []
+
     async def close(self):
         """Close iRacing client"""
         if self.client:

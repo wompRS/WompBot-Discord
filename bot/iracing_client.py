@@ -344,6 +344,60 @@ class iRacingClient:
 
         return []
 
+    async def get_race_times(self, series_id: int, season_id: int, race_week_num: Optional[int] = None) -> Optional[List[Dict]]:
+        """
+        Get upcoming race session times for a specific series.
+
+        IMPORTANT: This method only returns sessions starting in the next 24-48 hours.
+        For future sessions beyond this window, use the season schedule's
+        race_time_descriptors field instead.
+
+        Uses the race_guide endpoint and filters to the specific series.
+
+        Args:
+            series_id: Series ID
+            season_id: Season ID
+            race_week_num: Optional race week number (defaults to current week)
+
+        Returns:
+            List of session times for the series (only within next 24-48 hours)
+            Empty list if no sessions in the immediate future or on error
+        """
+        # Get race guide data (returns sessions starting in next 24-48 hours only)
+        params = {'season_id': season_id}
+        response = await self._get("/data/season/race_guide", params)
+
+        if not response:
+            response = await self._get("/data/series/race_guide", params)
+
+        if not response:
+            return []
+
+        # Extract sessions
+        sessions = []
+        if isinstance(response, list):
+            sessions = response
+        elif isinstance(response, dict):
+            if 'sessions' in response and isinstance(response['sessions'], list):
+                sessions = response['sessions']
+            elif 'races' in response and isinstance(response['races'], list):
+                sessions = response['races']
+
+        # Filter to the specific series and week
+        filtered_sessions = []
+        for session in sessions:
+            # Check series_id matches
+            if session.get('series_id') != series_id:
+                continue
+
+            # Check week if specified
+            if race_week_num is not None and session.get('race_week_num') != race_week_num:
+                continue
+
+            filtered_sessions.append(session)
+
+        return filtered_sessions
+
     async def get_current_series(self) -> Optional[List[Dict]]:
         """
         Get currently active series (this season).

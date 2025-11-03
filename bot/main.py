@@ -8,6 +8,7 @@ import os
 from datetime import datetime, timedelta, timezone
 from typing import List, Tuple, Optional, Dict
 from collections import Counter
+import pytz
 from database import Database
 from llm import LLMClient
 from search import SearchEngine
@@ -755,6 +756,22 @@ async def on_ready():
     if iracing and db and not snapshot_participation_data.is_running():
         snapshot_participation_data.start()
         print("📸 iRacing participation snapshots enabled (runs daily)")
+
+    # Authenticate with iRacing on startup
+    if iracing:
+        async def authenticate_iracing():
+            try:
+                print("🔐 Authenticating with iRacing...")
+                client = await iracing._get_client()
+                if client and client.authenticated:
+                    print("✅ iRacing authentication successful")
+                else:
+                    print("⚠️ iRacing authentication may have failed")
+            except Exception as e:
+                print(f"❌ iRacing authentication error: {e}")
+
+        # Run authentication in background
+        asyncio.create_task(authenticate_iracing())
 
     # Pre-warm series autocomplete cache (runs in background)
     if iracing:
@@ -4945,6 +4962,260 @@ async def iracing_series_popularity(interaction: discord.Interaction, time_range
     except Exception as e:
         await interaction.followup.send(f"❌ Error: {str(e)}")
         print(f"❌ Popularity error: {e}")
+        import traceback
+        traceback.print_exc()
+
+
+@bot.tree.command(name="iracing_timeslots", description="View race session times for a specific series")
+@app_commands.describe(
+    series="Series name to look up",
+    week="Race week number (leave blank for current week)"
+)
+@app_commands.autocomplete(series=series_autocomplete)
+async def iracing_timeslots(interaction: discord.Interaction, series: str, week: int = None):
+    """
+    Show race session start times for a specific series and week.
+
+    For series with infrequent races (like Nurburgring Endurance), this extracts
+    scheduled times from race_time_descriptors since the race_guide API only
+    returns sessions starting in the next 24-48 hours.
+
+    TODO: Optimize by caching season schedule data (TTL: 1 hour) to reduce
+    redundant API calls. Currently makes 3-4 API calls per invocation.
+    """
+    if not iracing:
+        await interaction.response.send_message("❌ iRacing integration is not configured on this bot")
+        return
+
+    await interaction.response.defer()
+
+    try:
+        # Get all series to find the matching one
+        # TODO: Cache this or add get_season_by_id() to avoid fetching all 147 seasons
+        all_series = await iracing.get_current_series()
+        if not all_series:
+            await interaction.followup.send("❌ Failed to retrieve series data")
+            return
+
+        # Find matching series
+        series_match = None
+        for s in all_series:
+            if series.lower() in s.get('series_name', '').lower():
+                series_match = s
+                break
+
+        if not series_match:
+            await interaction.followup.send(f"❌ Series not found: '{series}'")
+            return
+
+        series_id = series_match.get('series_id')
+        series_name = series_match.get('series_name')
+        season_id = series_match.get('season_id')
+
+        print(f"🕐 Race times request: series_id={series_id}, season_id={season_id}, week={week}")
+
+        # Get race times for this series
+        sessions = await iracing.get_race_times(series_id, season_id, week)
+
+        # Get track name and week info from schedule
+        schedule = await iracing.get_series_schedule(series_id, season_id)
+
+        # Get current week - use parameter, or first session week, or current week from series
+        client = await iracing._get_client()
+        all_seasons = await client.get_series_seasons()
+        season_data = None
+        for s in all_seasons:
+            if s.get('season_id') == season_id:
+                season_data = s
+                break
+
+        current_week = week
+        if not current_week and sessions:
+            current_week = sessions[0].get('race_week_num')
+        elif not current_week and season_data:
+            current_week = season_data.get('race_week', 0)
+
+        track_name = "Unknown Track"
+        if schedule and current_week is not None:
+            for week_entry in schedule:
+                if week_entry.get('race_week_num') == current_week:
+                    track_name = week_entry.get('track_name', 'Unknown Track')
+                    break
+
+        # If no upcoming sessions found, try to get exact times from schedule data
+        if not sessions:
+            # Look for session times in the schedule data
+            week_schedule = None
+            if schedule and current_week is not None:
+                for week_entry in schedule:
+                    if week_entry.get('race_week_num') == current_week:
+                        week_schedule = week_entry
+                        break
+
+            # Extract session times from race_time_descriptors
+            # Note: There may be multiple descriptors for different session types
+            if week_schedule:
+                race_time_descriptors = week_schedule.get('race_time_descriptors', [])
+
+                if race_time_descriptors:
+                    # Iterate through ALL descriptors (not just first one)
+                    # Some series may have multiple session types or time slots
+                    sessions = []
+                    for descriptor in race_time_descriptors:
+                        session_times_list = descriptor.get('session_times', [])
+
+                        for time_str in session_times_list:
+                            sessions.append({
+                                'start_time': time_str,
+                                'series_id': series_id,
+                                'race_week_num': current_week
+                            })
+
+                    if sessions:
+                        print(f"📅 Using scheduled session times from race_time_descriptors: {len(sessions)} sessions")
+
+            # Final fallback: show recurring pattern if we couldn't find exact times
+            if not sessions:
+                schedule_desc = season_data.get('schedule_description', '') if season_data else ''
+
+                if schedule_desc:
+                    embed = discord.Embed(
+                        title=f"🏁 {series_name}",
+                        description=f"**Week {current_week}** • {track_name}",
+                        color=discord.Color.orange()
+                    )
+
+                    embed.add_field(
+                        name="📅 Recurring Schedule",
+                        value=schedule_desc,
+                        inline=False
+                    )
+
+                    embed.add_field(
+                        name="ℹ️ Note",
+                        value="No live sessions in the next 24-48 hours. This series follows a recurring schedule as shown above.",
+                        inline=False
+                    )
+
+                    embed.set_footer(text="Times are in GMT • Check iRacing for exact session times")
+
+                    await interaction.followup.send(embed=embed)
+                    return
+                else:
+                    # Provide more informative error message
+                    error_msg = (
+                        f"❌ **No session times available for {series_name}**\n\n"
+                        f"This can happen if:\n"
+                        f"• No sessions are scheduled in the next 24-48 hours\n"
+                        f"• Schedule data is unavailable for week {current_week}\n"
+                        f"• The series is not currently active\n\n"
+                        f"Try checking iRacing.com directly or contact support if you believe this is an error."
+                    )
+                    await interaction.followup.send(error_msg)
+                    return
+
+        # Build embed for upcoming sessions
+        embed = discord.Embed(
+            title=f"🏁 {series_name}",
+            description=f"**Week {current_week}** • {track_name}",
+            color=discord.Color.blue()
+        )
+
+        # Group sessions by day
+        sessions_by_day = {}
+
+        for session in sessions[:50]:  # Limit to 50 sessions
+            # Get session start time
+            start_time_str = session.get('start_time') or session.get('session_start_time')
+            if not start_time_str:
+                continue
+
+            try:
+                # Parse the time
+                if isinstance(start_time_str, str):
+                    start_time = datetime.fromisoformat(start_time_str.replace('Z', '+00:00'))
+                else:
+                    start_time = datetime.fromtimestamp(start_time_str, tz=timezone.utc)
+
+                # Get day of week
+                day_name = start_time.strftime('%A, %B %d')
+
+                if day_name not in sessions_by_day:
+                    sessions_by_day[day_name] = []
+
+                # Format time in both UTC and relative
+                time_utc = start_time.strftime('%H:%M UTC')
+                timestamp = int(start_time.timestamp())
+
+                sessions_by_day[day_name].append({
+                    'time_utc': time_utc,
+                    'timestamp': timestamp,
+                    'start_time': start_time
+                })
+
+            except Exception as e:
+                print(f"⚠️ Error parsing session time: {e}")
+                continue
+
+        # Calculate total sessions
+        total_sessions = sum(len(times) for times in sessions_by_day.values())
+
+        # If fewer than 10 sessions, show as a numbered list
+        if total_sessions < 10:
+            # Flatten all sessions into a single list sorted by time
+            all_times = []
+            for day_name in sessions_by_day.keys():
+                for time_entry in sessions_by_day[day_name]:
+                    all_times.append({
+                        'day_name': day_name,
+                        'timestamp': time_entry['timestamp'],
+                        'start_time': time_entry['start_time']
+                    })
+
+            # Sort by start_time
+            all_times.sort(key=lambda t: t['start_time'])
+
+            # Create numbered list
+            session_list = []
+            for i, time_entry in enumerate(all_times, 1):
+                # Format: "1. <t:timestamp:f>" - Short date/time with AM/PM
+                session_list.append(f"{i}. <t:{time_entry['timestamp']}:f>")
+
+            # Join with newlines
+            sessions_text = "\n".join(session_list)
+
+            embed.add_field(
+                name="📅 Race Sessions",
+                value=sessions_text,
+                inline=False
+            )
+
+            embed.set_footer(text=f"{total_sessions} race sessions • Times shown in your local timezone with AM/PM")
+
+        else:
+            # Show grouped by day for many sessions
+            for day_name in sorted(sessions_by_day.keys(), key=lambda d: sessions_by_day[d][0]['start_time']):
+                times = sessions_by_day[day_name]
+
+                # Sort times by start_time
+                times.sort(key=lambda t: t['start_time'])
+
+                # Format times with AM/PM format
+                time_strings = []
+                for t in times[:10]:  # Max 10 times per day
+                    # Use Discord short time format for automatic timezone conversion
+                    time_strings.append(f"<t:{t['timestamp']}:t>")
+
+                value = " • ".join(time_strings)
+                embed.add_field(name=day_name, value=value, inline=False)
+
+            embed.set_footer(text=f"{total_sessions} race sessions • Times shown in your local timezone with AM/PM")
+
+        await interaction.followup.send(embed=embed)
+
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error: {str(e)}")
+        print(f"❌ Race times error: {e}")
         import traceback
         traceback.print_exc()
 
