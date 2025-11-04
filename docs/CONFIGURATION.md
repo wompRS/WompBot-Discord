@@ -22,7 +22,8 @@ OPENROUTER_API_KEY=your_openrouter_api_key_here
 TAVILY_API_KEY=your_tavily_api_key_here
 
 # Model Selection
-MODEL_NAME=nousresearch/hermes-3-llama-3.1-70b
+MODEL_NAME=nousresearch/hermes-3-llama-3.1-70b  # Fast model for general chat
+FACT_CHECK_MODEL=anthropic/claude-3.5-sonnet   # High-accuracy model for fact-checking
 
 # Conversation Context
 CONTEXT_WINDOW_MESSAGES=6
@@ -93,12 +94,23 @@ https://discord.com/api/oauth2/authorize?client_id=YOUR_BOT_CLIENT_ID&permission
 
 ### Model Selection
 
-**Available uncensored models:**
+**Dual-Model Architecture:**
+
+WompBot uses two models optimized for different tasks:
+1. **General Chat Model** (`MODEL_NAME`) - Fast, conversational
+2. **Fact-Check Model** (`FACT_CHECK_MODEL`) - Slow, highly accurate
 
 ```bash
-# Recommended (balanced performance/cost)
+# General Chat - Recommended (balanced performance/cost)
 MODEL_NAME=nousresearch/hermes-3-llama-3.1-70b
 
+# Fact-Checking - High accuracy (25x more expensive but critical)
+FACT_CHECK_MODEL=anthropic/claude-3.5-sonnet
+```
+
+**Alternative General Chat Models:**
+
+```bash
 # More capable (more expensive)
 MODEL_NAME=cognitivecomputations/dolphin-2.9.2-qwen-110b
 
@@ -110,10 +122,24 @@ MODEL_NAME=mistralai/mixtral-8x22b-instruct
 MODEL_NAME=nousresearch/hermes-3-llama-3.1-405b
 ```
 
+**Alternative Fact-Check Models:**
+
+```bash
+# High accuracy (recommended, slower but reliable)
+FACT_CHECK_MODEL=anthropic/claude-3.5-sonnet
+
+# Medium accuracy (cheaper but more hallucination)
+FACT_CHECK_MODEL=meta-llama/llama-3.1-70b-instruct
+
+# Low accuracy (not recommended for fact-checking)
+FACT_CHECK_MODEL=nousresearch/hermes-3-llama-3.1-70b
+```
+
 **Browse models:** [OpenRouter Models](https://openrouter.ai/models)
 
 **Filters:**
-- Look for "Uncensored" or "Dolphin" for no content filtering
+- General chat: Look for "Uncensored" or "Dolphin" for no content filtering
+- Fact-checking: Look for high accuracy models (Claude, GPT-4, etc.)
 - Check pricing ($/1M tokens)
 - Check context length (longer = more conversation memory)
 

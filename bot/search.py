@@ -5,8 +5,8 @@ class SearchEngine:
     def __init__(self):
         self.client = TavilyClient(api_key=os.getenv('TAVILY_API_KEY'))
     
-    def search(self, query, max_results=5):
-        """Search the web using Tavily"""
+    def search(self, query, max_results=7):
+        """Search the web using Tavily (increased to 7 for better corroboration)"""
         try:
             print(f"🔍 Searching: {query}")
             response = self.client.search(
@@ -36,16 +36,18 @@ class SearchEngine:
         if not results:
             return "No search results found."
 
-        formatted_lines = ["Search Results:\n"]
+        formatted_lines = ["Search Results (cross-reference at least 2 sources):\n\n"]
         total_chars = len(formatted_lines[0])
-        max_chars = 1500
+        max_chars = 2000  # Increased to fit more sources for corroboration
 
         for i, result in enumerate(results, 1):
-            snippet = result.get("content", "")[:300].strip()
+            snippet = result.get("content", "")[:350].strip()
+            source_domain = result.get('url', 'N/A').split('/')[2] if result.get('url') else 'Unknown'
             entry = (
-                f"{i}. {result.get('title', 'Untitled')}\n"
-                f"   URL: {result.get('url', 'N/A')}\n"
-                f"   {snippet}...\n\n"
+                f"[{i}] {result.get('title', 'Untitled')}\n"
+                f"    Source: {source_domain}\n"
+                f"    URL: {result.get('url', 'N/A')}\n"
+                f"    Content: {snippet}...\n\n"
             )
             formatted_lines.append(entry)
             total_chars += len(entry)
