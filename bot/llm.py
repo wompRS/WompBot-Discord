@@ -9,6 +9,18 @@ class LLMClient:
         
         self.system_prompt = """You are WompBot, a helpful Discord assistant.
 
+CRITICAL LIMITATIONS:
+- Your knowledge has a cutoff date of January 2025
+- You CANNOT know current events, recent news, or real-time information
+- For current factual questions (politics, news, sports, stocks, weather), you MUST say "I don't have current information on that"
+- NEVER make up or guess current facts - admit when you don't know
+
+HANDLING AMBIGUOUS STATEMENTS:
+- If someone makes a factual statement without a question mark (e.g., "X is Y"), ask for clarification
+- Example: "elon musk is president" → Respond: "Are you asking if Elon Musk is president? That's incorrect - [correct info from search results]"
+- Example: "bitcoin is $100k" → Respond: "Are you asking about Bitcoin's price? Based on current data: [search results]"
+- Always verify factual claims against search results if provided
+
 RULES:
 - NEVER explain what you are or your purpose unless directly asked "who are you" or "what are you"
 - If asked for images/GIFs/memes, say: "I can't post images or GIFs"
@@ -25,11 +37,29 @@ Just answer the question. Don't explain yourself."""
             'what is', 'who is', 'when did', 'how many', 'current',
             'latest', 'recent', 'today', 'price of', 'cost of',
             'statistics', 'data', 'study', 'research', 'source',
-            'fact check', 'is it true', 'did', 'verify'
+            'fact check', 'is it true', 'did', 'verify', 'are they',
+            'is he', 'is she', 'was he', 'was she', 'if', 'does',
+            'has', 'have they', 'will', 'president', 'ceo', 'elected',
+            'elected', 'appointed', 'winner', 'champion', 'score'
         ]
-        
+
         message_lower = message_content.lower()
-        return any(trigger in message_lower for trigger in search_triggers)
+
+        # Trigger on keywords
+        if any(trigger in message_lower for trigger in search_triggers):
+            return True
+
+        # Trigger on yes/no factual questions pattern (is X Y? / are X Y?)
+        import re
+        yes_no_patterns = [
+            r'\b(is|are|was|were|did|does|has|have|will)\s+\w+\s+\w+',  # "is elon president"
+            r'\bif\s+\w+\s+(is|are|was|were)',  # "if elon is president"
+        ]
+        for pattern in yes_no_patterns:
+            if re.search(pattern, message_lower):
+                return True
+
+        return False
     
     def detect_needs_search_from_response(self, response_text):
         """Detect if LLM indicates it needs more information"""
@@ -89,11 +119,17 @@ Just answer the question. Don't explain yourself."""
                     content = f"{display_name}: {msg['content']}"
                 messages.append({"role": role, "content": content})
 
+            # Add search results to user message with strong instruction
             if search_results:
-                search_context = "\n\nSearch Results:\n" + search_results
-                messages.append({"role": "assistant", "content": search_context})
+                user_message_with_context = f"""{user_message}
 
-            messages.append({"role": "user", "content": user_message})
+[IMPORTANT: Use these verified search results to answer. If the user's statement contradicts these facts, correct them.]
+
+SEARCH RESULTS:
+{search_results}"""
+                messages.append({"role": "user", "content": user_message_with_context})
+            else:
+                messages.append({"role": "user", "content": user_message})
 
             total_chars = sum(len(entry["content"]) for entry in messages)
             while total_chars > self.MAX_HISTORY_CHARS and len(messages) > 3:

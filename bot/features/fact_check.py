@@ -41,8 +41,25 @@ class FactChecker:
             # Format search results for LLM
             search_context = self.search.format_results_for_llm(search_results)
 
-            # Create fact-check prompt
-            fact_check_prompt = f"""Analyze the following claim and determine its factual accuracy based on the search results provided.
+            # Debug: Log what we're sending to the LLM
+            print(f"🔍 FACT-CHECK DEBUG:")
+            print(f"   Claim: {content}")
+            print(f"   Search results count: {len(search_results)}")
+            print(f"   Search context preview: {search_context[:500]}...")
+
+            # Create fact-check prompt with strict instructions
+            fact_check_prompt = f"""You are fact-checking a claim. You MUST ONLY use information from the provided search results below. DO NOT use any other knowledge or make up information.
+
+CRITICAL RULES:
+- ONLY cite information that appears in the search results below
+- NEVER extrapolate or infer beyond what's explicitly stated in search results
+- NEVER make up dates, positions, or events that aren't in the search results
+
+CROSS-REFERENCE REQUIREMENT:
+- To declare "True" or "False", you MUST have AT LEAST 2 DIFFERENT sources that agree
+- If only 1 source mentions something, verdict is "Unverifiable" (insufficient corroboration)
+- If sources contradict each other, verdict is "Conflicting Sources" or "Unverifiable"
+- Count the source numbers that support each fact
 
 CLAIM TO FACT-CHECK:
 "{content}"
@@ -52,11 +69,13 @@ WEB SEARCH RESULTS:
 
 Provide a structured fact-check with:
 1. VERDICT: True, False, Partially True, Misleading, or Unverifiable
-2. EXPLANATION: Brief explanation (2-3 sentences max)
-3. KEY EVIDENCE: Most relevant evidence from search results
-4. SOURCES: Reference which sources support your verdict
+2. EXPLANATION: Brief explanation citing ONLY information from search results above
+3. KEY EVIDENCE: Direct quotes or facts from the search results
+4. SOURCES CORROBORATION: List which source numbers ([1], [2], etc.) agree on each key fact
+   - Example: "Sources [1] and [3] both confirm X is Y"
+   - If only 1 source, state: "Only source [2] mentions this - insufficient corroboration"
 
-Be direct and factual. Don't hedge unnecessarily."""
+REMINDER: Without at least 2 sources agreeing, verdict CANNOT be "True" or "False"."""
 
             # Get LLM analysis
             headers = {
@@ -64,20 +83,26 @@ Be direct and factual. Don't hedge unnecessarily."""
                 "Content-Type": "application/json"
             }
 
+            # Use dedicated high-accuracy model for fact-checking
+            import os
+            fact_check_model = os.getenv('FACT_CHECK_MODEL', self.llm.model)
+
+            print(f"🔍 Using fact-check model: {fact_check_model}")
+
             payload = {
-                "model": self.llm.model,
+                "model": fact_check_model,
                 "messages": [
                     {
                         "role": "system",
-                        "content": "You are an expert fact-checker. Analyze claims objectively based on evidence. Be concise and direct."
+                        "content": "You are a strict fact-checker. You ONLY state facts that appear in the provided search results. You NEVER make up information, dates, or events. You require AT LEAST 2 DIFFERENT sources to corroborate a fact before declaring it 'True' or 'False'. If search results don't contain the answer or only 1 source mentions it, you say 'Unverifiable'."
                     },
                     {
                         "role": "user",
                         "content": fact_check_prompt
                     }
                 ],
-                "max_tokens": 600,
-                "temperature": 0.3
+                "max_tokens": 700,  # Increased for source cross-referencing
+                "temperature": 0.1  # Lower temperature to reduce hallucination
             }
 
             import requests
@@ -90,6 +115,10 @@ Be direct and factual. Don't hedge unnecessarily."""
             response.raise_for_status()
 
             analysis = response.json()['choices'][0]['message']['content']
+
+            # Debug: Log what the LLM returned
+            print(f"🤖 LLM FACT-CHECK RESPONSE:")
+            print(f"   {analysis[:500]}...")
 
             # Store fact-check in database
             self.db.store_fact_check(

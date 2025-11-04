@@ -14,8 +14,9 @@ The Fact-Check feature allows users to quickly fact-check any message by reactin
 - ✅ **Verdict System** - True, False, Partially True, Misleading, Unverifiable
 
 ### Technologies
-- Tavily API - Web search
-- OpenRouter LLM (Hermes 70B) - Claim analysis
+- Tavily API - Web search (7 sources for cross-reference)
+- OpenRouter LLM (Claude 3.5 Sonnet) - High-accuracy claim analysis
+- Multi-source verification - Requires ≥2 sources to corroborate facts
 - Discord reactions - User trigger
 
 ---
@@ -105,25 +106,37 @@ The bot uses these verdict emojis:
 
 **Prompt structure:**
 ```
-Analyze the following claim and determine its factual accuracy based on
-the search results provided.
+You are fact-checking a claim. You MUST ONLY use information from the
+provided search results below. DO NOT use any other knowledge or make up information.
+
+CRITICAL RULES:
+- ONLY cite information that appears in the search results below
+- NEVER extrapolate or infer beyond what's explicitly stated in search results
+- NEVER make up dates, positions, or events that aren't in the search results
+
+CROSS-REFERENCE REQUIREMENT:
+- To declare "True" or "False", you MUST have AT LEAST 2 DIFFERENT sources that agree
+- If only 1 source mentions something, verdict is "Unverifiable" (insufficient corroboration)
+- If sources contradict each other, verdict is "Conflicting Sources" or "Unverifiable"
+- Count the source numbers that support each fact
 
 CLAIM TO FACT-CHECK:
 "{message content}"
 
 WEB SEARCH RESULTS:
-{formatted search results}
+{formatted search results with source numbers}
 
 Provide a structured fact-check with:
 1. VERDICT: True, False, Partially True, Misleading, or Unverifiable
-2. EXPLANATION: Brief explanation (2-3 sentences max)
-3. KEY EVIDENCE: Most relevant evidence from search results
-4. SOURCES: Reference which sources support your verdict
+2. EXPLANATION: Brief explanation citing ONLY information from search results above
+3. KEY EVIDENCE: Direct quotes or facts from the search results
+4. SOURCES CORROBORATION: List which source numbers ([1], [2], etc.) agree on each key fact
 
-Be direct and factual. Don't hedge unnecessarily.
+REMINDER: Without at least 2 sources agreeing, verdict CANNOT be "True" or "False".
 ```
 
-**Model:** Hermes 70B (configurable in `.env`)
+**Model:** Claude 3.5 Sonnet (dedicated high-accuracy model for fact-checking)
+**Temperature:** 0.1 (minimal hallucination risk)
 
 ---
 
@@ -145,15 +158,17 @@ Be direct and factual. Don't hedge unnecessarily.
 
 **Tavily API configuration:**
 ```python
-def search(self, query: str, max_results: int = 5):
+def search(self, query: str, max_results: int = 7):
     # Adjust max_results for more/fewer sources
     results = self.client.search(
         query=query,
-        max_results=max_results  # Default: 5
+        search_depth="advanced",  # Deep search for accuracy
+        max_results=max_results  # Default: 7 (for cross-referencing)
     )
 ```
 
-**More results = better accuracy but slower**
+**More results = better cross-reference accuracy but slower**
+**Minimum 2 sources required to declare True/False**
 
 ---
 
@@ -163,18 +178,21 @@ def search(self, query: str, max_results: int = 5):
 
 **Adjust analysis quality:**
 ```python
+# Use dedicated high-accuracy model for fact-checking
+fact_check_model = os.getenv('FACT_CHECK_MODEL', self.llm.model)
+
 payload = {
-    "model": self.llm.model,
+    "model": fact_check_model,  # Claude 3.5 Sonnet by default
     "messages": [...],
-    "max_tokens": 600,      # Increase for longer explanations
-    "temperature": 0.3      # Lower = more conservative verdicts
+    "max_tokens": 700,      # Increased for source cross-referencing
+    "temperature": 0.1      # Very low to prevent hallucination
 }
 ```
 
 **Temperature effects:**
-- `0.1` - Very strict, conservative verdicts
-- `0.3` - Default, balanced
-- `0.5` - More lenient, creative analysis
+- `0.1` - **Default:** Very strict, minimal hallucination
+- `0.3` - More balanced (not recommended for fact-checking)
+- `0.5` - Too creative, higher hallucination risk
 
 ---
 
@@ -215,19 +233,39 @@ sources_text = "\n".join([
 ## Cost Analysis
 
 ### Per Fact-Check
-- **Tavily API**: 1 search = 1 credit (~$0.001)
-- **LLM tokens**: ~800 tokens = ~$0.001
-- **Total**: ~$0.002 per fact-check
+- **Tavily API**: 1 search (7 results) = 1 credit (~$0.001)
+- **Claude 3.5 Sonnet tokens**: ~2,500 input + 700 output tokens
+  - Input: 2,500 × $3/1M = $0.0075
+  - Output: 700 × $15/1M = $0.0105
+  - **LLM subtotal**: ~$0.018
+- **Total per fact-check**: ~$0.019 (~2 cents)
 
 ### Monthly Estimate
+For 50 fact-checks per month (typical usage):
+- Tavily: $0.05
+- LLM (Claude 3.5 Sonnet): $0.90
+- **Total: ~$0.95/month**
+
 For 100 fact-checks per month:
 - Tavily: $0.10
-- LLM: $0.10
-- **Total: ~$0.20/month**
+- LLM (Claude 3.5 Sonnet): $1.80
+- **Total: ~$1.90/month**
+
+### Model Comparison
+**Claude 3.5 Sonnet** (current, high-accuracy):
+- Cost: ~$0.018 per fact-check
+- Accuracy: Excellent (minimal hallucination)
+- Speed: Moderate (~3-5 seconds)
+
+**Alternative: Hermes-3 70B** (cheaper):
+- Cost: ~$0.0005 per fact-check
+- Accuracy: Good (some hallucination risk)
+- Speed: Fast (~2-3 seconds)
+- **36x cheaper** but less reliable
 
 ### Free Tier
-- **Tavily**: 1,000 searches/month free
-- **OpenRouter**: Pay-as-you-go (very cheap)
+- **Tavily**: 1,000 searches/month free (sufficient for most servers)
+- **OpenRouter**: Pay-as-you-go, no free tier
 
 ---
 

@@ -4,7 +4,11 @@ Context-aware conversations with a helpful and professional personality.
 
 ## Overview
 
-WompBot uses OpenRouter LLMs (Hermes 70B by default) to engage in natural conversations with a professional, helpful, and friendly personality. The bot assists with questions, provides information, and engages in discussions while maintaining clarity and accuracy.
+WompBot uses a dual-model architecture:
+- **General Chat**: Hermes-3 70B (fast, conversational, cost-effective)
+- **Fact-Checking**: Claude 3.5 Sonnet (slow, highly accurate, prevents hallucination)
+
+The bot engages in natural conversations with a professional, helpful, and friendly personality, automatically switching to the high-accuracy model when verifying factual claims.
 
 ### Key Features
 - 🤝 **Professional & Helpful** - Clear, direct, and informative responses
@@ -183,12 +187,21 @@ CONTEXT_WINDOW_MESSAGES=3   # Less context, cheaper
 
 **File:** `.env`
 
-**Current model:**
+**Dual-Model Configuration:**
 ```bash
+# General chat (fast, conversational)
 MODEL_NAME=nousresearch/hermes-3-llama-3.1-70b
+
+# Fact-checking (slow, accurate, prevents hallucination)
+FACT_CHECK_MODEL=anthropic/claude-3.5-sonnet
 ```
 
-**Alternative uncensored models:**
+**Why Two Models?**
+- **General chat** needs speed and personality (Hermes-3 70B)
+- **Fact-checking** needs accuracy and zero hallucination (Claude 3.5 Sonnet)
+- Cost optimized: expensive model only used when needed
+
+**Alternative General Chat Models:**
 ```bash
 # Larger, more capable (more expensive)
 MODEL_NAME=cognitivecomputations/dolphin-2.9.2-qwen-110b
@@ -201,7 +214,7 @@ MODEL_NAME=mistralai/mixtral-8x22b-instruct
 MODEL_NAME=nousresearch/hermes-3-llama-3.1-405b  # Very large, very expensive
 ```
 
-**Note:** Model must be available on OpenRouter
+**Note:** All models must be available on OpenRouter
 
 ---
 
@@ -289,29 +302,35 @@ Response style:
 ## Cost Analysis
 
 ### Per Conversation
-**Without search:**
+**General chat (Hermes-3 70B):**
 - Tokens: ~500-800 (varies by context)
-- Cost: ~$0.0005-$0.001 per response
+- Cost: ~$0.0005 per response
 - Time: 1-3 seconds
 
-**With search:**
+**With search (Hermes-3 70B):**
 - Tokens: ~800-1200
 - Search cost: ~$0.001 (Tavily)
-- LLM cost: ~$0.001-$0.002
-- **Total: ~$0.002-$0.003**
+- LLM cost: ~$0.001
+- **Total: ~$0.002**
 - Time: 3-8 seconds
 
+**Fact-check (Claude 3.5 Sonnet):**
+- Tokens: ~2,500 input + 700 output
+- Cost: ~$0.018 per fact-check
+- Time: 4-8 seconds
+
 ### Monthly Estimate
-**For moderate usage (100 conversations/day):**
-- Daily: 100 × $0.001 = $0.10
-- Monthly: $3.00
+**For moderate usage (100 conversations/day, 50 fact-checks/month):**
+- Chat: 100/day × $0.0005 × 30 = $1.50
+- Searches: 30/day × $0.001 × 30 = $0.90
+- Fact-checks: 50 × $0.018 = $0.90
+- **Total: ~$3.30/month**
 
-**With searches (30% of conversations trigger search):**
-- Daily: 70 × $0.001 + 30 × $0.003 = $0.16
-- Monthly: $4.80
-
-### Heavy usage (500 conversations/day):**
-- Monthly: $15-25
+**Heavy usage (500 conversations/day, 100 fact-checks/month):**
+- Chat: $7.50/month
+- Searches: $4.50/month
+- Fact-checks: $1.80/month
+- **Total: ~$13.80/month**
 
 ---
 

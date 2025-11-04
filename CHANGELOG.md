@@ -2,6 +2,69 @@
 
 All notable changes to WompBot will be documented in this file.
 
+## [2025-11-03] - Dual-Model Architecture & Fact-Check Improvements
+
+### Added
+- **Dual-Model Architecture**: Separate models for different tasks
+  - General chat: `nousresearch/hermes-3-llama-3.1-70b` (fast, conversational)
+  - Fact-checking: `anthropic/claude-3.5-sonnet` (slow, highly accurate)
+  - New environment variable: `FACT_CHECK_MODEL` in `.env`
+- **Multi-Source Verification**: Fact-checker now requires ≥2 sources to corroborate claims
+  - Prevents single-source hallucination
+  - Increased search results from 5 to 7 sources
+  - Enhanced source formatting with numbered references `[1], [2], etc.`
+- **Anti-Hallucination Measures**:
+  - Stricter fact-check prompts with explicit "DO NOT make up information" rules
+  - Lower temperature (0.1) for fact-checking to minimize creativity
+  - Source cross-reference requirement in LLM prompts
+  - Knowledge cutoff warnings in system prompts
+- **Debug Logging**: Added comprehensive debug output for fact-checking
+  - Logs search results sent to LLM
+  - Logs LLM responses for verification
+  - Shows model selection for each operation
+
+### Changed
+- **Search Engine Improvements** (`bot/search.py`):
+  - Increased `max_results` from 5 to 7 for better corroboration
+  - Increased char limit from 1,500 to 2,000 for more context
+  - Added source domain extraction to search results
+  - Enhanced result formatting with numbered sources
+- **Fact-Check System** (`bot/features/fact_check.py`):
+  - Now uses dedicated high-accuracy model (Claude 3.5 Sonnet)
+  - Temperature lowered from 0.3 to 0.1
+  - Max tokens increased from 600 to 700 for source cross-referencing
+  - Stricter prompts requiring multi-source verification
+- **LLM Client** (`bot/llm.py`):
+  - Enhanced system prompt with knowledge cutoff warnings
+  - Added ambiguous statement handling instructions
+  - Improved search result integration with stronger instructions
+  - Expanded search triggers to catch more factual questions
+  - Added regex patterns for detecting yes/no questions
+
+### Fixed
+- **False Information Issue**: Bot no longer fabricates facts
+  - Previous: Would claim "Elon Musk is president" based on hallucination
+  - Now: Requires 2+ sources and uses high-accuracy model
+  - Prevents extrapolation beyond search results
+- **Search Trigger Detection**: Now catches declarative statements like "X is Y"
+  - Asks for clarification: "Are you asking if X is Y?"
+  - Verifies claims against search results
+- **Source Verification**: Explicit source number citation required
+
+### Documentation
+- Updated `docs/features/FACT_CHECK.md` with dual-model setup
+- Updated `docs/features/CONVERSATIONAL_AI.md` with architecture details
+- Updated `docs/CONFIGURATION.md` with `FACT_CHECK_MODEL` configuration
+- Updated `.env.example` with dual-model template
+- Added cost analysis for dual-model architecture
+
+### Cost Impact
+- **Per fact-check**: ~$0.019 (up from ~$0.002)
+  - Claude 3.5 Sonnet is 25x-50x more expensive than Hermes-3 70B
+  - Worth it for accuracy and preventing misinformation
+- **Monthly estimate** (50 fact-checks): ~$0.95/month
+- **General chat** remains cheap with Hermes-3 70B
+
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
