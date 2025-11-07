@@ -5,7 +5,10 @@ A Discord bot powered by OpenRouter LLMs (Hermes/Dolphin models) with conversati
 ## Features
 
 ### 🤖 Core Features
-- **Conversational AI**: Context-aware responses with a professional and helpful personality
+- **Dual-Model AI Architecture**:
+  - **General Chat**: Hermes-3 70B (fast, conversational, cost-effective)
+  - **Fact-Checking**: Claude 3.5 Sonnet (slow, highly accurate, zero hallucination)
+- **Context-Aware Conversations**: Professional and helpful personality with conversation memory
 - **Smart Response Detection**: Only responds when "wompbot" mentioned or @tagged
 - **Web Search Integration**: Automatic Tavily API search when facts are needed
 - **Message Storage**: PostgreSQL database tracks all conversations
@@ -23,12 +26,15 @@ A Discord bot powered by OpenRouter LLMs (Hermes/Dolphin models) with conversati
 - **Quotes Command**: `/quotes [@user]` - View saved quotes with context
 - **Auto-Categorization**: Tracks reaction counts and timestamps
 
-### ⚠️ Fact-Check Feature (NEW!)
+### ⚠️ Fact-Check Feature
 - **Emoji Triggered**: React with ⚠️ to any message to trigger fact-check
-- **Web Search**: Automatically searches for evidence using Tavily
-- **LLM Analysis**: Analyzes claim accuracy with verdict and explanation
-- **Source Citations**: Includes links to top 3 sources
+- **High-Accuracy Model**: Uses Claude 3.5 Sonnet (dedicated fact-checking model)
+- **Multi-Source Verification**: Requires ≥2 sources to corroborate claims
+- **Anti-Hallucination**: Strict prompts prevent LLM from fabricating information
+- **Web Search**: Automatically searches 7 sources for evidence using Tavily
+- **Source Citations**: Includes numbered source references with links
 - **Verdict System**: ✅ True, ❌ False, 🔀 Mixed, ⚠️ Misleading, ❓ Unverifiable
+- **Cross-Reference**: Explicitly cites which sources ([1], [2]) agree on each fact
 
 ### 📊 User Analytics
 - **Behavior Analysis**: Profanity scores, tone, honesty patterns
@@ -264,17 +270,20 @@ docker-compose down
 
 ## Privacy Features
 
-**GDPR-Compliant Consent System:**
+**GDPR-Focused Privacy Controls:**
 
 Users control their data through slash commands:
 - **/wompbot_consent**: Give consent for data processing (required for most features)
 - **/wompbot_noconsent**: Withdraw consent and opt out of data collection
 - **/download_my_data**: Export all your data in JSON format (GDPR Art. 15)
-- **/delete_my_data**: Request permanent deletion with 30-day grace period (GDPR Art. 17)
+- **/delete_my_data**: Request deletion with 30-day grace period (GDPR Art. 17)
+  - ⚠️ Currently deletes messages, claims, quotes, reminders, events - **does not** delete user_behavior, search_logs, or debate records
 - **/my_privacy_status**: View your current privacy and consent status
 - **/privacy_policy**: View the complete privacy policy
 - **/privacy_settings** *(Admin)*: Get a live overview of consent counts and stored data
 - **/privacy_audit** *(Admin)*: Download a JSON report summarizing current privacy posture
+
+**Compliance Status**: See [GDPR Compliance Manual](docs/compliance/GDPR_COMPLIANCE.md) for full details on implemented controls and known gaps.
 
 **Without consent:**
 - Message content and usernames are redacted before storage (only metadata retained)
@@ -367,19 +376,45 @@ Use `/analyze` command to run analysis.
 
 ## Costs
 
-- **OpenRouter (Dolphin 70B)**: ~$10-20/month for moderate usage
-  - Conversation AI: ~$0.001-0.005 per message
-  - Debate Analysis: ~$0.01-0.05 per debate
-  - Hot Takes Scoring: ~$0.005 per analysis (only for high-engagement claims)
-- **Tavily Search**: Free up to 1000 searches/month
-- **Server**: Free (local Docker)
+### Dual-Model Pricing
 
-**Cost Optimization:**
+**General Chat (Hermes-3 70B):**
+- ~$0.0005 per message
+- 100 messages/day = ~$1.50/month
+
+**Fact-Checking (Claude 3.5 Sonnet):**
+- ~$0.018 per fact-check (⚠️ emoji trigger)
+- 50 fact-checks/month = ~$0.90/month
+- **25x-50x more expensive** but prevents misinformation
+
+**Search (Tavily):**
+- Free up to 1,000 searches/month
+- ~$0.001 per search if exceeded
+
+**Total Monthly Estimate:**
+- Light usage: ~$3-5/month
+- Moderate usage: ~$10-15/month
+- Heavy usage: ~$20-30/month
+
+### Other Features
+
+**Zero-Cost Features:**
+- Event Scheduling and Reminders (pure time parsing)
+- Quote of the Day (database queries)
+- Yearly Wrapped (database aggregation)
+- Chat Statistics (network graphs, TF-IDF)
+- iRacing Integration (API calls only)
+
+**Variable Cost Features:**
+- Debate Analysis: ~$0.01-0.05 per debate
+- Hot Takes Scoring: ~$0.005 per analysis (only high-engagement claims)
+- User Behavior Analysis: ~$0.005 per user
+
+### Cost Optimization
+- Dual-model architecture: Cheap model for chat, expensive only for fact-checking
 - Hot Takes use hybrid detection (pattern matching first, LLM only for high engagement)
 - Debate Scorekeeper only uses LLM when ending debates
-- Event Scheduling and Reminders use zero LLM (pure time parsing)
-- Quote of the Day uses zero LLM (pure database queries)
-- Yearly Wrapped uses zero LLM (pure database aggregation)
+- Background stat updates use zero LLM (pure SQL + TF-IDF)
 
 ## Troubleshooting
 
@@ -402,16 +437,33 @@ docker-compose up -d
 
 ## Model Configuration
 
-Change model in `.env`:
-```
+WompBot uses a **dual-model architecture** optimized for different tasks:
+
+```env
+# General chat - Fast, conversational
 MODEL_NAME=nousresearch/hermes-3-llama-3.1-70b
+
+# Fact-checking - High accuracy, prevents hallucination
+FACT_CHECK_MODEL=anthropic/claude-3.5-sonnet
 ```
 
-Available uncensored models on OpenRouter:
-- `nousresearch/hermes-3-llama-3.1-70b` (Recommended)
-- `cognitivecomputations/dolphin-2.9.2-qwen-110b` (70B)
-- `cognitivecomputations/dolphin-mixtral-8x7b`
-- `mistralai/mixtral-8x22b-instruct`
+### Why Two Models?
+- **General chat** needs speed and personality (Hermes-3 70B: ~$0.0005/response)
+- **Fact-checking** needs accuracy and zero hallucination (Claude 3.5 Sonnet: ~$0.018/check)
+- **Cost optimized**: Expensive model only used when ⚠️ emoji triggered
+
+### Alternative Models
+
+**General Chat Models:**
+- `nousresearch/hermes-3-llama-3.1-70b` (Recommended - balanced)
+- `cognitivecomputations/dolphin-2.9.2-qwen-110b` (More capable, more expensive)
+- `cognitivecomputations/dolphin-mixtral-8x7b` (Cheaper, smaller)
+- `mistralai/mixtral-8x22b-instruct` (Alternative)
+
+**Fact-Check Models:**
+- `anthropic/claude-3.5-sonnet` (Recommended - minimal hallucination)
+- `meta-llama/llama-3.1-70b-instruct` (Cheaper, but less reliable)
+- `nousresearch/hermes-3-llama-3.1-70b` (Not recommended for fact-checking)
 
 ## Personality System
 

@@ -2,11 +2,16 @@
 
 ## Overview
 
-This bot is fully compliant with the **General Data Protection Regulation (GDPR)** EU 2016/679, implementing all required data subject rights and privacy protections.
+This bot implements GDPR-focused privacy controls including consent management, data export, and deletion capabilities. However, **full compliance requires additional configuration and administrative oversight**.
 
-**Compliance Status**: ✅ **GDPR Compliant** (as of 2025-10-31)
+**Compliance Status**: ⚠️ **Partial Compliance - Action Required** (as of 2025-11-07)
 **Privacy Policy Version**: 1.0
-**Last Audit**: 2025-10-31 (automation + manual verification)
+**Last Audit**: 2025-11-07 (comprehensive code audit)
+
+### Known Gaps Requiring Action
+1. **Automated Retention**: Only stats_cache is automatically purged. Messages, behavior data, search logs, and audit logs require manual review.
+2. **Data Deletion**: User deletion requests do not currently remove all categories (user_behavior, search_logs, debate records remain).
+3. **International Transfers**: Standard Contractual Clauses (SCCs) must be obtained from OpenRouter, Tavily, and iRacing.
 
 ---
 
@@ -111,9 +116,9 @@ Per GDPR Article 6, we process personal data under the following legal bases:
 **Implementation**:
 - **30-Day Grace Period**: Scheduled deletion with cancellation option
 - **Immediate Opt-Out**: Data collection stops immediately
-- **Comprehensive Deletion**: All personal data removed (messages, profiles, analytics)
-- **Legal Retention**: Audit logs retained for 7 years (legal requirement)
-- **Anonymization Option**: For data with legal retention requirements
+- **Partial Deletion**: Currently deletes messages, claims, quotes, reminders, events, and iRacing links
+- **⚠️ Not Currently Deleted**: user_behavior (tone analysis), search_logs, debate records, fact_checks
+- **Legal Retention**: Audit logs always retained for 7 years (legal requirement)
 
 **Deletion Process**:
 1. User requests deletion → `/delete_my_data`
@@ -121,8 +126,10 @@ Per GDPR Article 6, we process personal data under the following legal bases:
 3. Immediate opt-out from data collection
 4. 30-day grace period begins
 5. User can cancel → `/cancel_deletion`
-6. After 30 days: Permanent deletion
+6. After 30 days: Partial deletion executed (see above)
 7. Audit log entry created
+
+**⚠️ Admin Action Required**: To fully comply with Art. 17, administrators must manually delete user_behavior, search_logs, and debate records, or update the `delete_user_data()` function to include these tables.
 
 ### 3.3 Right to Data Portability (Art. 20)
 **Command**: `/download_my_data`
@@ -376,18 +383,24 @@ Per GDPR Art. 17(3), we retain data when required by law:
 
 ### 7.1 Data Processors
 
-| Processor | Data Shared | Purpose | DPA Required | GDPR Compliant |
-|-----------|-------------|---------|--------------|----------------|
-| OpenRouter/LLM Providers | Message content (anonymized) | AI analysis | ✅ Yes | ✅ Yes |
-| Tavily | Search queries | Fact-checking | ✅ Yes | ✅ Yes |
-| iRacing | Customer IDs (linked users only) | Racing stats | ✅ Yes | ✅ Yes |
+| Processor | Data Shared | Purpose | Location | SCCs Status |
+|-----------|-------------|---------|----------|-------------|
+| OpenRouter/LLM Providers | Message content (anonymized) | AI analysis | US | ⚠️ **Required - Not Obtained** |
+| Tavily | Search queries | Fact-checking | US | ⚠️ **Required - Not Obtained** |
+| iRacing | Customer IDs (linked users only) | Racing stats | US | ⚠️ **Required - Not Obtained** |
 
 ### 7.2 Standard Contractual Clauses (SCCs)
 
-For any processors outside EU/EEA:
-- ✅ Ensure valid SCCs are in place
-- ✅ Verify adequacy decisions
-- ✅ Review regularly (annual)
+**⚠️ CRITICAL COMPLIANCE GAP**: Standard Contractual Clauses (SCCs) are **required** for all three data processors listed above (GDPR Arts. 44-50).
+
+**Status**: Not currently in place.
+
+**Action Required**:
+1. Contact OpenRouter and request SCCs for EU data transfers
+2. Contact Tavily and request SCCs for EU data transfers
+3. Contact iRacing and request SCCs for EU data transfers
+4. Store executed SCCs in `docs/compliance/contracts/`
+5. Review SCCs annually for validity
 
 ### 7.3 Data Minimization for Third Parties
 

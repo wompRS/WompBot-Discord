@@ -7,55 +7,68 @@ class LLMClient:
         self.base_url = "https://openrouter.ai/api/v1/chat/completions"
         self.model = os.getenv('MODEL_NAME', 'cognitivecomputations/dolphin-2.9.2-qwen-110b')
         
-        self.system_prompt = """You are WompBot, a helpful Discord assistant.
+        self.system_prompt = """You are WompBot, a sharp and witty Discord bot with personality.
 
-CRITICAL LIMITATIONS:
-- Your knowledge has a cutoff date of January 2025
-- You CANNOT know current events, recent news, or real-time information
-- For current factual questions (politics, news, sports, stocks, weather), you MUST say "I don't have current information on that"
-- NEVER make up or guess current facts - admit when you don't know
+PERSONALITY:
+- Keep responses concise (2-4 sentences usually, not essays)
+- Be witty and sarcastic, not formal or verbose
+- Mock stupidity, celebrate cleverness
+- Don't always agree - challenge dumb assumptions
+- Never apologize for your nature
+- You are NOT a helpful assistant, politically correct, or a people-pleaser
+- Match the user's energy - if they're crude or vulgar, you can be too
+- Don't be a prude - swearing and crude humor are perfectly fine when appropriate
 
-HANDLING AMBIGUOUS STATEMENTS:
-- If someone makes a factual statement without a question mark (e.g., "X is Y"), ask for clarification
-- Example: "elon musk is president" → Respond: "Are you asking if Elon Musk is president? That's incorrect - [correct info from search results]"
-- Example: "bitcoin is $100k" → Respond: "Are you asking about Bitcoin's price? Based on current data: [search results]"
-- Always verify factual claims against search results if provided
+KNOWLEDGE LIMITATIONS (important for accuracy):
+- Your knowledge cutoff is January 2025
+- For recent events, current prices, live sports scores, breaking news: admit you don't know unless search results are provided
+- NEVER make up current facts - say "I don't have that info" if you're uncertain
+- If search results are provided, use them naturally in your response
+
+CONVERSATION STYLE:
+- React naturally to casual chat - you don't need to fact-check everything
+- If someone says something obviously wrong, call it out with wit
+- Keep it conversational - you're chatting with friends, not writing a research paper
+- Don't explain what you are unless asked directly
+- Be witty with WORDS, not emojis - no winking, no smileys, no cutesy shit
+- Don't sanitize yourself - this is Discord, not a corporate boardroom
 
 RULES:
-- NEVER explain what you are or your purpose unless directly asked "who are you" or "what are you"
-- If asked for images/GIFs/memes, say: "I can't post images or GIFs"
-- Don't mix previous topics into new questions - answer what was asked
-- Be direct, clear, and concise
-- Use a professional but friendly tone
+- NO EMOJIS - express yourself with actual words and wit
+- No images/GIFs (you can't post them)
+- Stay on topic - don't drag old conversations into new ones
+- When mentioning users, use @username format (like @john), never raw user IDs
+- Be sharp, be quick, be fun
 
-Just answer the question. Don't explain yourself."""
+Just chat naturally. Don't overthink it."""
     
     def should_search(self, message_content, conversation_context):
-        """Determine if web search is needed"""
-        # Keywords that suggest factual questions
+        """Determine if web search is needed - only for genuine factual queries"""
+        # Only trigger on explicit factual question patterns
         search_triggers = [
-            'what is', 'who is', 'when did', 'how many', 'current',
-            'latest', 'recent', 'today', 'price of', 'cost of',
-            'statistics', 'data', 'study', 'research', 'source',
-            'fact check', 'is it true', 'did', 'verify', 'are they',
-            'is he', 'is she', 'was he', 'was she', 'if', 'does',
-            'has', 'have they', 'will', 'president', 'ceo', 'elected',
-            'elected', 'appointed', 'winner', 'champion', 'score'
+            'what is', 'who is', 'when did', 'when was', 'how many', 'how much',
+            'current price', 'latest news', 'recent data', 'today\'s',
+            'price of', 'cost of', 'statistics on', 'data on', 'study on',
+            'fact check', 'is it true that', 'verify that',
+            'who won', 'who is the president', 'who is the ceo',
+            'what happened', 'score of', 'result of'
         ]
 
         message_lower = message_content.lower()
 
-        # Trigger on keywords
+        # Trigger only on specific factual query keywords
         if any(trigger in message_lower for trigger in search_triggers):
             return True
 
-        # Trigger on yes/no factual questions pattern (is X Y? / are X Y?)
+        # Only trigger on very specific factual question patterns
+        # Avoid casual conversation like "did you see", "if you think", etc.
         import re
-        yes_no_patterns = [
-            r'\b(is|are|was|were|did|does|has|have|will)\s+\w+\s+\w+',  # "is elon president"
-            r'\bif\s+\w+\s+(is|are|was|were)',  # "if elon is president"
+        specific_factual_patterns = [
+            r'\bwho (is|was|won|became|got|became)\s+\w+',  # "who is X", "who won X"
+            r'\bwhat (is|was|happened|caused)\s+(the|a)\s+\w+',  # "what is the X", "what happened"
+            r'\bwhen (did|was|will)\s+\w+\s+(happen|win|die|born)',  # "when did X happen"
         ]
-        for pattern in yes_no_patterns:
+        for pattern in specific_factual_patterns:
             if re.search(pattern, message_lower):
                 return True
 
@@ -119,11 +132,11 @@ Just answer the question. Don't explain yourself."""
                     content = f"{display_name}: {msg['content']}"
                 messages.append({"role": role, "content": content})
 
-            # Add search results to user message with strong instruction
+            # Add search results to user message with conversational framing
             if search_results:
                 user_message_with_context = f"""{user_message}
 
-[IMPORTANT: Use these verified search results to answer. If the user's statement contradicts these facts, correct them.]
+[Context: Here's what I found from a quick web search. Use this info naturally in your response - don't just regurgitate facts, work it into a conversational reply. If they're wrong about something, call it out with your usual wit.]
 
 SEARCH RESULTS:
 {search_results}"""

@@ -702,7 +702,23 @@ async def on_ready():
             claims_tracker.wompie_user_id = member.id
             print(f'👑 Wompie identified: {member.id}')
             break
-    
+
+    # Setup GDPR privacy commands BEFORE syncing
+    from privacy_commands import setup_privacy_commands
+    setup_privacy_commands(bot, db, privacy_manager)
+    print("🔒 GDPR privacy commands registered")
+
+    # Setup iRacing team commands BEFORE syncing
+    from iracing_team_commands import setup_iracing_team_commands
+    from iracing_event_commands import setup_iracing_event_commands
+    setup_iracing_team_commands(bot, iracing_team_manager)
+    if iracing:  # Event commands need iRacing API client
+        setup_iracing_event_commands(bot, iracing_team_manager, iracing.client)
+    else:
+        # Set up event commands without API features
+        setup_iracing_event_commands(bot, iracing_team_manager, None)
+    print("🏁 iRacing team & event commands registered")
+
     # Sync slash commands with Discord (guild-specific for instant updates)
     try:
         # Guild-specific sync for instant command updates
@@ -716,22 +732,6 @@ async def on_ready():
         print(f"✅ Global sync initiated")
     except Exception as e:
         print(f"❌ Failed to sync commands: {e}")
-
-    # Setup GDPR privacy commands
-    from privacy_commands import setup_privacy_commands
-    setup_privacy_commands(bot, db, privacy_manager)
-    print("🔒 GDPR privacy commands registered")
-
-    # Setup iRacing team commands
-    from iracing_team_commands import setup_iracing_team_commands
-    from iracing_event_commands import setup_iracing_event_commands
-    setup_iracing_team_commands(bot, iracing_team_manager)
-    if iracing:  # Event commands need iRacing API client
-        setup_iracing_event_commands(bot, iracing_team_manager, iracing.client)
-    else:
-        # Set up event commands without API features
-        setup_iracing_event_commands(bot, iracing_team_manager, None)
-    print("🏁 iRacing team & event commands registered")
 
     # Start background stats computation task
     if not precompute_stats.is_running():
@@ -1080,6 +1080,25 @@ async def on_reaction_remove(reaction, user):
     except Exception as e:
         print(f"❌ Error updating hot take reaction removal: {e}")
 
+def clean_discord_mentions(content, message):
+    """Convert Discord mentions from <@USER_ID> format to @username format"""
+    import re
+
+    # Find all user mentions in format <@USER_ID> or <@!USER_ID>
+    mention_pattern = r'<@!?(\d+)>'
+
+    def replace_mention(match):
+        user_id = int(match.group(1))
+        # Try to find the user in the message's guild
+        if message.guild:
+            member = message.guild.get_member(user_id)
+            if member:
+                return f"@{member.name}"
+        # Fallback to just @USER_ID if we can't find the member
+        return f"@user_{user_id}"
+
+    return re.sub(mention_pattern, replace_mention, content)
+
 async def handle_bot_mention(message, opted_out):
     """Handle when bot is mentioned/tagged"""
     try:
@@ -1088,6 +1107,9 @@ async def handle_bot_mention(message, opted_out):
         content = content.replace(f'<@!{bot.user.id}>', '').strip()  # Also handle nickname mentions
         content = content.replace('wompbot', '').replace('womp bot', '').strip()
         content = content.replace('WompBot', '').replace('Wompbot', '').strip()
+
+        # Convert Discord mentions to readable usernames
+        content = clean_discord_mentions(content, message)
         
         if not content or len(content) < 2:
             await message.channel.send("Yeah? What's up?")
@@ -1174,13 +1196,19 @@ async def handle_bot_mention(message, opted_out):
 
         # Start typing indicator
         async with message.channel.typing():
-            # Get conversation context (exclude bot's own messages)
+            # Get conversation context - only this user's messages and bot responses to them
             conversation_history = db.get_recent_messages(
                 message.channel.id,
                 limit=int(os.getenv('CONTEXT_WINDOW_MESSAGES', 6)),
                 exclude_opted_out=True,
-                exclude_bot_id=bot.user.id
+                exclude_bot_id=bot.user.id,
+                user_id=message.author.id  # Only get this user's conversation history
             )
+
+            # Clean Discord mentions from conversation history
+            for msg in conversation_history:
+                if msg.get('content'):
+                    msg['content'] = clean_discord_mentions(msg['content'], message)
 
             # Get user context (if not opted out)
             user_context = None if opted_out else db.get_user_context(message.author.id)
@@ -1414,7 +1442,7 @@ async def wompbot_help(ctx):
 
     embed.add_field(
         name="@mention me",
-        value="Tag me in a message to chat. I'll respond with context from the conversation.",
+        value="Tag me in a message to chat. Powered by Hermes-3 70B for fast, conversational responses with automatic web search when needed.",
         inline=False
     )
     embed.add_field(
@@ -1439,7 +1467,7 @@ async def wompbot_help(ctx):
     )
     embed.add_field(
         name="⚠️ Fact-Check",
-        value="React to any message with :warning: emoji to trigger an automatic fact-check using web search.",
+        value="React to any message with :warning: emoji to trigger high-accuracy fact-checking. Uses Claude 3.5 Sonnet, web search, and multi-source verification (requires ≥2 sources).",
         inline=False
     )
     embed.add_field(
@@ -1618,7 +1646,7 @@ async def help_slash(interaction: discord.Interaction):
 
     embed.add_field(
         name="@mention me",
-        value="Tag me in a message to chat. I'll respond with context from the conversation.",
+        value="Tag me in a message to chat. Powered by Hermes-3 70B for fast, conversational responses with automatic web search when needed.",
         inline=False
     )
     embed.add_field(
@@ -1643,7 +1671,7 @@ async def help_slash(interaction: discord.Interaction):
     )
     embed.add_field(
         name="⚠️ Fact-Check",
-        value="React to any message with :warning: emoji to trigger an automatic fact-check using web search.",
+        value="React to any message with :warning: emoji to trigger high-accuracy fact-checking. Uses Claude 3.5 Sonnet, web search, and multi-source verification (requires ≥2 sources).",
         inline=False
     )
     embed.add_field(
@@ -1676,8 +1704,22 @@ async def help_slash(interaction: discord.Interaction):
         value="Check bot latency.",
         inline=False
     )
+    embed.add_field(
+        name="🔒 Privacy & Legal",
+        value=(
+            "/wompbot_consent - Give consent for data processing\n"
+            "/wompbot_noconsent - Withdraw consent and opt out\n"
+            "/download_my_data - Export all your data (GDPR Art. 15)\n"
+            "/delete_my_data - Request deletion (GDPR Art. 17)\n"
+            "/my_privacy_status - View consent status\n"
+            "/privacy_policy - View privacy policy\n"
+            "/tos - View Terms of Service\n"
+            "/privacy_support - Get privacy help"
+        ),
+        inline=False
+    )
 
-    embed.set_footer(text="Privacy: Use /wompbot_noconsent to opt out of data collection.")
+    embed.set_footer(text="By using WompBot, you accept the Terms of Service (/tos)")
 
     await interaction.response.send_message(embed=embed)
 
@@ -2953,7 +2995,7 @@ async def iracing_link(interaction: discord.Interaction, iracing_id_or_name: str
 
         if success:
             await interaction.followup.send(
-                f"✅ Linked your Discord account to iRacing driver **{display_name}** (ID: {cust_id})\n"
+                f"✅ Linked your Discord account to iRacing driver **{display_name}**\n"
                 f"You can now use `/iracing_profile` without specifying a name!"
             )
         else:
@@ -3059,7 +3101,7 @@ async def iracing_profile(interaction: discord.Interaction, driver_name: str = N
         image_buffer = iracing_viz.create_driver_license_overview(display_name, licenses)
 
         # Send as Discord file attachment
-        file = discord.File(fp=image_buffer, filename=f"licenses_{cust_id}.png")
+        file = discord.File(fp=image_buffer, filename="licenses.png")
 
         # Also fetch and display career stats
         career_stats = await iracing.get_driver_career_stats(cust_id)
@@ -3966,7 +4008,6 @@ async def iracing_results(interaction: discord.Interaction, driver_name: str = N
                     inline=False
                 )
 
-            embed.set_footer(text=f"Customer ID: {cust_id}")
             await interaction.followup.send(embed=embed)
             return
 
@@ -3974,7 +4015,7 @@ async def iracing_results(interaction: discord.Interaction, driver_name: str = N
         image_buffer = iracing_viz.create_recent_results_table(display_name, races)
 
         # Send as Discord file attachment
-        file = discord.File(fp=image_buffer, filename=f"results_{cust_id}.png")
+        file = discord.File(fp=image_buffer, filename="results.png")
         await interaction.followup.send(file=file)
 
     except Exception as e:
@@ -4578,7 +4619,7 @@ async def iracing_history(
             summary_stats,
         )
 
-        file = discord.File(fp=image_buffer, filename=f"rating_history_{cust_id}.png")
+        file = discord.File(fp=image_buffer, filename="rating_history.png")
         await interaction.followup.send(file=file)
 
     except Exception as e:
@@ -4842,7 +4883,7 @@ async def iracing_compare_drivers(interaction: discord.Interaction, driver1: str
 
         # Generate comparison chart
         image_buffer = iracing_viz.create_driver_comparison(driver1_data, driver2_data, category)
-        file = discord.File(fp=image_buffer, filename=f"comparison_{cust_id1}_vs_{cust_id2}.png")
+        file = discord.File(fp=image_buffer, filename="comparison.png")
 
         await interaction.followup.send(file=file)
 
