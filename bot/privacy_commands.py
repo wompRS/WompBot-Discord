@@ -682,4 +682,112 @@ def setup_privacy_commands(bot, db, privacy_manager):
 
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
+    @bot.tree.command(name="tos", description="View WompBot Terms of Service")
+    async def tos_command(interaction: discord.Interaction):
+        """Display Terms of Service"""
+        import os
+
+        try:
+            # Read TOS file
+            tos_path = os.path.join(os.path.dirname(__file__), '..', 'docs', 'TERMS_OF_SERVICE.md')
+
+            if not os.path.exists(tos_path):
+                await interaction.response.send_message(
+                    "Terms of Service document not found. Please contact the administrator.",
+                    ephemeral=True
+                )
+                return
+
+            with open(tos_path, 'r', encoding='utf-8') as f:
+                tos_text = f.read()
+
+            # Extract key sections for Discord embed (full text is too long)
+            # Split by ## headers
+            sections = tos_text.split('\n## ')
+
+            # Header
+            header = sections[0].split('\n---')[0].strip()
+
+            # Create main embed with summary
+            embed = discord.Embed(
+                title="WompBot Terms of Service",
+                description=(
+                    "By using WompBot, you agree to these Terms.\n\n"
+                    "**Key Points:**\n"
+                    "• Bot collects data with your consent\n"
+                    "• You control your data via `/download_my_data` and `/delete_my_data`\n"
+                    "• Bot personality can be crude/sarcastic (matches your energy)\n"
+                    "• No warranties - use at your own risk\n"
+                    "• ⚠️ GDPR partial compliance - see full docs\n\n"
+                    "**Last Updated**: November 7, 2025"
+                ),
+                color=discord.Color.blue()
+            )
+
+            # Add key sections as fields
+            embed.add_field(
+                name="📋 What We Collect",
+                value=(
+                    "With consent: messages, usernames, behavior analysis, "
+                    "claims/quotes, iRacing data (if linked), search queries. "
+                    "See Section 2 for full details."
+                ),
+                inline=False
+            )
+
+            embed.add_field(
+                name="🔒 Your Rights",
+                value=(
+                    "`/download_my_data` - Export all data\n"
+                    "`/delete_my_data` - Request deletion\n"
+                    "`/wompbot_noconsent` - Withdraw consent\n"
+                    "`/my_privacy_status` - Check status"
+                ),
+                inline=False
+            )
+
+            embed.add_field(
+                name="⚖️ Acceptable Use",
+                value=(
+                    "✅ Use for legitimate purposes\n"
+                    "✅ Crude language OK (Bot matches your energy)\n"
+                    "❌ No spam, abuse, harassment, or illegal activity\n"
+                    "❌ No exploitation or data extraction"
+                ),
+                inline=False
+            )
+
+            embed.add_field(
+                name="⚠️ Disclaimers",
+                value=(
+                    "• Bot provided AS IS with no warranties\n"
+                    "• Not always accurate despite safeguards\n"
+                    "• No SLA or uptime guarantees\n"
+                    "• Not liable for decisions made using Bot info"
+                ),
+                inline=False
+            )
+
+            embed.add_field(
+                name="📚 Full Documentation",
+                value=(
+                    "Full TOS: `docs/TERMS_OF_SERVICE.md`\n"
+                    "`/privacy_policy` - Privacy details\n"
+                    "[GDPR Compliance](docs/compliance/GDPR_COMPLIANCE.md)\n"
+                    "`/privacy_support` - Questions"
+                ),
+                inline=False
+            )
+
+            embed.set_footer(text="By using WompBot, you accept these Terms")
+
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+
+        except Exception as e:
+            print(f"Error displaying TOS: {e}")
+            await interaction.response.send_message(
+                "Error loading Terms of Service. Please contact the administrator.",
+                ephemeral=True
+            )
+
     print("✅ GDPR privacy commands registered")

@@ -142,8 +142,16 @@ class Database:
         except Exception as e:
             print(f"⚠️ Error storing message: {e}")
     
-    def get_recent_messages(self, channel_id, limit=10, exclude_opted_out=True, exclude_bot_id=None):
-        """Get recent messages from a channel for context"""
+    def get_recent_messages(self, channel_id, limit=10, exclude_opted_out=True, exclude_bot_id=None, user_id=None):
+        """Get recent messages from a channel for context
+
+        Args:
+            channel_id: Channel to fetch messages from
+            limit: Max number of messages to return
+            exclude_opted_out: Exclude users who opted out
+            exclude_bot_id: Exclude messages from this bot user ID
+            user_id: If provided, only get messages from this user (and bot responses to them)
+        """
         try:
             with self.conn.cursor(cursor_factory=RealDictCursor) as cur:
                 # Build query with parameterized statements (SECURE - prevents SQL injection)
@@ -155,12 +163,21 @@ class Database:
                 """
                 params = [channel_id]
 
-                if exclude_opted_out:
-                    query += " AND COALESCE(m.opted_out, FALSE) = FALSE AND COALESCE(up.opted_out, FALSE) = FALSE"
-
-                if exclude_bot_id:
+                # Filter to specific user's conversation (their messages + bot responses)
+                if user_id is not None:
+                    query += " AND (m.user_id = %s"
+                    params.append(user_id)
+                    if exclude_bot_id:
+                        query += " OR m.user_id = %s"
+                        params.append(exclude_bot_id)
+                    query += ")"
+                elif exclude_bot_id:
+                    # If no user_id filter, still exclude bot messages
                     query += " AND m.user_id != %s"
                     params.append(exclude_bot_id)
+
+                if exclude_opted_out:
+                    query += " AND COALESCE(m.opted_out, FALSE) = FALSE AND COALESCE(up.opted_out, FALSE) = FALSE"
 
                 query += " ORDER BY m.timestamp DESC LIMIT %s"
                 params.append(limit)

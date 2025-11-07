@@ -4,36 +4,43 @@
 
 **Organization**: WompBot Discord Bot
 **Data Controller**: [Bot Administrator/Organization Name]
-**Attestation Date**: October 31, 2025
-**Auditor**: Internal Self-Assessment
+**Attestation Date**: November 7, 2025
+**Auditor**: Internal Code Audit
 **Regulation**: EU GDPR (Regulation 2016/679)
 **Scope**: All data processing activities related to Discord bot operations
-**Status**: ✅ **FULLY COMPLIANT**
+**Status**: ⚠️ **PARTIAL COMPLIANCE - ACTION REQUIRED**
 
 ---
 
 ## Executive Summary
 
-This document provides evidence-based attestation that WompBot is fully compliant with the General Data Protection Regulation (EU) 2016/679. All mandatory requirements have been implemented and verified.
+This document provides an honest assessment of WompBot's GDPR compliance status based on a comprehensive code audit conducted on November 7, 2025. The bot implements strong consent management and user rights infrastructure, but **has critical gaps that prevent full compliance**.
 
-**Compliance Score**: 100% (49/49 controls implemented)
+**Compliance Score**: ~70% (35/49 controls fully implemented, 14 require action)
 
-**Key Achievements**:
-- ✅ All 7 data subject rights implemented (Art. 12-23)
-- ✅ Lawful basis established for all processing (Art. 6)
+**Implemented Controls**:
 - ✅ Consent management with audit trail (Art. 7)
-- ✅ Complete data inventory and retention policies (Art. 30)
-- ✅ Technical and organizational security measures (Art. 32)
+- ✅ Data export functionality (Art. 15)
+- ✅ Partial deletion capability (Art. 17)
+- ✅ Consent withdrawal (Art. 21)
+- ✅ Lawful basis documented (Art. 6)
+- ✅ Technical security measures (Art. 32)
 - ✅ Breach notification procedures (Art. 33-34)
 - ✅ Privacy by design and default (Art. 25)
 - ✅ Transparent admin tooling via `/privacy_settings` and `/privacy_audit`
-- ✅ Automated onboarding privacy notice (opt-in DM) for Art. 13 disclosure
 
-**2025-10-31 Audit Summary**:
-- Verified consent counts and storage footprint via `/privacy_settings`
-- Exported JSON audit snapshot via `/privacy_audit` and archived in compliance records
-- Confirmed welcome privacy DM delivering Art. 13 notice to new members (configurable via `PRIVACY_DM_NEW_MEMBERS`)
-- Exercised mention rate-limiting and async LLM isolation controls to ensure operational resilience
+**Critical Gaps Requiring Action**:
+- ❌ **Art. 17 (Right to Erasure)**: Deletion incomplete - user_behavior, search_logs, debate records, fact_checks not deleted
+- ❌ **Art. 5(1)(e) (Storage Limitation)**: Only stats_cache auto-purged; messages, behavior, search logs, audit logs retained indefinitely
+- ❌ **Arts. 44-50 (International Transfers)**: No Standard Contractual Clauses (SCCs) obtained from OpenRouter, Tavily, or iRacing
+- ⚠️ **Art. 30 (Records of Processing)**: Retention policies documented but not enforced
+
+**2025-11-07 Audit Findings**:
+- Reviewed actual code implementation in bot/features/gdpr_privacy.py
+- Verified database schema in sql/gdpr_migration.sql
+- Confirmed only 1 of 10 data types has automatic deletion enabled
+- Identified 4 data categories surviving user deletion requests
+- Confirmed SCCs not present in repository or documentation
 
 ---
 

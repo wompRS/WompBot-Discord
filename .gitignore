@@ -25,6 +25,9 @@ bot/assets/car_logos_raw/
 # Docker
 postgres_data/
 
+# Database backups
+backups/
+
 # VSCode
 .vscode/
 
