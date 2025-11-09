@@ -11,6 +11,7 @@ from collections import Counter
 import pytz
 from database import Database
 from llm import LLMClient
+from cost_tracker import CostTracker
 from search import SearchEngine
 from features.claims import ClaimsTracker
 from features.fact_check import FactChecker
@@ -38,7 +39,8 @@ bot = commands.Bot(command_prefix='!', intents=intents)  # Prefix won't be used 
 
 # Initialize components
 db = Database()
-llm = LLMClient()
+cost_tracker = None  # Will be initialized in on_ready when bot is available
+llm = LLMClient(cost_tracker=None)  # Cost tracker will be set in on_ready
 search = SearchEngine()
 
 # Setup feature modules
@@ -771,6 +773,12 @@ async def on_ready():
             print(f'👑 Wompie identified: {member.id}')
             break
 
+    # Initialize cost tracker with bot instance
+    global cost_tracker
+    cost_tracker = CostTracker(db, bot)
+    llm.cost_tracker = cost_tracker
+    print("💸 Cost tracking enabled - alerts every $1")
+
     # Setup GDPR privacy commands BEFORE syncing
     from privacy_commands import setup_privacy_commands
     setup_privacy_commands(bot, db, privacy_manager)
@@ -1041,11 +1049,39 @@ async def on_reaction_add(reaction, user):
             await reaction.message.add_reaction("✅")
 
     elif is_warning:
+        # Check rate limits
+        fact_check_cooldown = int(os.getenv('FACT_CHECK_COOLDOWN', '300'))  # 5 minutes default
+        fact_check_daily_limit = int(os.getenv('FACT_CHECK_DAILY_LIMIT', '10'))  # 10 per day default
+
+        rate_limit_check = db.check_feature_rate_limit(
+            user.id,
+            'fact_check',
+            cooldown_seconds=fact_check_cooldown,
+            daily_limit=fact_check_daily_limit
+        )
+
+        if not rate_limit_check['allowed']:
+            if rate_limit_check['reason'] == 'cooldown':
+                wait_minutes = rate_limit_check['wait_seconds'] // 60
+                wait_seconds = rate_limit_check['wait_seconds'] % 60
+                await reaction.message.channel.send(
+                    f"⏱️ Fact-check cooldown! Wait {wait_minutes}m {wait_seconds}s before requesting another."
+                )
+            elif rate_limit_check['reason'] == 'daily_limit':
+                await reaction.message.channel.send(
+                    f"📊 Daily limit reached! You've used {rate_limit_check['count']}/{rate_limit_check['limit']} fact-checks today."
+                )
+            return
+
         # Trigger fact-check
         thinking_msg = await reaction.message.channel.send("🔍 Fact-checking this claim...")
 
         try:
             result = await fact_checker.fact_check_message(reaction.message, user)
+
+            # Record usage if successful
+            if result['success']:
+                db.record_feature_usage(user.id, 'fact_check')
 
             await thinking_msg.delete()
 
@@ -1311,12 +1347,35 @@ async def handle_bot_mention(message, opted_out):
             search_msg = None
 
             if llm.should_search(content, conversation_history):
-                search_msg = await message.channel.send("🔍 Searching for current info...")
+                # Check search rate limits
+                search_hourly_limit = int(os.getenv('SEARCH_HOURLY_LIMIT', '5'))
+                search_daily_limit = int(os.getenv('SEARCH_DAILY_LIMIT', '20'))
 
-                search_results_raw = await asyncio.to_thread(search.search, content)
-                search_results = search.format_results_for_llm(search_results_raw)
+                search_rate_check = db.check_feature_rate_limit(
+                    message.author.id,
+                    'search',
+                    hourly_limit=search_hourly_limit,
+                    daily_limit=search_daily_limit
+                )
 
-                db.store_search_log(content, len(search_results_raw), message.author.id, message.channel.id)
+                if not search_rate_check['allowed']:
+                    if search_rate_check['reason'] == 'hourly_limit':
+                        await message.channel.send(
+                            f"⏱️ Search limit reached! You've used {search_rate_check['count']}/{search_rate_check['limit']} searches this hour."
+                        )
+                    elif search_rate_check['reason'] == 'daily_limit':
+                        await message.channel.send(
+                            f"📊 Daily search limit reached! You've used {search_rate_check['count']}/{search_rate_check['limit']} searches today."
+                        )
+                    # Skip search but continue with response
+                else:
+                    search_msg = await message.channel.send("🔍 Searching for current info...")
+
+                    search_results_raw = await asyncio.to_thread(search.search, content)
+                    search_results = search.format_results_for_llm(search_results_raw)
+
+                    db.store_search_log(content, len(search_results_raw), message.author.id, message.channel.id)
+                    db.record_feature_usage(message.author.id, 'search')
 
             # Generate response
             response = await asyncio.to_thread(
@@ -1335,17 +1394,30 @@ async def handle_bot_mention(message, opted_out):
 
             # Check if LLM says it needs more info
             if not search_results and llm.detect_needs_search_from_response(response):
-                if not search_msg:
-                    search_msg = await message.channel.send("🔍 Let me search for that...")
-                else:
-                    await search_msg.edit(content="🔍 Let me search for that...")
+                # Check search rate limits (second attempt)
+                search_hourly_limit = int(os.getenv('SEARCH_HOURLY_LIMIT', '5'))
+                search_daily_limit = int(os.getenv('SEARCH_DAILY_LIMIT', '20'))
 
-                search_results_raw = await asyncio.to_thread(search.search, content)
-                search_results = search.format_results_for_llm(search_results_raw)
+                search_rate_check = db.check_feature_rate_limit(
+                    message.author.id,
+                    'search',
+                    hourly_limit=search_hourly_limit,
+                    daily_limit=search_daily_limit
+                )
 
-                db.store_search_log(content, len(search_results_raw), message.author.id, message.channel.id)
+                if search_rate_check['allowed']:
+                    if not search_msg:
+                        search_msg = await message.channel.send("🔍 Let me search for that...")
+                    else:
+                        await search_msg.edit(content="🔍 Let me search for that...")
 
-                # Regenerate response with search results
+                    search_results_raw = await asyncio.to_thread(search.search, content)
+                    search_results = search.format_results_for_llm(search_results_raw)
+
+                    db.store_search_log(content, len(search_results_raw), message.author.id, message.channel.id)
+                    db.record_feature_usage(message.author.id, 'search')
+
+                # Regenerate response with search results (or without if rate limited)
                 response = await asyncio.to_thread(
                     llm.generate_response,
                     content,

@@ -2,10 +2,11 @@ import os
 import requests
 
 class LLMClient:
-    def __init__(self):
+    def __init__(self, cost_tracker=None):
         self.api_key = os.getenv('OPENROUTER_API_KEY')
         self.base_url = "https://openrouter.ai/api/v1/chat/completions"
         self.model = os.getenv('MODEL_NAME', 'cognitivecomputations/dolphin-2.9.2-qwen-110b')
+        self.cost_tracker = cost_tracker
         
         self.system_prompt = """You are WompBot, a conversational Discord bot with personality and substance.
 
@@ -192,7 +193,33 @@ SEARCH RESULTS:
             result = response.json()
             response_text = result["choices"][0]["message"]["content"]
 
-            print(f"✅ LLM response length: {len(response_text)} chars")
+            # Extract token usage for cost tracking
+            usage = result.get("usage", {})
+            input_tokens = usage.get("prompt_tokens", 0)
+            output_tokens = usage.get("completion_tokens", 0)
+
+            print(f"✅ LLM response length: {len(response_text)} chars (tokens: {input_tokens} in / {output_tokens} out)")
+
+            # Record costs if cost tracker is available
+            if self.cost_tracker and input_tokens > 0:
+                import asyncio
+                try:
+                    # Run async cost tracking in event loop if available
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        asyncio.create_task(
+                            self.cost_tracker.record_and_check_costs(
+                                self.model, input_tokens, output_tokens, 'chat'
+                            )
+                        )
+                    else:
+                        # Fallback: just record without async alert
+                        cost = self.cost_tracker.calculate_cost(self.model, input_tokens, output_tokens)
+                        self.cost_tracker.db.record_api_cost(
+                            self.model, input_tokens, output_tokens, cost, 'chat'
+                        )
+                except Exception as e:
+                    print(f"⚠️  Error tracking costs: {e}")
 
             if not response_text or len(response_text.strip()) == 0:
                 print(f"⚠️  WARNING: Empty response from LLM. Full result: {result}")
