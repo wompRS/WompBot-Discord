@@ -22,11 +22,15 @@ OPENROUTER_API_KEY=your_openrouter_api_key_here
 TAVILY_API_KEY=your_tavily_api_key_here
 
 # Model Selection
-MODEL_NAME=nousresearch/hermes-3-llama-3.1-70b  # Fast model for general chat
+MODEL_NAME=anthropic/claude-3.7-sonnet           # High-quality model for general chat
 FACT_CHECK_MODEL=anthropic/claude-3.5-sonnet   # High-accuracy model for fact-checking
 
 # Conversation Context
 CONTEXT_WINDOW_MESSAGES=6
+
+# Rate Limiting (prevents abuse)
+MAX_TOKENS_PER_REQUEST=1000  # Maximum tokens per single request
+HOURLY_TOKEN_LIMIT=10000     # Maximum tokens per user per hour
 
 # Privacy
 OPT_OUT_ROLE_NAME=NoDataCollection
@@ -86,9 +90,9 @@ https://discord.com/api/oauth2/authorize?client_id=YOUR_BOT_CLIENT_ID&permission
    ```
 
 **Costs:**
-- Hermes 70B: ~$0.40 per 1M tokens
+- Claude 3.7 Sonnet: ~$3 input / $15 output per 1M tokens
 - Pay only for what you use
-- $5 credit gets you very far
+- Expected: ~$20-30/month for active Discord server
 
 ---
 
@@ -101,25 +105,23 @@ WompBot uses two models optimized for different tasks:
 2. **Fact-Check Model** (`FACT_CHECK_MODEL`) - Slow, highly accurate
 
 ```bash
-# General Chat - Recommended (balanced performance/cost)
-MODEL_NAME=nousresearch/hermes-3-llama-3.1-70b
+# General Chat - Recommended (high quality, accurate)
+MODEL_NAME=anthropic/claude-3.7-sonnet
 
-# Fact-Checking - High accuracy (25x more expensive but critical)
+# Fact-Checking - High accuracy (critical for zero hallucination)
 FACT_CHECK_MODEL=anthropic/claude-3.5-sonnet
 ```
 
 **Alternative General Chat Models:**
 
 ```bash
-# More capable (more expensive)
-MODEL_NAME=cognitivecomputations/dolphin-2.9.2-qwen-110b
+# High quality alternatives
+MODEL_NAME=anthropic/claude-3.5-sonnet  # Previous generation
+MODEL_NAME=deepseek/deepseek-chat-v3.1  # Cheaper, very good
 
-# Smaller/cheaper
-MODEL_NAME=cognitivecomputations/dolphin-mixtral-8x7b
-MODEL_NAME=mistralai/mixtral-8x22b-instruct
-
-# Experimental (very expensive)
-MODEL_NAME=nousresearch/hermes-3-llama-3.1-405b
+# Budget options
+MODEL_NAME=google/gemini-2.5-flash      # Very cheap
+MODEL_NAME=deepseek/deepseek-r1-distill-qwen-32b  # Reasoning model
 ```
 
 **Alternative Fact-Check Models:**
@@ -214,6 +216,64 @@ OPT_OUT_ROLE_NAME=DoNotTrack
 1. Server Settings → Roles
 2. Create new role with exact name from `.env`
 3. Assign to users who want privacy
+
+---
+
+## Rate Limiting Configuration
+
+### Token Limits
+
+**Prevents abuse and controls costs:**
+
+```bash
+# Per-request limit (prevents single massive response)
+MAX_TOKENS_PER_REQUEST=1000
+
+# Hourly limit per user (prevents spam)
+HOURLY_TOKEN_LIMIT=10000
+```
+
+**What this means:**
+- **Per-request limit**: Maximum tokens the bot can generate in a single response
+  - 1000 tokens ≈ 750 words ≈ 2-3 Discord messages
+  - Prevents users from requesting extremely long responses
+
+- **Hourly limit**: Maximum tokens a user can consume per hour
+  - 10000 tokens ≈ 5-10 average conversations
+  - Resets on rolling 1-hour window
+  - Tracked per user in database
+
+**When limit is reached:**
+```
+⏱️ Token limit reached! You've used 10,250/10,000 tokens this hour.
+Reset in 42m 15s.
+```
+
+**Adjusting limits:**
+```bash
+# More generous (higher costs)
+MAX_TOKENS_PER_REQUEST=2000
+HOURLY_TOKEN_LIMIT=20000
+
+# More restrictive (lower costs, fewer abuse issues)
+MAX_TOKENS_PER_REQUEST=500
+HOURLY_TOKEN_LIMIT=5000
+
+# No limits (not recommended - abuse risk)
+MAX_TOKENS_PER_REQUEST=4096
+HOURLY_TOKEN_LIMIT=999999
+```
+
+**How tokens are counted:**
+- Input tokens: User's message + conversation history
+- Output tokens: Bot's response
+- Estimated at ~4 characters per token
+- Actual token usage tracked in `rate_limits` table
+
+**Database cleanup:**
+- Automatic cleanup of records older than 1 hour
+- Runs on every request
+- No manual maintenance required
 
 ---
 
