@@ -7,8 +7,28 @@ class LLMClient:
         self.base_url = "https://openrouter.ai/api/v1/chat/completions"
         self.model = os.getenv('MODEL_NAME', 'cognitivecomputations/dolphin-2.9.2-qwen-110b')
         self.cost_tracker = cost_tracker
-        
-        self.system_prompt = """You are WompBot, a conversational Discord bot with personality and substance.
+
+        # Load system prompt from file if exists, otherwise use default
+        self.system_prompt = self._load_system_prompt()
+
+    def _load_system_prompt(self):
+        """Load system prompt from file or use default"""
+        prompt_path = os.path.join(os.path.dirname(__file__), '..', 'prompts', 'system_prompt.txt')
+
+        # Try to load from file
+        if os.path.exists(prompt_path):
+            try:
+                with open(prompt_path, 'r', encoding='utf-8') as f:
+                    prompt = f.read().strip()
+                    if prompt:
+                        print(f"✅ Loaded custom system prompt from {prompt_path}")
+                        return prompt
+            except Exception as e:
+                print(f"⚠️  Error loading system prompt from file: {e}")
+
+        # Fallback to default
+        print("📝 Using default system prompt")
+        return """You are WompBot, a conversational Discord bot with personality and substance.
 
 CORE PRINCIPLE:
 Be conversational AND provide actual value. Answer questions with useful information first, then add personality if it fits naturally. Don't sacrifice substance for sass.
