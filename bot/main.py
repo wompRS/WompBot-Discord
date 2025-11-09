@@ -26,6 +26,7 @@ from features.iracing import iRacingIntegration
 from features.iracing_teams import iRacingTeamManager
 from credential_manager import CredentialManager
 from iracing_graphics import iRacingGraphics
+from self_knowledge import SelfKnowledge
 
 # Bot setup
 intents = discord.Intents.default()
@@ -48,6 +49,7 @@ claims_tracker = ClaimsTracker(db, llm)
 fact_checker = FactChecker(db, llm, search)
 chat_stats = ChatStatistics(db)
 hot_takes_tracker = HotTakesTracker(db, llm)
+self_knowledge = SelfKnowledge()
 reminder_system = ReminderSystem(db)
 event_system = EventSystem(db)
 yearly_wrapped = YearlyWrapped(db)
@@ -1418,11 +1420,16 @@ async def handle_bot_mention(message, opted_out):
             # Get user context (if not opted out)
             user_context = None if opted_out else db.get_user_context(message.author.id)
 
-            # Check if search is needed
+            # Check if question is about WompBot itself - load documentation
+            bot_docs = self_knowledge.format_for_llm(content)
+            if bot_docs:
+                print(f"📚 Loading WompBot documentation for self-knowledge question")
+
+            # Check if search is needed (skip if we're using docs)
             search_results = None
             search_msg = None
 
-            if llm.should_search(content, conversation_history):
+            if not bot_docs and llm.should_search(content, conversation_history):
                 # Check search rate limits
                 search_hourly_limit = int(os.getenv('SEARCH_HOURLY_LIMIT', '5'))
                 search_daily_limit = int(os.getenv('SEARCH_DAILY_LIMIT', '20'))
@@ -1455,12 +1462,15 @@ async def handle_bot_mention(message, opted_out):
 
             # Generate response
             # Only pass user info for text mentions ("wompbot") to reduce cost logging noise
+            # Use bot docs if available, otherwise use search results
+            context_for_llm = bot_docs or search_results
+
             response = await asyncio.to_thread(
                 llm.generate_response,
                 content,
                 conversation_history,
                 user_context,
-                search_results,
+                context_for_llm,
                 0,
                 bot.user.id,
                 message.author.id if is_text_mention else None,
@@ -1471,8 +1481,8 @@ async def handle_bot_mention(message, opted_out):
             if not response or len(response.strip()) == 0:
                 response = "I got nothing. Try asking something else?"
 
-            # Check if LLM says it needs more info
-            if not search_results and llm.detect_needs_search_from_response(response):
+            # Check if LLM says it needs more info (skip if we used bot docs)
+            if not bot_docs and not search_results and llm.detect_needs_search_from_response(response):
                 # Check search rate limits (second attempt)
                 search_hourly_limit = int(os.getenv('SEARCH_HOURLY_LIMIT', '5'))
                 search_daily_limit = int(os.getenv('SEARCH_DAILY_LIMIT', '20'))
@@ -1497,12 +1507,15 @@ async def handle_bot_mention(message, opted_out):
                     db.record_feature_usage(message.author.id, 'search')
 
                 # Regenerate response with search results (or without if rate limited)
+                # Update context (bot docs take priority over search)
+                context_for_llm = bot_docs or search_results
+
                 response = await asyncio.to_thread(
                     llm.generate_response,
                     content,
                     conversation_history,
                     user_context,
-                    search_results,
+                    context_for_llm,
                     0,
                     bot.user.id,
                     message.author.id if is_text_mention else None,
