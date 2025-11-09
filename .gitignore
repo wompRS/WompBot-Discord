@@ -45,4 +45,4 @@ docs/compliance/GDPR_AUDIT_*.md
 docs/compliance/GDPR_AUDIT_*.txt
 
 # LLM Tuning (personal customizations)
-prompts/system_prompt.txt
+bot/prompts/system_prompt.txt
