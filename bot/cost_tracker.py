@@ -37,12 +37,25 @@ class CostTracker:
 
     async def record_and_check_costs(self, model, input_tokens, output_tokens, request_type, user_id=None, username=None):
         """Record API cost and check if we should send an alert"""
-        cost = self.calculate_cost(model, input_tokens, output_tokens)
+        # Calculate individual costs
+        pricing = MODEL_PRICING.get(model, MODEL_PRICING['default'])
+        input_cost = (input_tokens / 1_000_000) * pricing['input']
+        output_cost = (output_tokens / 1_000_000) * pricing['output']
+        total_cost = input_cost + output_cost
 
         # Record the cost
         self.db.record_api_cost(
-            model, input_tokens, output_tokens, cost, request_type, user_id, username
+            model, input_tokens, output_tokens, total_cost, request_type, user_id, username
         )
+
+        # Get monthly total
+        monthly_total = self.db.get_total_cost()
+
+        # Log individual request cost with breakdown
+        user_info = f" | User: {username}" if username else ""
+        model_short = model.split('/')[-1] if '/' in model else model
+        print(f"💸 Request Cost: ${total_cost:.6f} | In: ${input_cost:.6f} ({input_tokens}tok) | Out: ${output_cost:.6f} ({output_tokens}tok) | {model_short} | {request_type}{user_info}")
+        print(f"💰 Monthly Total: ${monthly_total:.4f}")
 
         # Check if we've crossed a $1 threshold
         alert_check = self.db.check_cost_alert_threshold(1.00)

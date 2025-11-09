@@ -111,6 +111,8 @@ Be useful and real. That's the balance."""
         search_results=None,
         retry_count=0,
         bot_user_id=None,
+        user_id=None,
+        username=None,
     ):
         """Generate response using OpenRouter with automatic retry on empty responses"""
         import time
@@ -228,14 +230,14 @@ SEARCH RESULTS:
                     if loop.is_running():
                         asyncio.create_task(
                             self.cost_tracker.record_and_check_costs(
-                                self.model, input_tokens, output_tokens, 'chat'
+                                self.model, input_tokens, output_tokens, 'chat', user_id, username
                             )
                         )
                     else:
                         # Fallback: just record without async alert
                         cost = self.cost_tracker.calculate_cost(self.model, input_tokens, output_tokens)
                         self.cost_tracker.db.record_api_cost(
-                            self.model, input_tokens, output_tokens, cost, 'chat'
+                            self.model, input_tokens, output_tokens, cost, 'chat', user_id, username
                         )
                 except Exception as e:
                     print(f"⚠️  Error tracking costs: {e}")
