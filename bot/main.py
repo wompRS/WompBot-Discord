@@ -1219,10 +1219,42 @@ async def handle_bot_mention(message, opted_out):
 
         # Convert Discord mentions to readable usernames
         content = clean_discord_mentions(content, message)
-        
+
         if not content or len(content) < 2:
             await message.channel.send("Yeah? What's up?")
             return
+
+        # Input sanitization - enforce max length
+        max_input_length = int(os.getenv('MAX_INPUT_LENGTH', '2000'))
+        if len(content) > max_input_length:
+            content = content[:max_input_length]
+            await message.channel.send(
+                f"⚠️ Message truncated to {max_input_length} characters for processing."
+            )
+
+        # Message frequency rate limiting
+        message_cooldown = int(os.getenv('MESSAGE_COOLDOWN', '3'))  # 3 seconds default
+        max_messages_per_minute = int(os.getenv('MAX_MESSAGES_PER_MINUTE', '10'))  # 10/min default
+
+        freq_check = db.check_feature_rate_limit(
+            message.author.id,
+            'bot_message',
+            cooldown_seconds=message_cooldown,
+            hourly_limit=max_messages_per_minute * 6  # Convert per-minute to per-hour approximation
+        )
+
+        if not freq_check['allowed']:
+            if freq_check['reason'] == 'cooldown':
+                # Silent cooldown - just ignore to prevent spam
+                return
+            elif freq_check['reason'] == 'hourly_limit':
+                await message.channel.send(
+                    f"⏱️ Slow down! You're sending messages too quickly."
+                )
+                return
+
+        # Record message
+        db.record_feature_usage(message.author.id, 'bot_message')
 
         content_lower = content.lower()
         normalized_plain = re.sub(r'[^a-z0-9\s]', ' ', content_lower).strip()
