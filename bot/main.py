@@ -90,6 +90,9 @@ WOMPIE_USERNAME = "Wompie__"
 iracing_popularity_cache = {}  # {time_range: {'data': [(series, count), ...], 'timestamp': datetime}}
 MENTION_RATE_STATE = {}  # user_id -> {'count': int, 'window_start': float}
 
+# Concurrent request tracking per user
+USER_CONCURRENT_REQUESTS = {}  # user_id -> int (active LLM request count)
+
 async def _job_guard(job_name: str, interval: timedelta, jitter_seconds: int = 0) -> bool:
     """
     Determine if a background job should run based on persisted run history.
@@ -1355,6 +1358,19 @@ async def handle_bot_mention(message, opted_out):
             )
             return
 
+        # Concurrent request limiting
+        max_concurrent_requests = int(os.getenv('MAX_CONCURRENT_REQUESTS', '3'))
+        current_requests = USER_CONCURRENT_REQUESTS.get(message.author.id, 0)
+
+        if current_requests >= max_concurrent_requests:
+            await message.channel.send(
+                f"⏱️ Too many requests at once! Please wait for your current request to finish."
+            )
+            return
+
+        # Increment concurrent request counter
+        USER_CONCURRENT_REQUESTS[message.author.id] = current_requests + 1
+
         # Start typing indicator
         async with message.channel.typing():
             # Get conversation context - only this user's messages and bot responses to them
@@ -1498,6 +1514,12 @@ async def handle_bot_mention(message, opted_out):
         import traceback
         traceback.print_exc()
         await message.channel.send(f"Error processing request: {str(e)}")
+    finally:
+        # Decrement concurrent request counter
+        if message.author.id in USER_CONCURRENT_REQUESTS:
+            USER_CONCURRENT_REQUESTS[message.author.id] -= 1
+            if USER_CONCURRENT_REQUESTS[message.author.id] <= 0:
+                del USER_CONCURRENT_REQUESTS[message.author.id]
 
 @bot.command(name='refreshstats')
 @commands.has_permissions(administrator=True)
