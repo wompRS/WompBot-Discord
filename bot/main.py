@@ -1434,6 +1434,8 @@ async def handle_bot_mention(message, opted_out):
                 search_results,
                 0,
                 bot.user.id,
+                message.author.id,
+                str(message.author),
             )
 
             # Check if response is empty
@@ -1474,6 +1476,8 @@ async def handle_bot_mention(message, opted_out):
                     search_results,
                     0,
                     bot.user.id,
+                    message.author.id,
+                    str(message.author),
                 )
 
             # Final check for empty response
