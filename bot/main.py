@@ -1692,7 +1692,21 @@ async def wompbot_help(ctx):
     )
     embed.add_field(
         name="⚠️ Fact-Check",
-        value="React to any message with :warning: emoji to trigger high-accuracy fact-checking. Uses Claude 3.5 Sonnet, web search, and multi-source verification (requires ≥2 sources).",
+        value="React to any message with :warning: emoji to trigger high-accuracy fact-checking. Uses Claude 3.5 Sonnet, web search, and multi-source verification (requires ≥2 sources). Rate limited: 5-minute cooldown, 10/day per user.",
+        inline=False
+    )
+    embed.add_field(
+        name="🛡️ Rate Limits & Cost Control",
+        value=(
+            "• Token limits: 1,000/request, 10,000/hour per user\n"
+            "• Context: 4000 token hard cap (auto-truncates)\n"
+            "• Fact-checks: 5-min cooldown, 10/day\n"
+            "• Searches: 5/hour, 20/day per user\n"
+            "• Messages: 3s cooldown, 10/min\n"
+            "• Max concurrent requests: 3\n"
+            "• $1 spending alerts: DM to bot owner\n"
+            "All limits configurable via .env"
+        ),
         inline=False
     )
     embed.add_field(
@@ -1896,7 +1910,21 @@ async def help_slash(interaction: discord.Interaction):
     )
     embed.add_field(
         name="⚠️ Fact-Check",
-        value="React to any message with :warning: emoji to trigger high-accuracy fact-checking. Uses Claude 3.5 Sonnet, web search, and multi-source verification (requires ≥2 sources).",
+        value="React to any message with :warning: emoji to trigger high-accuracy fact-checking. Uses Claude 3.5 Sonnet, web search, and multi-source verification (requires ≥2 sources). Rate limited: 5-minute cooldown, 10/day per user.",
+        inline=False
+    )
+    embed.add_field(
+        name="🛡️ Rate Limits & Cost Control",
+        value=(
+            "• Token limits: 1,000/request, 10,000/hour per user\n"
+            "• Context: 4000 token hard cap (auto-truncates)\n"
+            "• Fact-checks: 5-min cooldown, 10/day\n"
+            "• Searches: 5/hour, 20/day per user\n"
+            "• Messages: 3s cooldown, 10/min\n"
+            "• Max concurrent requests: 3\n"
+            "• $1 spending alerts: DM to bot owner\n"
+            "All limits configurable via .env"
+        ),
         inline=False
     )
     embed.add_field(
