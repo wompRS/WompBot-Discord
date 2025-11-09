@@ -35,8 +35,8 @@ class CostTracker:
 
         return total_cost
 
-    async def record_and_check_costs(self, model, input_tokens, output_tokens, request_type, user_id=None, username=None):
-        """Record API cost and check if we should send an alert"""
+    def record_costs_sync(self, model, input_tokens, output_tokens, request_type, user_id=None, username=None):
+        """Synchronous version of cost recording (without alerts) for use from worker threads"""
         # Calculate individual costs
         pricing = MODEL_PRICING.get(model, MODEL_PRICING['default'])
         input_cost = (input_tokens / 1_000_000) * pricing['input']
@@ -58,9 +58,16 @@ class CostTracker:
             print(f"💸 Request Cost: ${total_cost:.6f} | In: ${input_cost:.6f} ({input_tokens}tok) | Out: ${output_cost:.6f} ({output_tokens}tok) | {model_short} | {request_type} | User: {username}")
             print(f"💰 Monthly Total: ${monthly_total:.4f}")
 
-        # Check if we've crossed a $1 threshold
+        # Return alert info for async handling
         alert_check = self.db.check_cost_alert_threshold(1.00)
+        return alert_check
 
+    async def record_and_check_costs(self, model, input_tokens, output_tokens, request_type, user_id=None, username=None):
+        """Record API cost and check if we should send an alert"""
+        # Use sync version for recording and logging
+        alert_check = self.record_costs_sync(model, input_tokens, output_tokens, request_type, user_id, username)
+
+        # Send alert if needed (async part)
         if alert_check['should_alert']:
             await self.send_cost_alert(
                 alert_check['threshold'],

@@ -1077,7 +1077,12 @@ async def on_reaction_add(reaction, user):
             return
 
         # Trigger fact-check
-        thinking_msg = await reaction.message.channel.send("🔍 Fact-checking this claim...")
+        thinking_msg = None
+        try:
+            thinking_msg = await reaction.message.channel.send("🔍 Fact-checking this claim...")
+        except discord.Forbidden:
+            print(f"❌ Missing permissions to send fact-check in channel {reaction.message.channel.id}")
+            return
 
         try:
             result = await fact_checker.fact_check_message(reaction.message, user)
@@ -1085,8 +1090,6 @@ async def on_reaction_add(reaction, user):
             # Record usage if successful
             if result['success']:
                 db.record_feature_usage(user.id, 'fact_check')
-
-            await thinking_msg.delete()
 
             if result['success']:
                 # Parse verdict emoji
@@ -1118,19 +1121,39 @@ async def on_reaction_add(reaction, user):
 
                 embed.set_footer(text=f"Requested by {user.display_name}")
 
-                await reaction.message.reply(embed=embed, mention_author=False)
-
-                # React with verdict emoji
-                await reaction.message.add_reaction(verdict_emoji)
+                try:
+                    await reaction.message.reply(embed=embed, mention_author=False)
+                    # React with verdict emoji
+                    await reaction.message.add_reaction(verdict_emoji)
+                except discord.Forbidden:
+                    # Can't reply or react, try sending in channel instead
+                    try:
+                        await reaction.message.channel.send(embed=embed)
+                    except discord.Forbidden:
+                        print(f"❌ Missing permissions to send fact-check results in channel {reaction.message.channel.id}")
             else:
-                await reaction.message.channel.send(
-                    f"❌ Fact-check failed: {result.get('error', 'Unknown error')}"
-                )
+                try:
+                    await reaction.message.channel.send(
+                        f"❌ Fact-check failed: {result.get('error', 'Unknown error')}"
+                    )
+                except discord.Forbidden:
+                    print(f"❌ Missing permissions to send error message in channel {reaction.message.channel.id}")
 
         except Exception as e:
-            await thinking_msg.delete()
-            await reaction.message.channel.send(f"❌ Error during fact-check: {str(e)}")
+            try:
+                await reaction.message.channel.send(f"❌ Error during fact-check: {str(e)}")
+            except discord.Forbidden:
+                pass
             print(f"❌ Fact-check error: {e}")
+            import traceback
+            traceback.print_exc()
+        finally:
+            # Always try to delete thinking message, but handle if it's already gone
+            if thinking_msg:
+                try:
+                    await thinking_msg.delete()
+                except (discord.NotFound, discord.Forbidden):
+                    pass  # Message already deleted or no permission
 
     # Check for fire emoji 🔥 - Manually mark as hot take
     is_fire = (
