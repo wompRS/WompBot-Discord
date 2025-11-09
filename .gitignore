@@ -43,3 +43,6 @@ docs/guides/AI_SESSION_MANUAL.md
 # Internal audit reports (not for public repo)
 docs/compliance/GDPR_AUDIT_*.md
 docs/compliance/GDPR_AUDIT_*.txt
+
+# LLM Tuning (personal customizations)
+prompts/system_prompt.txt
