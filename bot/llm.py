@@ -222,31 +222,13 @@ SEARCH RESULTS:
             print(f"✅ LLM response length: {len(response_text)} chars (tokens: {input_tokens} in / {output_tokens} out)")
 
             # Record costs if cost tracker is available
+            # This function is called from asyncio.to_thread(), so we're always in a worker thread
+            # Use the sync version which logs costs but doesn't send Discord DM alerts
             if self.cost_tracker and input_tokens > 0:
-                import asyncio
-                import threading
                 try:
-                    # Check if we're in the main thread with a running event loop
-                    if threading.current_thread() == threading.main_thread():
-                        # Try to get the running loop (main thread)
-                        try:
-                            loop = asyncio.get_running_loop()
-                            asyncio.create_task(
-                                self.cost_tracker.record_and_check_costs(
-                                    self.model, input_tokens, output_tokens, 'chat', user_id, username
-                                )
-                            )
-                        except RuntimeError:
-                            # No running loop, use sync version (no alerts)
-                            self.cost_tracker.record_costs_sync(
-                                self.model, input_tokens, output_tokens, 'chat', user_id, username
-                            )
-                    else:
-                        # We're in a worker thread (from asyncio.to_thread), use sync version
-                        # This still logs costs but won't send Discord DM alerts
-                        self.cost_tracker.record_costs_sync(
-                            self.model, input_tokens, output_tokens, 'chat', user_id, username
-                        )
+                    self.cost_tracker.record_costs_sync(
+                        self.model, input_tokens, output_tokens, 'chat', user_id, username
+                    )
                 except Exception as e:
                     print(f"⚠️  Error tracking costs: {e}")
 
