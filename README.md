@@ -6,11 +6,12 @@ A Discord bot powered by OpenRouter LLMs (Hermes/Dolphin models) with conversati
 
 ### 🤖 Core Features
 - **Dual-Model AI Architecture**:
-  - **General Chat**: Hermes-3 70B (fast, conversational, cost-effective)
+  - **General Chat**: Claude 3.7 Sonnet (high quality, accurate, conversational)
   - **Fact-Checking**: Claude 3.5 Sonnet (slow, highly accurate, zero hallucination)
 - **Context-Aware Conversations**: Professional and helpful personality with conversation memory
 - **Smart Response Detection**: Only responds when "wompbot" mentioned or @tagged
 - **Web Search Integration**: Automatic Tavily API search when facts are needed
+- **Rate Limiting**: Token-based abuse prevention (1,000 tokens/request, 10,000 tokens/hour per user)
 - **Message Storage**: PostgreSQL database tracks all conversations
 - **Small Talk Aware**: Greetings get a quick canned reply before the LLM fires
 
@@ -148,7 +149,12 @@ Replace these values:
 - `DISCORD_TOKEN`: Your Discord bot token
 - `OPENROUTER_API_KEY`: Your OpenRouter API key
 - `TAVILY_API_KEY`: Your Tavily API key
+- `MODEL_NAME`: LLM model for general chat (default: `anthropic/claude-3.7-sonnet`)
 - `POSTGRES_PASSWORD`: Choose a secure password
+
+**Optional - Rate Limiting:**
+- `MAX_TOKENS_PER_REQUEST`: Max tokens per single request (default: 1000)
+- `HOURLY_TOKEN_LIMIT`: Max tokens per user per hour (default: 10000)
 
 **Optional - iRacing Integration:**
 To enable iRacing features securely with encrypted credentials:

@@ -613,6 +613,74 @@ async def before_gdpr_cleanup():
     await bot.wait_until_ready()
     print("🔒 GDPR cleanup task started (runs daily)")
 
+# Background task for automatic user behavior analysis
+@tasks.loop(hours=1)  # Run every 60 minutes
+async def analyze_user_behavior():
+    """Automatically analyze user behavior patterns for users with sufficient activity"""
+    if not await _job_guard("analyze_user_behavior", timedelta(hours=1), jitter_seconds=120):
+        return
+
+    try:
+        # Get active users from last 30 days
+        active_users = db.get_all_active_users(days=30)
+
+        if not active_users:
+            return
+
+        period_start = datetime.now() - timedelta(days=30)
+        period_end = datetime.now()
+
+        analyzed_count = 0
+
+        for user in active_users:
+            # Check if user already has recent analysis (within last 24 hours)
+            user_context = db.get_user_context(user['user_id'])
+            behavior = user_context.get('behavior')
+
+            if behavior:
+                analyzed_at = behavior.get('analyzed_at')
+                if analyzed_at and (datetime.now() - analyzed_at).total_seconds() < 86400:  # 24 hours
+                    continue  # Skip, already analyzed recently
+
+            # Get messages for analysis
+            messages = db.get_user_messages_for_analysis(user['user_id'], days=30)
+
+            if len(messages) < 5:  # Skip users with too few messages
+                continue
+
+            # Perform analysis
+            analysis = await asyncio.to_thread(llm.analyze_user_behavior, messages)
+
+            if analysis:
+                db.store_behavior_analysis(
+                    user['user_id'],
+                    user['username'],
+                    analysis,
+                    period_start,
+                    period_end
+                )
+                analyzed_count += 1
+
+                # Rate limit to avoid overwhelming the API
+                if analyzed_count >= 10:
+                    break
+
+        if analyzed_count > 0:
+            print(f"✅ Behavior analysis complete: {analyzed_count} users analyzed")
+
+        if db:
+            db.update_job_last_run("analyze_user_behavior")
+
+    except Exception as e:
+        print(f"❌ Error in automatic behavior analysis: {e}")
+        traceback.print_exc()
+
+@analyze_user_behavior.before_loop
+async def before_analyze_user_behavior():
+    """Wait for bot to be ready before starting behavior analysis"""
+    await bot.wait_until_ready()
+    print("🧠 User behavior analysis task started (runs hourly)")
+
 async def generate_leaderboard_response(channel, stat_type, days):
     """Generate and send leaderboard embed"""
     try:
@@ -746,6 +814,11 @@ async def on_ready():
     if not gdpr_cleanup.is_running():
         gdpr_cleanup.start()
         print("🧹 GDPR data cleanup enabled (runs daily)")
+
+    # Start automatic user behavior analysis task
+    if not analyze_user_behavior.is_running():
+        analyze_user_behavior.start()
+        print("🧠 Automatic user behavior analysis enabled (runs hourly)")
 
     # Start iRacing popularity update task
     if iracing and not update_iracing_popularity.is_running():
@@ -1194,6 +1267,26 @@ async def handle_bot_mention(message, opted_out):
                     "window_start": now_ts,
                 }
 
+        # Token-based rate limiting check
+        max_tokens_per_request = int(os.getenv('MAX_TOKENS_PER_REQUEST', '1000'))
+        rate_limit_check = db.check_rate_limit(
+            message.author.id,
+            str(message.author),
+            max_tokens_per_request
+        )
+
+        if not rate_limit_check['allowed']:
+            tokens_used = rate_limit_check['tokens_used']
+            limit = rate_limit_check['limit']
+            reset_minutes = rate_limit_check['reset_seconds'] // 60
+            reset_seconds = rate_limit_check['reset_seconds'] % 60
+
+            await message.channel.send(
+                f"⏱️ Token limit reached! You've used {tokens_used:,}/{limit:,} tokens this hour.\n"
+                f"Reset in {reset_minutes}m {reset_seconds}s."
+            )
+            return
+
         # Start typing indicator
         async with message.channel.typing():
             # Get conversation context - only this user's messages and bot responses to them
@@ -1289,7 +1382,13 @@ async def handle_bot_mention(message, opted_out):
                             await message.channel.send(chunk)
                 else:
                     await message.channel.send(response)
-    
+
+            # Record token usage for rate limiting
+            # Estimate: ~4 characters per token (common approximation)
+            # Include both input (content) and output (response) tokens
+            estimated_tokens = (len(content) + len(response)) // 4
+            db.record_token_usage(message.author.id, str(message.author), estimated_tokens)
+
     except Exception as e:
         print(f"❌ Error handling message: {e}")
         import traceback

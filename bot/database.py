@@ -763,6 +763,77 @@ class Database:
             print(f"❌ Error checking data availability: {e}")
             return None
 
+    def check_rate_limit(self, user_id, username, tokens_requested):
+        """Check if user is within rate limits for the hour
+
+        Returns:
+            dict with 'allowed' (bool), 'tokens_used' (int), 'limit' (int), 'reset_seconds' (int)
+        """
+        try:
+            hourly_limit = int(os.getenv('HOURLY_TOKEN_LIMIT', '10000'))
+
+            with self.conn.cursor(cursor_factory=RealDictCursor) as cur:
+                # Get tokens used in the last hour
+                cur.execute("""
+                    SELECT COALESCE(SUM(tokens_used), 0) as total_tokens,
+                           MIN(request_timestamp) as oldest_request
+                    FROM rate_limits
+                    WHERE user_id = %s
+                      AND request_timestamp >= NOW() - INTERVAL '1 hour'
+                """, (user_id,))
+
+                result = cur.fetchone()
+                tokens_used = result['total_tokens']
+                oldest_request = result['oldest_request']
+
+                # Calculate when the limit resets
+                if oldest_request:
+                    reset_time = oldest_request + timedelta(hours=1)
+                    reset_seconds = int((reset_time - datetime.now(timezone.utc).replace(tzinfo=None)).total_seconds())
+                    reset_seconds = max(0, reset_seconds)
+                else:
+                    reset_seconds = 3600
+
+                # Check if adding this request would exceed the limit
+                would_exceed = (tokens_used + tokens_requested) > hourly_limit
+
+                return {
+                    'allowed': not would_exceed,
+                    'tokens_used': tokens_used,
+                    'tokens_requested': tokens_requested,
+                    'limit': hourly_limit,
+                    'reset_seconds': reset_seconds
+                }
+
+        except Exception as e:
+            print(f"❌ Error checking rate limit: {e}")
+            # Fail open - allow the request if there's a database error
+            return {
+                'allowed': True,
+                'tokens_used': 0,
+                'tokens_requested': tokens_requested,
+                'limit': 10000,
+                'reset_seconds': 3600
+            }
+
+    def record_token_usage(self, user_id, username, tokens_used):
+        """Record token usage for rate limiting"""
+        try:
+            with self.conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO rate_limits (user_id, username, tokens_used)
+                    VALUES (%s, %s, %s)
+                """, (user_id, username, tokens_used))
+
+                # Clean up old records (older than 1 hour)
+                cur.execute("""
+                    DELETE FROM rate_limits
+                    WHERE request_timestamp < NOW() - INTERVAL '1 hour'
+                """)
+
+        except Exception as e:
+            print(f"❌ Error recording token usage: {e}")
+
     def close(self):
         """Close database connection"""
         if self.conn:
