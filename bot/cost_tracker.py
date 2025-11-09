@@ -52,10 +52,11 @@ class CostTracker:
         monthly_total = self.db.get_total_cost()
 
         # Log individual request cost with breakdown
-        user_info = f" | User: {username}" if username else ""
-        model_short = model.split('/')[-1] if '/' in model else model
-        print(f"💸 Request Cost: ${total_cost:.6f} | In: ${input_cost:.6f} ({input_tokens}tok) | Out: ${output_cost:.6f} ({output_tokens}tok) | {model_short} | {request_type}{user_info}")
-        print(f"💰 Monthly Total: ${monthly_total:.4f}")
+        # Only log detailed costs if username is provided (text mentions only)
+        if username:
+            model_short = model.split('/')[-1] if '/' in model else model
+            print(f"💸 Request Cost: ${total_cost:.6f} | In: ${input_cost:.6f} ({input_tokens}tok) | Out: ${output_cost:.6f} ({output_tokens}tok) | {model_short} | {request_type} | User: {username}")
+            print(f"💰 Monthly Total: ${monthly_total:.4f}")
 
         # Check if we've crossed a $1 threshold
         alert_check = self.db.check_cost_alert_threshold(1.00)

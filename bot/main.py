@@ -1214,6 +1214,11 @@ def clean_discord_mentions(content, message):
 async def handle_bot_mention(message, opted_out):
     """Handle when bot is mentioned/tagged"""
     try:
+        # Check if this is a text mention ("wompbot") vs @mention only
+        # Cost logging will only appear for text mentions to reduce log noise
+        message_lower = message.content.lower()
+        is_text_mention = 'wompbot' in message_lower or 'womp bot' in message_lower
+
         # Remove bot mention and "wompbot" from message
         content = message.content.replace(f'<@{bot.user.id}>', '').strip()
         content = content.replace(f'<@!{bot.user.id}>', '').strip()  # Also handle nickname mentions
@@ -1426,6 +1431,7 @@ async def handle_bot_mention(message, opted_out):
                     db.record_feature_usage(message.author.id, 'search')
 
             # Generate response
+            # Only pass user info for text mentions ("wompbot") to reduce cost logging noise
             response = await asyncio.to_thread(
                 llm.generate_response,
                 content,
@@ -1434,8 +1440,8 @@ async def handle_bot_mention(message, opted_out):
                 search_results,
                 0,
                 bot.user.id,
-                message.author.id,
-                str(message.author),
+                message.author.id if is_text_mention else None,
+                str(message.author) if is_text_mention else None,
             )
 
             # Check if response is empty
@@ -1476,8 +1482,8 @@ async def handle_bot_mention(message, opted_out):
                     search_results,
                     0,
                     bot.user.id,
-                    message.author.id,
-                    str(message.author),
+                    message.author.id if is_text_mention else None,
+                    str(message.author) if is_text_mention else None,
                 )
 
             # Final check for empty response
