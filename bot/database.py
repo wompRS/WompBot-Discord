@@ -834,6 +834,181 @@ class Database:
         except Exception as e:
             print(f"❌ Error recording token usage: {e}")
 
+    def record_api_cost(self, model, input_tokens, output_tokens, cost_usd, request_type, user_id=None, username=None):
+        """Record API cost for monitoring spending"""
+        try:
+            with self.conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO api_costs (model, input_tokens, output_tokens, cost_usd, request_type, user_id, username)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """, (model, input_tokens, output_tokens, cost_usd, request_type, user_id, username))
+        except Exception as e:
+            print(f"❌ Error recording API cost: {e}")
+
+    def get_total_cost(self, since_timestamp=None):
+        """Get total API costs, optionally since a specific timestamp"""
+        try:
+            with self.conn.cursor() as cur:
+                if since_timestamp:
+                    cur.execute("""
+                        SELECT COALESCE(SUM(cost_usd), 0) as total_cost
+                        FROM api_costs
+                        WHERE timestamp >= %s
+                    """, (since_timestamp,))
+                else:
+                    cur.execute("""
+                        SELECT COALESCE(SUM(cost_usd), 0) as total_cost
+                        FROM api_costs
+                    """)
+                result = cur.fetchone()
+                return float(result[0]) if result else 0.0
+        except Exception as e:
+            print(f"❌ Error getting total cost: {e}")
+            return 0.0
+
+    def check_cost_alert_threshold(self, threshold_usd):
+        """Check if we've crossed a cost threshold that hasn't been alerted yet"""
+        try:
+            with self.conn.cursor() as cur:
+                # Get last alerted threshold
+                cur.execute("""
+                    SELECT MAX(threshold_usd) as last_threshold
+                    FROM cost_alerts
+                """)
+                result = cur.fetchone()
+                last_threshold = float(result[0]) if result and result[0] else 0.0
+
+                # Get total cost
+                total_cost = self.get_total_cost()
+
+                # Calculate which $1 thresholds have been crossed
+                current_threshold_floor = int(total_cost)
+                last_threshold_floor = int(last_threshold)
+
+                # If we've crossed a new $1 threshold
+                if current_threshold_floor > last_threshold_floor:
+                    return {
+                        'should_alert': True,
+                        'threshold': current_threshold_floor,
+                        'total_cost': total_cost
+                    }
+
+                return {'should_alert': False, 'total_cost': total_cost}
+
+        except Exception as e:
+            print(f"❌ Error checking cost alert threshold: {e}")
+            return {'should_alert': False, 'total_cost': 0.0}
+
+    def record_cost_alert(self, threshold_usd, total_cost_usd):
+        """Record that a cost alert has been sent"""
+        try:
+            with self.conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO cost_alerts (threshold_usd, total_cost_usd)
+                    VALUES (%s, %s)
+                """, (threshold_usd, total_cost_usd))
+        except Exception as e:
+            print(f"❌ Error recording cost alert: {e}")
+
+    def check_feature_rate_limit(self, user_id, feature_type, cooldown_seconds=None, hourly_limit=None, daily_limit=None):
+        """
+        Check if user is within rate limits for a specific feature
+
+        Args:
+            user_id: Discord user ID
+            feature_type: Type of feature ('fact_check', 'search', etc.)
+            cooldown_seconds: Minimum seconds between requests
+            hourly_limit: Maximum requests per hour
+            daily_limit: Maximum requests per day
+
+        Returns:
+            dict with 'allowed' (bool), 'reason' (str), 'wait_seconds' (int)
+        """
+        try:
+            with self.conn.cursor(cursor_factory=RealDictCursor) as cur:
+                # Check cooldown
+                if cooldown_seconds:
+                    cur.execute("""
+                        SELECT MAX(request_timestamp) as last_request
+                        FROM feature_rate_limits
+                        WHERE user_id = %s AND feature_type = %s
+                          AND request_timestamp >= NOW() - INTERVAL '%s seconds'
+                    """, (user_id, feature_type, cooldown_seconds))
+
+                    result = cur.fetchone()
+                    if result and result['last_request']:
+                        last_request = result['last_request']
+                        elapsed = (datetime.now(timezone.utc).replace(tzinfo=None) - last_request).total_seconds()
+                        wait_time = max(0, cooldown_seconds - elapsed)
+
+                        if wait_time > 0:
+                            return {
+                                'allowed': False,
+                                'reason': 'cooldown',
+                                'wait_seconds': int(wait_time)
+                            }
+
+                # Check hourly limit
+                if hourly_limit:
+                    cur.execute("""
+                        SELECT COUNT(*) as count
+                        FROM feature_rate_limits
+                        WHERE user_id = %s AND feature_type = %s
+                          AND request_timestamp >= NOW() - INTERVAL '1 hour'
+                    """, (user_id, feature_type))
+
+                    result = cur.fetchone()
+                    if result['count'] >= hourly_limit:
+                        return {
+                            'allowed': False,
+                            'reason': 'hourly_limit',
+                            'count': result['count'],
+                            'limit': hourly_limit
+                        }
+
+                # Check daily limit
+                if daily_limit:
+                    cur.execute("""
+                        SELECT COUNT(*) as count
+                        FROM feature_rate_limits
+                        WHERE user_id = %s AND feature_type = %s
+                          AND request_timestamp >= NOW() - INTERVAL '24 hours'
+                    """, (user_id, feature_type))
+
+                    result = cur.fetchone()
+                    if result['count'] >= daily_limit:
+                        return {
+                            'allowed': False,
+                            'reason': 'daily_limit',
+                            'count': result['count'],
+                            'limit': daily_limit
+                        }
+
+                # All checks passed
+                return {'allowed': True}
+
+        except Exception as e:
+            print(f"❌ Error checking feature rate limit: {e}")
+            # Fail open
+            return {'allowed': True}
+
+    def record_feature_usage(self, user_id, feature_type):
+        """Record usage of a rate-limited feature"""
+        try:
+            with self.conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO feature_rate_limits (user_id, feature_type)
+                    VALUES (%s, %s)
+                """, (user_id, feature_type))
+
+                # Clean up old records (older than 24 hours)
+                cur.execute("""
+                    DELETE FROM feature_rate_limits
+                    WHERE request_timestamp < NOW() - INTERVAL '24 hours'
+                """)
+        except Exception as e:
+            print(f"❌ Error recording feature usage: {e}")
+
     def close(self):
         """Close database connection"""
         if self.conn:
