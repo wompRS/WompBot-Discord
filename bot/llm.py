@@ -160,10 +160,29 @@ SEARCH RESULTS:
             else:
                 messages.append({"role": "user", "content": user_message})
 
+            # Enforce context token limits to prevent excessive usage
+            max_context_tokens = int(os.getenv('MAX_CONTEXT_TOKENS', '4000'))
+
+            # Estimate tokens (approximately 1 token per 3.5 characters)
             total_chars = sum(len(entry["content"]) for entry in messages)
+            estimated_tokens = int(total_chars / 3.5)
+
+            # Truncate old messages if we exceed token limit
+            messages_removed = 0
+            while estimated_tokens > max_context_tokens and len(messages) > 3:
+                removed = messages.pop(1)  # Remove oldest message after system prompt
+                total_chars -= len(removed["content"])
+                estimated_tokens = int(total_chars / 3.5)
+                messages_removed += 1
+
+            if messages_removed > 0:
+                print(f"⚠️ Context truncated: removed {messages_removed} old messages (was {estimated_tokens + messages_removed * 100} tokens, now ~{estimated_tokens})")
+
+            # Also enforce character limit as fallback
             while total_chars > self.MAX_HISTORY_CHARS and len(messages) > 3:
                 removed = messages.pop(1)
                 total_chars -= len(removed["content"])
+                estimated_tokens = int(total_chars / 3.5)
 
             retry_text = f" (retry {retry_count + 1}/3)" if retry_count > 0 else ""
             print(f"🤖 Sending to {self.model}{retry_text}")
