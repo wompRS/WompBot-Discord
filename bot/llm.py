@@ -13,7 +13,7 @@ class LLMClient:
 
     def _load_system_prompt(self):
         """Load system prompt from file or use default"""
-        prompt_path = os.path.join(os.path.dirname(__file__), '..', 'prompts', 'system_prompt.txt')
+        prompt_path = os.path.join(os.path.dirname(__file__), 'prompts', 'system_prompt.txt')
 
         # Try to load from file
         if os.path.exists(prompt_path):
