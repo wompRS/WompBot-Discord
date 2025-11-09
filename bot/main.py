@@ -2711,6 +2711,21 @@ async def wrapped(interaction: discord.Interaction, year: int = None, user: disc
     await interaction.response.defer()
 
     try:
+        # Rate limiting for expensive wrapped generation
+        wrapped_cooldown = int(os.getenv('WRAPPED_COOLDOWN', '60'))  # 60 seconds default
+        rate_check = db.check_feature_rate_limit(
+            interaction.user.id,
+            'wrapped',
+            cooldown_seconds=wrapped_cooldown
+        )
+
+        if not rate_check['allowed']:
+            wait_seconds = rate_check.get('wait_seconds', 60)
+            await interaction.followup.send(
+                f"⏱️ Wrapped cooldown! Please wait {wait_seconds} seconds before generating another wrapped."
+            )
+            return
+
         target_user = user if user else interaction.user
         target_year = year if year else datetime.now().year
 
@@ -2853,6 +2868,7 @@ async def wrapped(interaction: discord.Interaction, year: int = None, user: disc
         embed.timestamp = datetime.now()
 
         await interaction.followup.send(embed=embed)
+        db.record_feature_usage(interaction.user.id, 'wrapped')
         print(f"📊 Generated {target_year} wrapped for {target_user.display_name}")
 
     except Exception as e:
@@ -4443,6 +4459,21 @@ async def iracing_server_leaderboard(interaction: discord.Interaction, category:
     await interaction.response.defer()
 
     try:
+        # Rate limiting for expensive server leaderboard
+        iracing_leaderboard_cooldown = int(os.getenv('IRACING_LEADERBOARD_COOLDOWN', '60'))  # 60 seconds
+        rate_check = db.check_feature_rate_limit(
+            interaction.user.id,
+            'iracing_leaderboard',
+            cooldown_seconds=iracing_leaderboard_cooldown
+        )
+
+        if not rate_check['allowed']:
+            wait_seconds = rate_check.get('wait_seconds', 60)
+            await interaction.followup.send(
+                f"⏱️ Leaderboard cooldown! Please wait {wait_seconds} seconds before requesting another leaderboard."
+            )
+            return
+
         # Get all linked accounts in this guild
         guild_member_ids = [member.id for member in interaction.guild.members]
 
@@ -4522,6 +4553,7 @@ async def iracing_server_leaderboard(interaction: discord.Interaction, category:
                 embed.set_footer(text=f"Showing top 10 of {len(leaderboard_data)} drivers")
 
             await interaction.followup.send(embed=embed)
+            db.record_feature_usage(interaction.user.id, 'iracing_leaderboard')
         else:
             # Use visualization
             image_buffer = iracing_viz.create_server_leaderboard_table(
@@ -4532,6 +4564,7 @@ async def iracing_server_leaderboard(interaction: discord.Interaction, category:
 
             file = discord.File(fp=image_buffer, filename="server_leaderboard.png")
             await interaction.followup.send(file=file)
+            db.record_feature_usage(interaction.user.id, 'iracing_leaderboard')
 
     except Exception as e:
         await interaction.followup.send(f"❌ Error generating leaderboard: {str(e)}")
