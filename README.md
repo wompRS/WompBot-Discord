@@ -11,7 +11,14 @@ A Discord bot powered by OpenRouter LLMs (Hermes/Dolphin models) with conversati
 - **Context-Aware Conversations**: Professional and helpful personality with conversation memory
 - **Smart Response Detection**: Only responds when "wompbot" mentioned or @tagged
 - **Web Search Integration**: Automatic Tavily API search when facts are needed
-- **Rate Limiting**: Token-based abuse prevention (1,000 tokens/request, 10,000 tokens/hour per user)
+- **Comprehensive Rate Limiting**: Multi-layer abuse prevention with cost tracking
+  - Token limits (1,000/request, 10,000/hour per user)
+  - Feature-specific limits (fact-checks, searches, commands)
+  - Concurrent request limiting (3 simultaneous requests max)
+  - Message frequency controls (3s cooldown, 10/min)
+  - Input sanitization (2000 char max)
+  - Context token limits (4000 token hard cap)
+  - Cost tracking with $1 spending alerts via DM
 - **Message Storage**: PostgreSQL database tracks all conversations
 - **Small Talk Aware**: Greetings get a quick canned reply before the LLM fires
 
@@ -36,6 +43,7 @@ A Discord bot powered by OpenRouter LLMs (Hermes/Dolphin models) with conversati
 - **Source Citations**: Includes numbered source references with links
 - **Verdict System**: ✅ True, ❌ False, 🔀 Mixed, ⚠️ Misleading, ❓ Unverifiable
 - **Cross-Reference**: Explicitly cites which sources ([1], [2]) agree on each fact
+- **Rate Limiting**: 5-minute cooldown, 10 per day per user (prevents abuse)
 
 ### 📊 User Analytics
 - **Behavior Analysis**: Profanity scores, tone, honesty patterns
@@ -152,9 +160,20 @@ Replace these values:
 - `MODEL_NAME`: LLM model for general chat (default: `anthropic/claude-3.7-sonnet`)
 - `POSTGRES_PASSWORD`: Choose a secure password
 
-**Optional - Rate Limiting:**
+**Optional - Rate Limiting & Cost Control:**
 - `MAX_TOKENS_PER_REQUEST`: Max tokens per single request (default: 1000)
 - `HOURLY_TOKEN_LIMIT`: Max tokens per user per hour (default: 10000)
+- `MAX_CONTEXT_TOKENS`: Max context size in tokens (default: 4000)
+- `MAX_CONCURRENT_REQUESTS`: Max simultaneous requests per user (default: 3)
+- `MESSAGE_COOLDOWN`: Seconds between messages per user (default: 3)
+- `MAX_MESSAGES_PER_MINUTE`: Messages per minute per user (default: 10)
+- `MAX_INPUT_LENGTH`: Max input message length in characters (default: 2000)
+- `FACT_CHECK_COOLDOWN`: Seconds between fact-checks (default: 300)
+- `FACT_CHECK_DAILY_LIMIT`: Fact-checks per day per user (default: 10)
+- `SEARCH_HOURLY_LIMIT`: Web searches per hour per user (default: 5)
+- `SEARCH_DAILY_LIMIT`: Web searches per day per user (default: 20)
+- `WRAPPED_COOLDOWN`: Seconds between /wrapped commands (default: 60)
+- `IRACING_LEADERBOARD_COOLDOWN`: Seconds between server leaderboards (default: 60)
 
 **Optional - iRacing Integration:**
 To enable iRacing features securely with encrypted credentials:
@@ -379,28 +398,53 @@ Use `/analyze` command to run analysis.
 - `data_retention_config`: Configurable retention policies
 - `data_breach_log`: Security incident tracking
 - `privacy_policy_versions`: Privacy policy version history
+- `rate_limits`: Token usage tracking per user (1-hour rolling window)
+- `api_costs`: LLM API cost tracking with model and token breakdowns
+- `cost_alerts`: $1 spending alert tracking (prevents duplicate notifications)
+- `feature_rate_limits`: Feature-specific usage tracking (fact-checks, searches, commands)
 
 ## Costs
 
 ### Dual-Model Pricing
 
-**General Chat (Hermes-3 70B):**
-- ~$0.0005 per message
-- 100 messages/day = ~$1.50/month
+**General Chat (Claude 3.7 Sonnet):**
+- ~$3 input / $15 output per 1M tokens
+- ~$0.015-0.03 per message (depending on length)
+- 100 messages/day = ~$45-90/month (without rate limits)
+- **With rate limits**: ~$10-20/month
 
 **Fact-Checking (Claude 3.5 Sonnet):**
+- ~$3 input / $15 output per 1M tokens
 - ~$0.018 per fact-check (⚠️ emoji trigger)
 - 50 fact-checks/month = ~$0.90/month
-- **25x-50x more expensive** but prevents misinformation
+- **Rate limited**: 10 per day per user
 
 **Search (Tavily):**
 - Free up to 1,000 searches/month
 - ~$0.001 per search if exceeded
+- **Rate limited**: 5/hour, 20/day per user
 
-**Total Monthly Estimate:**
-- Light usage: ~$3-5/month
-- Moderate usage: ~$10-15/month
-- Heavy usage: ~$20-30/month
+**Total Monthly Estimate (with rate limits):**
+- Light usage: ~$5-10/month
+- Moderate usage: ~$15-25/month
+- Heavy usage: ~$30-50/month
+
+### Cost Tracking & Alerts
+
+**Automatic Cost Monitoring:**
+- Real-time token usage tracking from API responses
+- Model-specific pricing calculations
+- **$1 spending alerts**: Direct messages to bot owner when each $1 threshold crossed
+- Beautiful embed with cost breakdown by model
+- Database tracking in `api_costs` and `cost_alerts` tables
+
+**Cost Control Features:**
+- Token limits prevent runaway spending
+- Feature-specific rate limits (fact-checks, searches)
+- Command cooldowns for expensive operations
+- Concurrent request limiting
+- Context token hard cap (4000 tokens max)
+- Message frequency controls
 
 ### Other Features
 

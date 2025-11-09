@@ -277,6 +277,280 @@ HOURLY_TOKEN_LIMIT=999999
 
 ---
 
+### Context Token Limits
+
+**Hard cap on conversation context size:**
+
+```bash
+# Maximum tokens in conversation context
+MAX_CONTEXT_TOKENS=4000
+```
+
+**What this means:**
+- Prevents runaway context costs from long conversations
+- Automatically truncates oldest messages when limit exceeded
+- ~1 token per 3.5 characters estimation
+- Preserves system prompt and most recent messages
+
+**How it works:**
+```
+Long conversation with 5000 tokens:
+→ Oldest messages removed until ≤ 4000 tokens
+→ System prompt always preserved
+→ Most recent user message always included
+→ Context stays focused and affordable
+```
+
+**Adjusting limits:**
+```bash
+# Larger context (higher quality, higher cost)
+MAX_CONTEXT_TOKENS=8000
+
+# Smaller context (lower cost, less history)
+MAX_CONTEXT_TOKENS=2000
+
+# Default (balanced)
+MAX_CONTEXT_TOKENS=4000
+```
+
+---
+
+### Feature-Specific Rate Limits
+
+**Fact-Check Limits:**
+
+```bash
+# Cooldown between fact-checks (seconds)
+FACT_CHECK_COOLDOWN=300  # 5 minutes
+
+# Daily limit per user
+FACT_CHECK_DAILY_LIMIT=10
+```
+
+**Why limit fact-checks:**
+- Fact-checking uses expensive model (Claude 3.5 Sonnet)
+- Web search costs (7 sources per check)
+- ~$0.018 per fact-check
+- Without limits: ~$180 per 10k fact-checks
+
+**User feedback:**
+```
+⏱️ Fact-check cooldown! Wait 4m 32s before requesting another.
+📊 Daily limit reached! You've used 10/10 fact-checks today.
+```
+
+**Web Search Limits:**
+
+```bash
+# Hourly limit per user
+SEARCH_HOURLY_LIMIT=5
+
+# Daily limit per user
+SEARCH_DAILY_LIMIT=20
+```
+
+**Why limit searches:**
+- Tavily API has rate limits
+- Can trigger from user messages or LLM requests
+- Free tier: 1000 searches/month total
+- Prevents exhausting free quota
+
+**User feedback:**
+```
+⏱️ Search limit reached! You've used 5/5 searches this hour.
+📊 Daily search limit reached! You've used 20/20 searches today.
+```
+
+---
+
+### Message Frequency Limits
+
+**Anti-spam controls:**
+
+```bash
+# Seconds between bot messages per user
+MESSAGE_COOLDOWN=3
+
+# Maximum messages per minute per user
+MAX_MESSAGES_PER_MINUTE=10
+
+# Maximum input length (characters)
+MAX_INPUT_LENGTH=2000
+```
+
+**How frequency limits work:**
+- **Cooldown**: Silent rejection (no spam messages)
+- **Per-minute limit**: "Slow down" warning message
+- **Input length**: Automatic truncation with warning
+
+**User feedback:**
+```
+⏱️ Slow down! You're sending messages too quickly.
+⚠️ Message truncated to 2000 characters for processing.
+```
+
+**Why these limits matter:**
+- Prevents rapid-fire message spam
+- Reduces token usage from long inputs
+- Protects against DoS-style abuse
+- Keeps costs predictable
+
+---
+
+### Concurrent Request Limiting
+
+**Maximum simultaneous LLM calls:**
+
+```bash
+# Max concurrent requests per user
+MAX_CONCURRENT_REQUESTS=3
+```
+
+**Why limit concurrency:**
+- Users sending multiple messages before first response completes
+- Could cause 10x cost multiplier
+- API rate limit issues
+- Queue buildup affects all users
+
+**How it works:**
+```
+User sends 5 rapid messages:
+→ First 3 process normally
+→ Messages 4-5 get "too many requests" error
+→ Counter decrements when requests complete
+→ User can send more after responses arrive
+```
+
+**User feedback:**
+```
+⏱️ Too many requests at once! Please wait for your current request to finish.
+```
+
+---
+
+### Command Cooldowns
+
+**Expensive operations:**
+
+```bash
+# Wrapped command cooldown (seconds)
+WRAPPED_COOLDOWN=60
+
+# Server leaderboard cooldown (seconds)
+IRACING_LEADERBOARD_COOLDOWN=60
+```
+
+**Why cooldown commands:**
+- `/wrapped`: Expensive database aggregation queries
+- `/iracing_server_leaderboard`: Fetches all server members' iRacing data
+- Visualization generation overhead
+- Multiple API calls
+
+**Which commands have cooldowns:**
+- `/wrapped`: Year-end statistics summary
+- `/iracing_server_leaderboard`: Server-wide iRating rankings
+
+**User feedback:**
+```
+⏱️ Wrapped cooldown! Please wait 42 seconds before generating another wrapped.
+⏱️ Leaderboard cooldown! Please wait 35 seconds before requesting another leaderboard.
+```
+
+---
+
+### Cost Tracking & Alerts
+
+**Automatic spending monitoring:**
+
+Cost tracking is **always enabled** and requires no configuration.
+
+**What gets tracked:**
+- Real-time token usage from API responses
+- Model-specific pricing (Claude 3.7 Sonnet, Claude 3.5 Sonnet, etc.)
+- Input tokens vs. output tokens
+- Request type (chat, fact-check, etc.)
+- Per-user attribution
+
+**Alert system:**
+- DMs bot owner (user: `wompie__`) when spending crosses each $1 threshold
+- Beautiful embed with cost breakdown by model
+- Prevents duplicate alerts (tracks in `cost_alerts` table)
+
+**Alert example:**
+```
+💸 Cost Alert: $3.00 Spent
+
+Your bot has spent $3.00 total on LLM API calls.
+
+Claude 3.7 Sonnet: $2.45 (82%)
+Claude 3.5 Sonnet: $0.55 (18%)
+
+This is an automatic alert sent every $1.
+```
+
+**Database tables:**
+- `api_costs`: Individual API call costs with token counts
+- `cost_alerts`: Alert history (prevents duplicates)
+- `rate_limits`: Token usage per user
+- `feature_rate_limits`: Feature-specific usage tracking
+
+**Monitoring queries:**
+```bash
+# Total spending
+docker-compose exec postgres psql -U botuser -d discord_bot \
+  -c "SELECT SUM(cost_usd) FROM api_costs;"
+
+# Cost by model
+docker-compose exec postgres psql -U botuser -d discord_bot \
+  -c "SELECT model, SUM(cost_usd) FROM api_costs GROUP BY model;"
+
+# Top users by cost
+docker-compose exec postgres psql -U botuser -d discord_bot \
+  -c "SELECT username, SUM(cost_usd) FROM api_costs GROUP BY username ORDER BY SUM(cost_usd) DESC LIMIT 10;"
+```
+
+---
+
+### Complete Rate Limiting Configuration
+
+**Full .env example:**
+
+```bash
+# Core Token Limits
+MAX_TOKENS_PER_REQUEST=1000      # Tokens per single response
+HOURLY_TOKEN_LIMIT=10000         # Tokens per user per hour
+MAX_CONTEXT_TOKENS=4000          # Context size hard cap
+
+# Feature-Specific Limits
+FACT_CHECK_COOLDOWN=300          # 5 minutes between fact-checks
+FACT_CHECK_DAILY_LIMIT=10        # 10 fact-checks per day per user
+SEARCH_HOURLY_LIMIT=5            # 5 searches per hour per user
+SEARCH_DAILY_LIMIT=20            # 20 searches per day per user
+
+# Anti-Spam Controls
+MESSAGE_COOLDOWN=3               # 3 seconds between messages
+MAX_MESSAGES_PER_MINUTE=10       # 10 messages per minute per user
+MAX_INPUT_LENGTH=2000            # 2000 character max input
+MAX_CONCURRENT_REQUESTS=3        # 3 simultaneous requests max
+
+# Command Cooldowns
+WRAPPED_COOLDOWN=60              # 60 seconds between /wrapped
+IRACING_LEADERBOARD_COOLDOWN=60  # 60 seconds between leaderboards
+```
+
+**Cost impact:**
+
+| Limit Type | Without Limits | With Limits | Savings |
+|------------|---------------|-------------|---------|
+| Token limits | $100+/day | $2-10/day | 90-98% |
+| Context limits | $1/msg | $0.03/msg | 97% |
+| Concurrent | 10x cost | 1x cost | 90% |
+| Feature limits | $50/day | $5/day | 90% |
+
+**Result**: Predictable monthly costs ($10-50) vs. unpredictable ($100-1000+)
+
+---
+
 ## Database Configuration
 
 ### PostgreSQL Password
