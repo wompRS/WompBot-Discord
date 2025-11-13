@@ -3578,7 +3578,6 @@ async def iracing_schedule(interaction: discord.Interaction, series: str = None,
                 return
 
             # Get current week track for each series (using cached data from get_current_series)
-            import datetime
             series_tracks = []
 
             # Get all seasons data once (this contains schedules already)
