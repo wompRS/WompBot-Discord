@@ -212,10 +212,18 @@ Respond in JSON format (your analysis MUST reference specific arguments/moments 
 
             # Call LLM (user_message, conversation_history)
             # Use asyncio.to_thread since generate_response is synchronous
+            # Request 3000 tokens for comprehensive debate analysis (default is 1000)
             response = await asyncio.to_thread(
                 self.llm.generate_response,
                 prompt,  # user_message
-                []       # conversation_history - empty for debate analysis
+                [],      # conversation_history - empty for debate analysis
+                None,    # user_context
+                None,    # search_results
+                0,       # retry_count
+                None,    # bot_user_id
+                None,    # user_id
+                None,    # username
+                3000     # max_tokens - increased for comprehensive JSON response
             )
 
             # Try to parse JSON from response
@@ -263,7 +271,14 @@ Please regenerate the analysis as valid JSON only:
                 response = await asyncio.to_thread(
                     self.llm.generate_response,
                     retry_prompt,
-                    []
+                    [],      # conversation_history
+                    None,    # user_context
+                    None,    # search_results
+                    0,       # retry_count
+                    None,    # bot_user_id
+                    None,    # user_id
+                    None,    # username
+                    3000     # max_tokens
                 )
 
                 # Try parsing again

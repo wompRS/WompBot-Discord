@@ -135,8 +135,13 @@ Be useful and real. That's the balance."""
         bot_user_id=None,
         user_id=None,
         username=None,
+        max_tokens=None,
     ):
-        """Generate response using OpenRouter with automatic retry on empty responses"""
+        """Generate response using OpenRouter with automatic retry on empty responses
+
+        Args:
+            max_tokens: Optional override for max tokens (defaults to MAX_TOKENS_PER_REQUEST env var or 1000)
+        """
         import time
 
         try:
@@ -216,7 +221,9 @@ SEARCH RESULTS:
                 "Content-Type": "application/json",
             }
 
-            max_tokens = int(os.getenv('MAX_TOKENS_PER_REQUEST', '1000'))
+            # Use provided max_tokens or fall back to environment variable
+            if max_tokens is None:
+                max_tokens = int(os.getenv('MAX_TOKENS_PER_REQUEST', '1000'))
 
             payload = {
                 "model": self.model,
