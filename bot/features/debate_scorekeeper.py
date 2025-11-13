@@ -13,9 +13,10 @@ import asyncio
 class DebateScorekeeper:
     """Manage debate tracking and scoring"""
 
-    def __init__(self, db, llm):
+    def __init__(self, db, llm, search_engine=None):
         self.db = db
         self.llm = llm
+        self.search_engine = search_engine
         self.active_debates = {}  # channel_id -> debate_data
 
     async def start_debate(
@@ -103,6 +104,96 @@ class DebateScorekeeper:
             'analysis': analysis
         }
 
+    async def _extract_factual_claims(self, transcript: str) -> List[str]:
+        """Extract factual claims from debate transcript that can be web-verified"""
+        try:
+            extraction_prompt = f"""Read this debate transcript and extract 3-5 of the most important FACTUAL CLAIMS that can be verified using web search.
+
+Focus on:
+- Specific technical facts (e.g., "SteamOS doesn't support Nvidia", "X feature requires Y")
+- Verifiable statistics or data points
+- Claims about how systems/products work
+- Historical facts or timelines
+
+IGNORE:
+- Subjective opinions or preferences
+- Personal anecdotes that can't be verified
+- Vague or general statements
+
+Return ONLY a JSON array of claim strings, nothing else:
+["claim 1", "claim 2", "claim 3"]
+
+Debate Transcript:
+{transcript}"""
+
+            response = await asyncio.to_thread(
+                self.llm.generate_response,
+                extraction_prompt,
+                [],      # conversation_history
+                None,    # user_context
+                None,    # search_results
+                0,       # retry_count
+                None,    # bot_user_id
+                None,    # user_id
+                None,    # username
+                500      # max_tokens - small response
+            )
+
+            # Parse JSON array from response
+            import re
+            json_match = re.search(r'\[.*?\]', response, re.DOTALL)
+            if json_match:
+                claims = json.loads(json_match.group())
+                print(f"📋 Extracted {len(claims)} factual claims for verification")
+                return claims
+            else:
+                print("⚠️ No claims extracted from debate")
+                return []
+
+        except Exception as e:
+            print(f"❌ Error extracting claims: {e}")
+            return []
+
+    async def _verify_claims_with_web_search(self, claims: List[str]) -> str:
+        """Perform web searches for claims and format results"""
+        if not self.search_engine:
+            return ""
+
+        fact_check_results = "## WEB-VERIFIED FACT-CHECK RESULTS:\n"
+        fact_check_results += "Use these web search results to verify factual accuracy of claims made in the debate.\n\n"
+
+        for i, claim in enumerate(claims, 1):
+            try:
+                # Search for the claim
+                search_results = await asyncio.to_thread(
+                    self.search_engine.search,
+                    claim,
+                    5  # Get 5 results per claim for good corroboration
+                )
+
+                if search_results:
+                    fact_check_results += f"### Claim {i}: \"{claim}\"\n"
+                    fact_check_results += f"**Search Results ({len(search_results)} sources):**\n"
+
+                    for j, result in enumerate(search_results, 1):
+                        content_snippet = result.get('content', '')[:200].strip()
+                        source_domain = result.get('url', '').split('/')[2] if result.get('url') else 'Unknown'
+                        fact_check_results += f"  [{j}] {result.get('title', 'Untitled')} ({source_domain})\n"
+                        fact_check_results += f"      {content_snippet}...\n"
+                        fact_check_results += f"      URL: {result.get('url', 'N/A')}\n"
+
+                    fact_check_results += "\n"
+                else:
+                    fact_check_results += f"### Claim {i}: \"{claim}\"\n"
+                    fact_check_results += "  No search results found.\n\n"
+
+            except Exception as e:
+                print(f"❌ Error searching for claim '{claim}': {e}")
+                fact_check_results += f"### Claim {i}: \"{claim}\"\n"
+                fact_check_results += f"  Search error: {str(e)}\n\n"
+
+        return fact_check_results
+
     async def _analyze_debate(self, debate: Dict) -> Dict:
         """Use LLM to analyze debate arguments and determine winner"""
         try:
@@ -142,8 +233,24 @@ class DebateScorekeeper:
             for msg in debate['messages']:
                 transcript += f"{msg['username']}: {msg['content']}\n"
 
+            # Extract and verify factual claims using web search
+            print("🔍 Extracting factual claims from debate...")
+            claims = await self._extract_factual_claims(transcript)
+
+            fact_check_context = ""
+            if claims and self.search_engine:
+                print(f"🌐 Performing web searches for {len(claims)} claims...")
+                fact_check_context = await self._verify_claims_with_web_search(claims)
+                print("✅ Web fact-checking complete")
+            elif not self.search_engine:
+                print("⚠️ No search engine available - skipping web fact-checking")
+            else:
+                print("⚠️ No factual claims extracted - skipping web searches")
+
             # LLM prompt for comprehensive rhetorical analysis
             prompt = f"""You are a comprehensive debate analyst. Evaluate this debate across ALL classical rhetoric dimensions: Logos (logic), Ethos (credibility), Pathos (emotion), AND factual accuracy.
+
+{fact_check_context if fact_check_context else ""}
 
 ## PARTICIPANT HISTORICAL CONTEXT:
 Use this information about each participant's typical communication style and personality to inform your analysis:
@@ -186,11 +293,13 @@ Read EVERY message in ORDER and track how the debate unfolds chronologically. Yo
 - Personal anecdotes and their relevance
 
 ### 4. FACTUAL ACCURACY - Score 0-10
+- **CRITICAL: Cross-reference claims against the WEB-VERIFIED FACT-CHECK RESULTS above**
 - Verify specific factual claims (TRUE/FALSE/MISLEADING/UNVERIFIABLE)
-- Technical accuracy (e.g., "SteamOS doesn't support Nvidia", "Wake on USB settings")
-- Correct representation of facts
-- Identify factual errors or exaggerations
+- Use the web search results to determine if technical claims are accurate
+- Compare participant claims against multiple authoritative web sources
+- Identify factual errors or exaggerations proven wrong by web sources
 - Claims that get corrected or proven wrong during the debate
+- **Heavily penalize claims contradicted by web-verified sources**
 
 ### 5. OVERALL EFFECTIVENESS - Score 0-10
 Weighted average considering all dimensions, with FACTUAL ACCURACY weighted most heavily (40%), Logos (30%), Ethos (20%), Pathos (10%)
@@ -233,12 +342,12 @@ Respond in JSON format (your analysis MUST reference specific arguments/moments 
             "factual_accuracy": {{
                 "score": 8,
                 "key_claims": [
-                    {{"claim": "SteamOS doesn't support Nvidia GPUs", "verdict": "TRUE", "explanation": "SteamOS officially only supports AMD GPUs, though Bazzite offers Nvidia support"}},
-                    {{"claim": "Wake on USB is just a BIOS setting", "verdict": "MISLEADING", "explanation": "While it involves BIOS, it also requires specific motherboard/controller hardware support, not universal"}},
-                    {{"claim": "You can disable Windows login screen in one click", "verdict": "FALSE", "explanation": "Requires multiple settings including disabling PIN, Windows Hello, and sleep password prompts"}}
+                    {{"claim": "SteamOS doesn't support Nvidia GPUs", "verdict": "TRUE", "explanation": "According to web sources [1][2], SteamOS officially only supports AMD GPUs, though Bazzite offers Nvidia support", "web_verified": true}},
+                    {{"claim": "Wake on USB is just a BIOS setting", "verdict": "MISLEADING", "explanation": "Web sources [3] show it involves BIOS but also requires specific motherboard/controller hardware support", "web_verified": true}},
+                    {{"claim": "You can disable Windows login screen in one click", "verdict": "FALSE", "explanation": "Web sources [4][5] indicate requires multiple settings including disabling PIN, Windows Hello, and sleep password prompts", "web_verified": true}}
                 ],
-                "correct_points": ["Specific technical facts that were accurate"],
-                "major_errors": ["Claims made that were proven wrong during debate"]
+                "correct_points": ["Specific technical facts that were accurate and corroborated by web sources"],
+                "major_errors": ["Claims made that were contradicted by web search results"]
             }}
         }}
     }},
