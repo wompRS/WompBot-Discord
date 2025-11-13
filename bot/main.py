@@ -11,6 +11,7 @@ from collections import Counter
 import pytz
 from database import Database
 from llm import LLMClient
+from local_llm import LocalLLMClient
 from cost_tracker import CostTracker
 from search import SearchEngine
 from features.claims import ClaimsTracker
@@ -43,6 +44,7 @@ bot = commands.Bot(command_prefix='!', intents=intents, help_command=None)  # Di
 db = Database()
 cost_tracker = None  # Will be initialized in on_ready when bot is available
 llm = LLMClient(cost_tracker=None)  # Cost tracker will be set in on_ready
+local_llm = LocalLLMClient()  # Local uncensored LLM (optional)
 search = SearchEngine()
 
 # Setup feature modules
@@ -5530,6 +5532,52 @@ async def iracing_timeslots(interaction: discord.Interaction, series: str, week:
     except Exception as e:
         await interaction.followup.send(f"❌ Error: {str(e)}")
         print(f"❌ Race times error: {e}")
+        import traceback
+        traceback.print_exc()
+
+
+@bot.tree.command(name="uncensored", description="Query a local uncensored LLM model")
+@app_commands.describe(prompt="Your question or prompt for the uncensored model")
+async def uncensored(interaction: discord.Interaction, prompt: str):
+    """Query a local uncensored LLM (Drummer's models or similar)"""
+
+    # Check if local LLM is enabled
+    if not local_llm.enabled:
+        await interaction.response.send_message(
+            "❌ **Local LLM not enabled**\n\n"
+            "To enable uncensored LLM:\n"
+            "1. Set up a local LLM server (Ollama recommended)\n"
+            "2. Add to your `.env` file:\n"
+            "```\n"
+            "LOCAL_LLM_ENABLED=true\n"
+            "LOCAL_LLM_URL=http://localhost:11434/v1\n"
+            "LOCAL_LLM_MODEL=dolphin-llama3:latest\n"
+            "```\n"
+            "3. Restart the bot\n\n"
+            "**Popular Drummer models**: dolphin-llama3, dolphin-mixtral, wizardlm-uncensored",
+            ephemeral=True
+        )
+        return
+
+    await interaction.response.defer()
+
+    try:
+        # Generate response from local LLM
+        response = local_llm.generate_response(prompt)
+
+        # Discord has a 2000 character limit
+        if len(response) > 1900:
+            # Split into chunks
+            chunks = [response[i:i+1900] for i in range(0, len(response), 1900)]
+            await interaction.followup.send(f"**Uncensored Response (Part 1/{len(chunks)}):**\n{chunks[0]}")
+            for i, chunk in enumerate(chunks[1:], 2):
+                await interaction.followup.send(f"**Part {i}/{len(chunks)}:**\n{chunk}")
+        else:
+            await interaction.followup.send(f"**Uncensored Response:**\n{response}")
+
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error generating response: {str(e)}")
+        print(f"❌ Uncensored LLM error: {e}")
         import traceback
         traceback.print_exc()
 
