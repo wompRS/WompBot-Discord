@@ -3253,51 +3253,61 @@ async def debate_review(interaction: discord.Interaction, file: discord.Attachme
 
         # Build embed with results
         embed = discord.Embed(
-            title=f"🔍 Fact-Check Analysis: {result['topic']}",
-            description=analysis.get('summary', 'Fact-checking complete'),
-            color=discord.Color.orange()
+            title=f"🎭 Comprehensive Debate Analysis: {result['topic']}",
+            description=analysis.get('summary', 'Analysis complete'),
+            color=discord.Color.purple()
         )
 
         # Add participant scores
         if 'participants' in analysis:
             for username, data in analysis['participants'].items():
-                score = data.get('score', 'N/A')
+                overall_score = data.get('overall_score', data.get('score', 'N/A'))
 
-                field_value = f"**Factual Accuracy Score:** {score}/10\n\n"
+                field_value = f"**Overall: {overall_score}/10**\n\n"
 
-                # Accuracy summary
-                accuracy_summary = data.get('accuracy_summary', '')
-                if accuracy_summary:
-                    field_value += f"**Assessment:** {accuracy_summary}\n\n"
+                # Rhetorical scores
+                logos = data.get('logos', {})
+                ethos = data.get('ethos', {})
+                pathos = data.get('pathos', {})
+                factual = data.get('factual_accuracy', {})
 
-                # Correct points
-                correct_points = data.get('correct_points', [])
-                if correct_points:
-                    field_value += f"**✅ Correct Points:**\n"
-                    for point in correct_points[:3]:  # Limit to 3 to avoid overflow
-                        field_value += f"• {point}\n"
-                    if len(correct_points) > 3:
-                        field_value += f"• _(+{len(correct_points) - 3} more)_\n"
-                    field_value += "\n"
+                # Show scores with indicators
+                logos_score = logos.get('score', 'N/A') if isinstance(logos, dict) else 'N/A'
+                ethos_score = ethos.get('score', 'N/A') if isinstance(ethos, dict) else 'N/A'
+                pathos_score = pathos.get('score', 'N/A') if isinstance(pathos, dict) else 'N/A'
+                factual_score = factual.get('score', 'N/A') if isinstance(factual, dict) else 'N/A'
 
-                # Major errors
-                major_errors = data.get('major_errors', [])
-                if major_errors:
-                    field_value += f"**❌ Major Errors:**\n"
-                    for error in major_errors[:3]:  # Limit to 3
-                        field_value += f"• {error}\n"
-                    if len(major_errors) > 3:
-                        field_value += f"• _(+{len(major_errors) - 3} more)_\n"
+                field_value += f"**📊 Scores:**\n"
+                field_value += f"🧠 Logos (Logic): {logos_score}/10\n"
+                field_value += f"🎯 Ethos (Credibility): {ethos_score}/10\n"
+                field_value += f"❤️ Pathos (Emotion): {pathos_score}/10\n"
+                field_value += f"✅ Factual Accuracy: {factual_score}/10\n\n"
 
-                # Factual claims (show a few key ones)
-                factual_claims = data.get('factual_claims', [])
-                if factual_claims and len(factual_claims) <= 5:
-                    field_value += f"\n**Key Claims:**\n"
-                    for claim_data in factual_claims[:3]:
-                        verdict = claim_data.get('verdict', 'UNKNOWN')
-                        claim_text = claim_data.get('claim', '')[:80]  # Truncate long claims
-                        emoji = {'TRUE': '✅', 'FALSE': '❌', 'MISLEADING': '⚠️', 'UNVERIFIABLE': '❓'}.get(verdict, '❓')
-                        field_value += f"{emoji} {verdict}: {claim_text}\n"
+                # Logos details (fallacies)
+                if isinstance(logos, dict) and logos.get('fallacies'):
+                    fallacies = logos['fallacies']
+                    if fallacies and len(fallacies) > 0:
+                        field_value += f"**🚫 Logical Fallacies:**\n"
+                        for fallacy in fallacies[:2]:
+                            field_value += f"• {fallacy}\n"
+                        if len(fallacies) > 2:
+                            field_value += f"• _(+{len(fallacies) - 2} more)_\n"
+                        field_value += "\n"
+
+                # Factual accuracy details
+                if isinstance(factual, dict):
+                    correct = factual.get('correct_points', [])
+                    errors = factual.get('major_errors', [])
+
+                    if correct and len(correct) > 0:
+                        field_value += f"**✅ Key Facts Right:**\n"
+                        for point in correct[:2]:
+                            field_value += f"• {point[:60]}...\n" if len(point) > 60 else f"• {point}\n"
+
+                    if errors and len(errors) > 0:
+                        field_value += f"\n**❌ Key Errors:**\n"
+                        for error in errors[:2]:
+                            field_value += f"• {error[:60]}...\n" if len(error) > 60 else f"• {error}\n"
 
                 embed.add_field(
                     name=f"👤 {username}",

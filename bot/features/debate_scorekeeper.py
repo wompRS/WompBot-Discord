@@ -112,33 +112,40 @@ class DebateScorekeeper:
             for msg in debate['messages']:
                 transcript += f"{msg['username']}: {msg['content']}\n"
 
-            # LLM prompt for fact-based analysis
-            prompt = f"""You are a fact-checker and debate analyst. Your job is to determine who is FACTUALLY CORRECT in this debate, not who argued better.
+            # LLM prompt for comprehensive rhetorical analysis
+            prompt = f"""You are a comprehensive debate analyst. Evaluate this debate across ALL classical rhetoric dimensions: Logos (logic), Ethos (credibility), Pathos (emotion), AND factual accuracy.
 
-Analyze this debate transcript and:
+Analyze each participant on these dimensions:
 
-1. **Identify factual claims** made by each participant
-2. **Verify accuracy** of each claim based on your knowledge (mark as TRUE, FALSE, MISLEADING, or UNVERIFIABLE)
-3. **Score participants (0-10)** based on factual accuracy:
-   - 10 = All claims accurate and well-supported
-   - 7-9 = Mostly accurate with minor errors
-   - 4-6 = Mix of accurate and inaccurate claims
-   - 1-3 = Mostly inaccurate claims
-   - 0 = Completely false information
+## 1. LOGOS (Logical Reasoning) - Score 0-10
+- Logical structure and coherence
+- Use of evidence and reasoning
+- Logical fallacies (ad hominem, strawman, false dichotomy, slippery slope, etc.)
+- Internal consistency
 
-4. **Determine winner** based on who made MORE FACTUALLY CORRECT statements (NOT who argued better)
+## 2. ETHOS (Credibility/Character) - Score 0-10
+- Demonstrated expertise or knowledge
+- Honesty and transparency
+- Consistency of position
+- Respectful vs. dismissive tone
+- Acknowledgment of valid points
 
-**Focus on:**
-- Technical accuracy (e.g., "SteamOS doesn't support Nvidia" - TRUE or FALSE?)
-- Verifiable facts (e.g., hardware compatibility, software features)
-- Logical consistency
-- Factual errors, exaggerations, or misrepresentations
+## 3. PATHOS (Emotional Appeal) - Score 0-10
+- Effective use of emotion (positive or negative)
+- Appeals to shared values or experiences
+- Use of analogies, metaphors, or relatable examples
+- Connection with audience concerns
 
-**Ignore:**
-- Rhetorical skill
-- Tone or politeness
-- Who "sounds" more convincing
-- Personal opinions (unless claimed as facts)
+## 4. FACTUAL ACCURACY - Score 0-10
+- Verify specific factual claims (TRUE/FALSE/MISLEADING)
+- Technical accuracy (e.g., "SteamOS doesn't support Nvidia")
+- Correct representation of facts
+- Identify factual errors or exaggerations
+
+## 5. OVERALL EFFECTIVENESS - Score 0-10
+Weighted average considering all dimensions, with FACTUAL ACCURACY weighted most heavily (40%), Logos (30%), Ethos (20%), Pathos (10%)
+
+**Determine winner** based on OVERALL EFFECTIVENESS, prioritizing factual correctness and logical reasoning over emotional appeal.
 
 Debate Transcript:
 {transcript}
@@ -147,19 +154,37 @@ Respond in JSON format:
 {{
     "participants": {{
         "username": {{
-            "score": 8,
-            "factual_claims": [
-                {{"claim": "specific claim here", "verdict": "TRUE/FALSE/MISLEADING", "explanation": "why"}},
-                {{"claim": "another claim", "verdict": "FALSE", "explanation": "correction"}}
-            ],
-            "accuracy_summary": "Overall assessment of factual accuracy",
-            "major_errors": ["error 1", "error 2"],
-            "correct_points": ["correct point 1", "correct point 2"]
+            "overall_score": 7.5,
+            "logos": {{
+                "score": 8,
+                "analysis": "Strong logical structure with...",
+                "fallacies": ["strawman at line X", "false dichotomy"],
+                "strengths": ["Consistent reasoning", "Good evidence"]
+            }},
+            "ethos": {{
+                "score": 6,
+                "analysis": "Demonstrated some expertise but...",
+                "strengths": ["Acknowledged valid points"],
+                "weaknesses": ["Dismissive tone at times"]
+            }},
+            "pathos": {{
+                "score": 7,
+                "analysis": "Effective use of personal experience...",
+                "techniques": ["Personal anecdotes", "Relatable analogies"]
+            }},
+            "factual_accuracy": {{
+                "score": 8,
+                "key_claims": [
+                    {{"claim": "specific claim", "verdict": "TRUE/FALSE/MISLEADING", "explanation": "why"}}
+                ],
+                "correct_points": ["fact 1", "fact 2"],
+                "major_errors": ["error 1"]
+            }}
         }}
     }},
     "winner": "username",
-    "winner_reason": "Won based on factual correctness: [specific facts they got right vs opponent's errors]",
-    "summary": "Brief summary focusing on who was factually correct"
+    "winner_reason": "Won due to superior factual accuracy (8 vs 6) and stronger logos (8 vs 5), despite slightly weaker pathos. Key facts correct: [list]. Opponent's major errors: [list].",
+    "summary": "Overall assessment covering all rhetorical dimensions"
 }}"""
 
             # Call LLM (user_message, conversation_history)
