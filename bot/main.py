@@ -27,6 +27,7 @@ from features.iracing_teams import iRacingTeamManager
 from credential_manager import CredentialManager
 from iracing_graphics import iRacingGraphics
 from self_knowledge import SelfKnowledge
+from features.help_system import HelpSystem
 
 # Bot setup
 intents = discord.Intents.default()
@@ -36,7 +37,7 @@ intents.guilds = True
 intents.message_content = True
 intents.reactions = True  # Need for hot takes reaction tracking
 
-bot = commands.Bot(command_prefix='!', intents=intents)  # Prefix won't be used for slash commands
+bot = commands.Bot(command_prefix='!', intents=intents, help_command=None)  # Disable built-in help, use custom
 
 # Initialize components
 db = Database()
@@ -50,6 +51,7 @@ fact_checker = FactChecker(db, llm, search)
 chat_stats = ChatStatistics(db)
 hot_takes_tracker = HotTakesTracker(db, llm)
 self_knowledge = SelfKnowledge()
+help_system = HelpSystem()
 reminder_system = ReminderSystem(db)
 event_system = EventSystem(db)
 yearly_wrapped = YearlyWrapped(db)
@@ -1704,6 +1706,21 @@ async def ping(ctx):
     """Check bot latency"""
     await ctx.send(f"🏓 Pong! Latency: {round(bot.latency * 1000)}ms")
 
+@bot.command(name='help')
+async def help_prefix(ctx, command: str = None):
+    """Show bot commands or get detailed help for a specific command"""
+    if command:
+        # Show detailed help for specific command
+        embed = help_system.get_command_help(command)
+        if embed:
+            await ctx.send(embed=embed)
+        else:
+            await ctx.send(f"❌ No help found for command `{command}`. Use `!help` to see all available commands.")
+    else:
+        # Show general help
+        embed = help_system.get_general_help()
+        await ctx.send(embed=embed)
+
 @bot.group(name='wompbot', invoke_without_command=True)
 async def wompbot_command(ctx):
     """WompBot command group"""
@@ -1928,107 +1945,24 @@ async def verify_claim_slash(interaction: discord.Interaction, claim_id: int, st
     except Exception as e:
         await interaction.followup.send(f"❌ Error verifying claim: {str(e)}")
 
-@bot.tree.command(name="help", description="Show all WompBot commands")
-async def help_slash(interaction: discord.Interaction):
-    """Show bot commands"""
-    embed = discord.Embed(
-        title="🤖 WompBot Commands",
-        description="Here's what I can do:",
-        color=discord.Color.purple()
-    )
-
-    embed.add_field(
-        name="@mention me",
-        value="Tag me in a message to chat. Powered by Hermes-3 70B for fast, conversational responses with automatic web search when needed.",
-        inline=False
-    )
-    embed.add_field(
-        name="/stats [@user]",
-        value="View statistics and behavior analysis for yourself or another user.",
-        inline=False
-    )
-    embed.add_field(
-        name="/receipts [@user] [keyword]",
-        value="View tracked claims for a user. Optional keyword filter.",
-        inline=False
-    )
-    embed.add_field(
-        name="/quotes [@user]",
-        value="View saved quotes for a user.",
-        inline=False
-    )
-    embed.add_field(
-        name="☁️ Save Quote",
-        value="React to any message with :cloud: emoji to save it as a quote.",
-        inline=False
-    )
-    embed.add_field(
-        name="⚠️ Fact-Check",
-        value="React to any message with :warning: emoji to trigger high-accuracy fact-checking. Uses Claude 3.5 Sonnet, web search, and multi-source verification (requires ≥2 sources). Rate limited: 5-minute cooldown, 10/day per user.",
-        inline=False
-    )
-    embed.add_field(
-        name="🛡️ Rate Limits & Cost Control",
-        value=(
-            "• Token limits: 1,000/request, 10,000/hour per user\n"
-            "• Context: 4000 token hard cap (auto-truncates)\n"
-            "• Fact-checks: 5-min cooldown, 10/day\n"
-            "• Searches: 5/hour, 20/day per user\n"
-            "• Messages: 3s cooldown, 10/min\n"
-            "• Max concurrent requests: 3\n"
-            "• $1 spending alerts: DM to bot owner\n"
-            "All limits configurable via .env"
-        ),
-        inline=False
-    )
-    embed.add_field(
-        name="📊 Chat Statistics",
-        value=(
-            "/stats_server [days|date_range] - Network graph & server stats\n"
-            "/stats_topics [days|date_range] - Trending keywords (TF-IDF)\n"
-            "/stats_primetime [@user] [days|date_range] - Activity heatmap\n"
-            "/stats_engagement [@user] [days|date_range] - Engagement metrics"
-        ),
-        inline=False
-    )
-    embed.add_field(
-        name="!leaderboard <type> [days]",
-        value="Show top users by: `messages`, `questions`, or `profanity`. Default: 7 days",
-        inline=False
-    )
-    embed.add_field(
-        name="!search <query>",
-        value="Manually search the web for information.",
-        inline=False
-    )
-    embed.add_field(
-        name="!analyze [days]",
-        value="(Admin only) Analyze user behavior patterns from the last N days.",
-        inline=False
-    )
-    embed.add_field(
-        name="!ping",
-        value="Check bot latency.",
-        inline=False
-    )
-    embed.add_field(
-        name="🔒 Privacy & Legal",
-        value=(
-            "/wompbot_consent - Give consent for data processing\n"
-            "/wompbot_noconsent - Withdraw consent and opt out\n"
-            "/download_my_data - Export all your data (GDPR Art. 15)\n"
-            "/delete_my_data - Request deletion (GDPR Art. 17)\n"
-            "/my_privacy_status - View consent status\n"
-            "/privacy_policy - View privacy policy\n"
-            "/tos - View Terms of Service\n"
-            "/privacy_support - Get privacy help"
-        ),
-        inline=False
-    )
-
-    embed.set_footer(text="By using WompBot, you accept the Terms of Service (/tos)")
-
-    await interaction.response.send_message(embed=embed)
+@bot.tree.command(name="help", description="Show all commands or get detailed help for a specific command")
+@app_commands.describe(command="Optional: specific command to get detailed help for")
+async def help_slash(interaction: discord.Interaction, command: str = None):
+    """Show bot commands or detailed help for a specific command"""
+    if command:
+        # Show detailed help for specific command
+        embed = help_system.get_command_help(command)
+        if embed:
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+        else:
+            await interaction.response.send_message(
+                f"❌ No help found for command `{command}`. Use `/help` to see all available commands.",
+                ephemeral=True
+            )
+    else:
+        # Show general help
+        embed = help_system.get_general_help()
+        await interaction.response.send_message(embed=embed)
 
 # CHAT STATISTICS SLASH COMMANDS
 
