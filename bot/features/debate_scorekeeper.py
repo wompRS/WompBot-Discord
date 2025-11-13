@@ -115,76 +115,92 @@ class DebateScorekeeper:
             # LLM prompt for comprehensive rhetorical analysis
             prompt = f"""You are a comprehensive debate analyst. Evaluate this debate across ALL classical rhetoric dimensions: Logos (logic), Ethos (credibility), Pathos (emotion), AND factual accuracy.
 
-Analyze each participant on these dimensions:
+## CRITICAL ANALYSIS INSTRUCTIONS:
+**You MUST read through the ENTIRE debate CHRONOLOGICALLY from start to finish.** Do not just count aggregate line totals or skim. Systematically analyze:
+1. **The flow of arguments** - How does each argument develop and respond to previous points?
+2. **Context and substance** - What is the actual meaning and substance of each argument in the order it was made?
+3. **Evolution of positions** - How do arguments shift, adapt, or remain consistent through the debate?
+4. **Responses to challenges** - Does each participant address counter-arguments or deflect?
 
-## 1. LOGOS (Logical Reasoning) - Score 0-10
-- Logical structure and coherence
-- Use of evidence and reasoning
-- Logical fallacies (ad hominem, strawman, false dichotomy, slippery slope, etc.)
-- Internal consistency
+Read EVERY message in ORDER and track how the debate unfolds chronologically. Your analysis must demonstrate understanding of the debate's progression, not just statistics.
 
-## 2. ETHOS (Credibility/Character) - Score 0-10
+## Analyze each participant on these dimensions:
+
+### 1. LOGOS (Logical Reasoning) - Score 0-10
+- Logical structure and coherence throughout the debate flow
+- Use of evidence and reasoning in context
+- Logical fallacies (ad hominem, strawman, false dichotomy, slippery slope, moving goalposts, etc.)
+- Internal consistency as arguments develop
+- Direct responses vs. deflection or topic changes
+
+### 2. ETHOS (Credibility/Character) - Score 0-10
 - Demonstrated expertise or knowledge
-- Honesty and transparency
-- Consistency of position
+- Honesty and transparency about facts
+- Consistency of position throughout the exchange
 - Respectful vs. dismissive tone
-- Acknowledgment of valid points
+- Acknowledgment of valid points raised by opponent
+- Gaslighting or misrepresenting opponent's arguments
 
-## 3. PATHOS (Emotional Appeal) - Score 0-10
+### 3. PATHOS (Emotional Appeal) - Score 0-10
 - Effective use of emotion (positive or negative)
 - Appeals to shared values or experiences
 - Use of analogies, metaphors, or relatable examples
 - Connection with audience concerns
+- Personal anecdotes and their relevance
 
-## 4. FACTUAL ACCURACY - Score 0-10
-- Verify specific factual claims (TRUE/FALSE/MISLEADING)
-- Technical accuracy (e.g., "SteamOS doesn't support Nvidia")
+### 4. FACTUAL ACCURACY - Score 0-10
+- Verify specific factual claims (TRUE/FALSE/MISLEADING/UNVERIFIABLE)
+- Technical accuracy (e.g., "SteamOS doesn't support Nvidia", "Wake on USB settings")
 - Correct representation of facts
 - Identify factual errors or exaggerations
+- Claims that get corrected or proven wrong during the debate
 
-## 5. OVERALL EFFECTIVENESS - Score 0-10
+### 5. OVERALL EFFECTIVENESS - Score 0-10
 Weighted average considering all dimensions, with FACTUAL ACCURACY weighted most heavily (40%), Logos (30%), Ethos (20%), Pathos (10%)
 
 **Determine winner** based on OVERALL EFFECTIVENESS, prioritizing factual correctness and logical reasoning over emotional appeal.
 
-Debate Transcript:
+Debate Transcript (analyze chronologically from top to bottom):
 {transcript}
 
-Respond in JSON format:
+Respond in JSON format (your analysis MUST reference specific arguments/moments from the debate showing you read it chronologically):
 {{
     "participants": {{
         "username": {{
             "overall_score": 7.5,
             "logos": {{
                 "score": 8,
-                "analysis": "Strong logical structure with...",
-                "fallacies": ["strawman at line X", "false dichotomy"],
-                "strengths": ["Consistent reasoning", "Good evidence"]
+                "analysis": "Analysis MUST reference specific arguments from the debate flow. Example: 'Started with X argument, when challenged with Y, responded by Z. Later shifted position when...'",
+                "fallacies": ["strawman when claiming opponent said X (they actually said Y)", "moving goalposts from initially arguing A to later arguing B", "ad hominem at 'you always have tech issues'"],
+                "strengths": ["Maintained consistent position throughout", "Directly addressed counter-arguments"],
+                "weaknesses": ["Deflected on factual challenge about X", "Circular reasoning on topic Y"]
             }},
             "ethos": {{
                 "score": 6,
-                "analysis": "Demonstrated some expertise but...",
-                "strengths": ["Acknowledged valid points"],
-                "weaknesses": ["Dismissive tone at times"]
+                "analysis": "Reference specific credibility moments. Example: 'Claimed expertise in X, demonstrated knowledge of Y, but dismissive when corrected about Z'",
+                "strengths": ["Acknowledged being wrong about X", "Transparent about personal experience"],
+                "weaknesses": ["Dismissive tone: 'you're so full of shit'", "Accused opponent of lying without evidence"]
             }},
             "pathos": {{
                 "score": 7,
-                "analysis": "Effective use of personal experience...",
-                "techniques": ["Personal anecdotes", "Relatable analogies"]
+                "analysis": "Identify specific emotional appeals used. Example: 'Used personal frustration with technical issues effectively. Car vs motorcycle analogy resonated.'",
+                "techniques": ["Personal anecdotes about years of troubleshooting", "Analogies comparing situations", "Appeals to shared tech frustrations"]
             }},
             "factual_accuracy": {{
                 "score": 8,
                 "key_claims": [
-                    {{"claim": "specific claim", "verdict": "TRUE/FALSE/MISLEADING", "explanation": "why"}}
+                    {{"claim": "SteamOS doesn't support Nvidia GPUs", "verdict": "TRUE", "explanation": "SteamOS officially only supports AMD GPUs, though Bazzite offers Nvidia support"}},
+                    {{"claim": "Wake on USB is just a BIOS setting", "verdict": "MISLEADING", "explanation": "While it involves BIOS, it also requires specific motherboard/controller hardware support, not universal"}},
+                    {{"claim": "You can disable Windows login screen in one click", "verdict": "FALSE", "explanation": "Requires multiple settings including disabling PIN, Windows Hello, and sleep password prompts"}}
                 ],
-                "correct_points": ["fact 1", "fact 2"],
-                "major_errors": ["error 1"]
+                "correct_points": ["Specific technical facts that were accurate"],
+                "major_errors": ["Claims made that were proven wrong during debate"]
             }}
         }}
     }},
     "winner": "username",
-    "winner_reason": "Won due to superior factual accuracy (8 vs 6) and stronger logos (8 vs 5), despite slightly weaker pathos. Key facts correct: [list]. Opponent's major errors: [list].",
-    "summary": "Overall assessment covering all rhetorical dimensions"
+    "winner_reason": "MUST explain based on chronological analysis. Example: 'Won due to maintaining factually accurate position throughout (score 8 vs 6). When challenged on X, provided evidence Y. Opponent made verifiable errors on A, B, C and failed to address counterpoints on D. Despite weaker pathos, superior logos (8 vs 5) and consistent ethos throughout the exchange.'",
+    "summary": "Multi-sentence summary demonstrating you read the full debate. Must reference how the debate evolved, key turning points, and overall trajectory of arguments."
 }}"""
 
             # Call LLM (user_message, conversation_history)
