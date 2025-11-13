@@ -163,6 +163,13 @@ Weighted average considering all dimensions, with FACTUAL ACCURACY weighted most
 Debate Transcript (analyze chronologically from top to bottom):
 {transcript}
 
+IMPORTANT: Respond with VALID JSON ONLY. Follow these rules strictly:
+1. Escape all quotes inside strings with \\"
+2. Escape all backslashes with \\\\
+3. Use \\n for line breaks inside strings, never actual line breaks
+4. No trailing commas
+5. All braces {{}} and brackets [] must be properly closed
+
 Respond in JSON format (your analysis MUST reference specific arguments/moments from the debate showing you read it chronologically):
 {{
     "participants": {{
@@ -213,20 +220,78 @@ Respond in JSON format (your analysis MUST reference specific arguments/moments 
 
             # Try to parse JSON from response
             import re
+
+            # Extract JSON from response (may have markdown code blocks)
             json_match = re.search(r'\{.*\}', response, re.DOTALL)
-            if json_match:
-                analysis = json.loads(json_match.group())
-            else:
-                # Fallback if LLM doesn't return valid JSON
-                analysis = {
+            if not json_match:
+                print(f"❌ No JSON found in LLM response")
+                print(f"Response preview: {response[:500]}")
+                return {
                     'error': 'parse_error',
+                    'message': 'No JSON found in LLM response',
                     'raw_analysis': response
                 }
+
+            json_str = json_match.group()
+
+            # Try to parse JSON
+            try:
+                analysis = json.loads(json_str)
+            except json.JSONDecodeError as je:
+                # Log the error with context
+                print(f"❌ JSON parsing error at position {je.pos}: {je.msg}")
+                print(f"JSON around error (chars {max(0, je.pos-100)}:{min(len(json_str), je.pos+100)}):")
+                print(json_str[max(0, je.pos-100):min(len(json_str), je.pos+100)])
+                print(f"\nFull JSON length: {len(json_str)} chars")
+
+                # Try to salvage what we can with a more lenient parser
+                # Ask LLM to regenerate with stricter JSON formatting
+                print("⚠️ Attempting to request properly formatted JSON...")
+                retry_prompt = f"""The previous response had JSON parsing errors. Please provide ONLY valid JSON with no additional text.
+
+CRITICAL JSON FORMATTING RULES:
+1. All string values must have quotes escaped: use \\" not "
+2. All backslashes must be escaped: use \\\\ not \\
+3. No trailing commas in arrays or objects
+4. No line breaks inside string values (use \\n instead)
+5. Ensure all braces and brackets are properly closed
+
+Please regenerate the analysis as valid JSON only:
+
+{prompt}"""
+
+                response = await asyncio.to_thread(
+                    self.llm.generate_response,
+                    retry_prompt,
+                    []
+                )
+
+                # Try parsing again
+                json_match = re.search(r'\{.*\}', response, re.DOTALL)
+                if json_match:
+                    try:
+                        analysis = json.loads(json_match.group())
+                        print("✅ Successfully parsed JSON on retry")
+                    except json.JSONDecodeError as je2:
+                        print(f"❌ JSON parsing failed again: {je2.msg}")
+                        return {
+                            'error': 'parse_error',
+                            'message': f'JSON parsing failed twice: {je2.msg}',
+                            'raw_analysis': response
+                        }
+                else:
+                    return {
+                        'error': 'parse_error',
+                        'message': 'No JSON found in retry response',
+                        'raw_analysis': response
+                    }
 
             return analysis
 
         except Exception as e:
             print(f"❌ Error analyzing debate: {e}")
+            import traceback
+            traceback.print_exc()
             return {
                 'error': 'analysis_failed',
                 'message': str(e)
