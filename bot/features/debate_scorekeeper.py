@@ -344,3 +344,106 @@ Respond in JSON format:
         if channel_id in self.active_debates:
             return self.active_debates[channel_id]['topic']
         return None
+
+    async def analyze_uploaded_debate(self, transcript_text: str, topic: str = "Uploaded Debate") -> Dict:
+        """
+        Analyze a debate from uploaded text file
+
+        Args:
+            transcript_text: Raw text of the debate transcript
+            topic: Optional topic/title for the debate
+
+        Returns:
+            Dict with analysis results or error
+        """
+        try:
+            # Parse transcript into messages
+            # Expected format: "Username: message content" or just raw text
+            messages = []
+            participants = set()
+
+            lines = transcript_text.strip().split('\n')
+            current_speaker = None
+            current_message = []
+
+            for line in lines:
+                line = line.strip()
+                if not line:
+                    continue
+
+                # Check if line starts with "username:" pattern
+                if ':' in line:
+                    parts = line.split(':', 1)
+                    potential_username = parts[0].strip()
+
+                    # If it looks like a username (no spaces, reasonable length)
+                    if len(potential_username) <= 32 and ' ' not in potential_username:
+                        # Save previous message if exists
+                        if current_speaker and current_message:
+                            messages.append({
+                                'username': current_speaker,
+                                'content': ' '.join(current_message)
+                            })
+                            participants.add(current_speaker)
+
+                        # Start new message
+                        current_speaker = potential_username
+                        current_message = [parts[1].strip()]
+                        continue
+
+                # Continuation of current message
+                if current_speaker:
+                    current_message.append(line)
+                else:
+                    # No speaker identified yet, treat as first speaker's message
+                    current_speaker = "Speaker1"
+                    current_message.append(line)
+
+            # Save last message
+            if current_speaker and current_message:
+                messages.append({
+                    'username': current_speaker,
+                    'content': ' '.join(current_message)
+                })
+                participants.add(current_speaker)
+
+            # Validate minimum requirements
+            if len(participants) < 2:
+                return {
+                    'error': 'insufficient_participants',
+                    'message': f'Debate needs at least 2 participants, found {len(participants)}. Ensure format is "Username: message"'
+                }
+
+            if len(messages) < 5:
+                return {
+                    'error': 'insufficient_messages',
+                    'message': f'Debate needs at least 5 messages, found {len(messages)}.'
+                }
+
+            # Build debate object similar to active debates
+            debate = {
+                'topic': topic,
+                'messages': messages,
+                'participants': participants
+            }
+
+            # Analyze using existing logic
+            analysis = await self._analyze_debate(debate)
+
+            return {
+                'success': True,
+                'topic': topic,
+                'participant_count': len(participants),
+                'message_count': len(messages),
+                'participants': list(participants),
+                'analysis': analysis
+            }
+
+        except Exception as e:
+            print(f"❌ Error analyzing uploaded debate: {e}")
+            import traceback
+            traceback.print_exc()
+            return {
+                'error': 'analysis_failed',
+                'message': str(e)
+            }

@@ -3183,6 +3183,121 @@ async def debate_leaderboard(interaction: discord.Interaction):
         await interaction.followup.send(f"❌ Error getting leaderboard: {str(e)}")
         print(f"❌ Debate leaderboard error: {e}")
 
+@bot.tree.command(name="debate_review", description="Analyze a debate from uploaded text file")
+@app_commands.describe(
+    file="Text file containing the debate transcript (format: 'Username: message')",
+    topic="Optional topic/title for the debate"
+)
+async def debate_review(interaction: discord.Interaction, file: discord.Attachment, topic: str = None):
+    """Analyze debate from uploaded text file"""
+    await interaction.response.defer()
+
+    try:
+        # Validate file type
+        if not file.filename.endswith(('.txt', '.log', '.md')):
+            await interaction.followup.send(
+                "❌ **Invalid file type**\n\n"
+                "Please upload a text file (.txt, .log, or .md)\n\n"
+                "**Expected format:**\n"
+                "```\n"
+                "Username1: First argument here\n"
+                "Username2: Counter argument\n"
+                "Username1: Response to counter\n"
+                "...\n"
+                "```"
+            )
+            return
+
+        # Check file size (max 1MB)
+        if file.size > 1024 * 1024:
+            await interaction.followup.send("❌ File too large. Maximum size is 1MB.")
+            return
+
+        # Download and read file content
+        transcript_bytes = await file.read()
+        try:
+            transcript_text = transcript_bytes.decode('utf-8')
+        except UnicodeDecodeError:
+            await interaction.followup.send("❌ File must be UTF-8 encoded text.")
+            return
+
+        # Use filename as topic if not provided
+        if not topic:
+            topic = file.filename.rsplit('.', 1)[0]  # Remove extension
+
+        # Analyze the debate
+        result = await debate_scorekeeper.analyze_uploaded_debate(transcript_text, topic)
+
+        # Handle errors
+        if 'error' in result:
+            error_messages = {
+                'insufficient_participants': result['message'],
+                'insufficient_messages': result['message'],
+                'analysis_failed': f"Analysis failed: {result['message']}"
+            }
+            error_msg = error_messages.get(result['error'], f"Error: {result.get('message', 'Unknown error')}")
+            await interaction.followup.send(f"❌ {error_msg}")
+            return
+
+        # Format successful analysis
+        analysis = result['analysis']
+
+        # Check if analysis failed
+        if 'error' in analysis:
+            await interaction.followup.send(
+                f"❌ **Analysis Error**\n\n"
+                f"The LLM analysis encountered an issue:\n"
+                f"```\n{analysis.get('raw_analysis', analysis.get('message', 'Unknown error'))}\n```"
+            )
+            return
+
+        # Build embed with results
+        embed = discord.Embed(
+            title=f"📝 Debate Analysis: {result['topic']}",
+            description=analysis.get('summary', 'Analysis complete'),
+            color=discord.Color.blue()
+        )
+
+        # Add participant scores
+        if 'participants' in analysis:
+            for username, data in analysis['participants'].items():
+                score = data.get('score', 'N/A')
+                strengths = data.get('strengths', 'N/A')
+                weaknesses = data.get('weaknesses', 'N/A')
+                fallacies = data.get('fallacies', [])
+
+                field_value = f"**Score:** {score}/10\n"
+                field_value += f"**Strengths:** {strengths}\n"
+                field_value += f"**Weaknesses:** {weaknesses}\n"
+                if fallacies:
+                    field_value += f"**Fallacies:** {', '.join(fallacies)}\n"
+
+                embed.add_field(
+                    name=f"👤 {username}",
+                    value=field_value,
+                    inline=False
+                )
+
+        # Add winner
+        winner = analysis.get('winner', 'N/A')
+        winner_reason = analysis.get('winner_reason', 'N/A')
+        embed.add_field(
+            name="🏆 Winner",
+            value=f"**{winner}**\n{winner_reason}",
+            inline=False
+        )
+
+        # Add metadata
+        embed.set_footer(text=f"{result['participant_count']} participants • {result['message_count']} messages")
+
+        await interaction.followup.send(embed=embed)
+
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error analyzing debate: {str(e)}")
+        print(f"❌ Debate review error: {e}")
+        import traceback
+        traceback.print_exc()
+
 # ===== iRacing Integration =====
 @bot.tree.command(name="iracing_link", description="Link your Discord account to your iRacing account")
 @app_commands.describe(iracing_id_or_name="Your iRacing Customer ID (numeric) or display name")
