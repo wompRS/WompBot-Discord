@@ -3253,28 +3253,55 @@ async def debate_review(interaction: discord.Interaction, file: discord.Attachme
 
         # Build embed with results
         embed = discord.Embed(
-            title=f"📝 Debate Analysis: {result['topic']}",
-            description=analysis.get('summary', 'Analysis complete'),
-            color=discord.Color.blue()
+            title=f"🔍 Fact-Check Analysis: {result['topic']}",
+            description=analysis.get('summary', 'Fact-checking complete'),
+            color=discord.Color.orange()
         )
 
         # Add participant scores
         if 'participants' in analysis:
             for username, data in analysis['participants'].items():
                 score = data.get('score', 'N/A')
-                strengths = data.get('strengths', 'N/A')
-                weaknesses = data.get('weaknesses', 'N/A')
-                fallacies = data.get('fallacies', [])
 
-                field_value = f"**Score:** {score}/10\n"
-                field_value += f"**Strengths:** {strengths}\n"
-                field_value += f"**Weaknesses:** {weaknesses}\n"
-                if fallacies:
-                    field_value += f"**Fallacies:** {', '.join(fallacies)}\n"
+                field_value = f"**Factual Accuracy Score:** {score}/10\n\n"
+
+                # Accuracy summary
+                accuracy_summary = data.get('accuracy_summary', '')
+                if accuracy_summary:
+                    field_value += f"**Assessment:** {accuracy_summary}\n\n"
+
+                # Correct points
+                correct_points = data.get('correct_points', [])
+                if correct_points:
+                    field_value += f"**✅ Correct Points:**\n"
+                    for point in correct_points[:3]:  # Limit to 3 to avoid overflow
+                        field_value += f"• {point}\n"
+                    if len(correct_points) > 3:
+                        field_value += f"• _(+{len(correct_points) - 3} more)_\n"
+                    field_value += "\n"
+
+                # Major errors
+                major_errors = data.get('major_errors', [])
+                if major_errors:
+                    field_value += f"**❌ Major Errors:**\n"
+                    for error in major_errors[:3]:  # Limit to 3
+                        field_value += f"• {error}\n"
+                    if len(major_errors) > 3:
+                        field_value += f"• _(+{len(major_errors) - 3} more)_\n"
+
+                # Factual claims (show a few key ones)
+                factual_claims = data.get('factual_claims', [])
+                if factual_claims and len(factual_claims) <= 5:
+                    field_value += f"\n**Key Claims:**\n"
+                    for claim_data in factual_claims[:3]:
+                        verdict = claim_data.get('verdict', 'UNKNOWN')
+                        claim_text = claim_data.get('claim', '')[:80]  # Truncate long claims
+                        emoji = {'TRUE': '✅', 'FALSE': '❌', 'MISLEADING': '⚠️', 'UNVERIFIABLE': '❓'}.get(verdict, '❓')
+                        field_value += f"{emoji} {verdict}: {claim_text}\n"
 
                 embed.add_field(
                     name=f"👤 {username}",
-                    value=field_value,
+                    value=field_value[:1024],  # Discord field value limit
                     inline=False
                 )
 
