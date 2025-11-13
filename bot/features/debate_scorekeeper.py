@@ -112,14 +112,33 @@ class DebateScorekeeper:
             for msg in debate['messages']:
                 transcript += f"{msg['username']}: {msg['content']}\n"
 
-            # LLM prompt for analysis (includes instructions in the prompt since we can't override system_prompt)
-            prompt = f"""As an expert debate judge, analyze this debate objectively and identify logical fallacies.
+            # LLM prompt for fact-based analysis
+            prompt = f"""You are a fact-checker and debate analyst. Your job is to determine who is FACTUALLY CORRECT in this debate, not who argued better.
 
-Analyze this debate and provide:
-1. A score (0-10) for each participant based on argument quality
-2. Logical fallacies detected (if any)
-3. The winner and why
-4. Key arguments from each side
+Analyze this debate transcript and:
+
+1. **Identify factual claims** made by each participant
+2. **Verify accuracy** of each claim based on your knowledge (mark as TRUE, FALSE, MISLEADING, or UNVERIFIABLE)
+3. **Score participants (0-10)** based on factual accuracy:
+   - 10 = All claims accurate and well-supported
+   - 7-9 = Mostly accurate with minor errors
+   - 4-6 = Mix of accurate and inaccurate claims
+   - 1-3 = Mostly inaccurate claims
+   - 0 = Completely false information
+
+4. **Determine winner** based on who made MORE FACTUALLY CORRECT statements (NOT who argued better)
+
+**Focus on:**
+- Technical accuracy (e.g., "SteamOS doesn't support Nvidia" - TRUE or FALSE?)
+- Verifiable facts (e.g., hardware compatibility, software features)
+- Logical consistency
+- Factual errors, exaggerations, or misrepresentations
+
+**Ignore:**
+- Rhetorical skill
+- Tone or politeness
+- Who "sounds" more convincing
+- Personal opinions (unless claimed as facts)
 
 Debate Transcript:
 {transcript}
@@ -129,14 +148,18 @@ Respond in JSON format:
     "participants": {{
         "username": {{
             "score": 8,
-            "strengths": "...",
-            "weaknesses": "...",
-            "fallacies": ["ad hominem", "strawman"]
+            "factual_claims": [
+                {{"claim": "specific claim here", "verdict": "TRUE/FALSE/MISLEADING", "explanation": "why"}},
+                {{"claim": "another claim", "verdict": "FALSE", "explanation": "correction"}}
+            ],
+            "accuracy_summary": "Overall assessment of factual accuracy",
+            "major_errors": ["error 1", "error 2"],
+            "correct_points": ["correct point 1", "correct point 2"]
         }}
     }},
     "winner": "username",
-    "winner_reason": "...",
-    "summary": "..."
+    "winner_reason": "Won based on factual correctness: [specific facts they got right vs opponent's errors]",
+    "summary": "Brief summary focusing on who was factually correct"
 }}"""
 
             # Call LLM (user_message, conversation_history)
