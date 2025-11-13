@@ -58,7 +58,7 @@ reminder_system = ReminderSystem(db)
 event_system = EventSystem(db)
 yearly_wrapped = YearlyWrapped(db)
 qotd = QuoteOfTheDay(db)
-debate_scorekeeper = DebateScorekeeper(db, llm)
+debate_scorekeeper = DebateScorekeeper(db, llm, search)
 
 # GDPR Privacy Compliance (mandatory per EU regulations)
 from features.gdpr_privacy import GDPRPrivacyManager
