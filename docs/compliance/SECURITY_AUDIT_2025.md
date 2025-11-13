@@ -251,14 +251,14 @@ TOKEN = os.getenv('DISCORD_TOKEN')
 | Art. 15: Access | `/download_my_data` command | ✅ |
 | Art. 16: Rectification | Admin contact + commands | ✅ |
 | Art. 17: Erasure | `/delete_my_data` with 30-day grace | ✅ |
-| Art. 18: Restriction | `/wompbot_noconsent` | ✅ |
+| Art. 18: Restriction | `/wompbot_optout` | ✅ |
 | Art. 20: Portability | JSON export format | ✅ |
-| Art. 21: Object | `/wompbot_noconsent` | ✅ |
+| Art. 21: Object | `/wompbot_optout` | ✅ |
 
 ### Data Protection Principles (Art. 5)
 ✅ **FULLY COMPLIANT**
 
-- ✅ **Lawfulness**: Consent-based processing
+- ✅ **Lawfulness**: Legitimate interest-based processing with opt-out (Art. 6.1.f)
 - ✅ **Purpose Limitation**: Data used only for stated purposes
 - ✅ **Data Minimization**: Collect only necessary data
 - ✅ **Accuracy**: User can update data

@@ -108,15 +108,14 @@ Complete implementation of EU GDPR (Regulation 2016/679) with all mandatory data
 | Right of Access | Art. 15 | `/download_my_data` | ✅ Implemented |
 | Right to Erasure | Art. 17 | `/delete_my_data` | ✅ Implemented |
 | Right to Data Portability | Art. 20 | `/download_my_data` | ✅ Implemented |
-| Right to Object | Art. 21 | `/wompbot_noconsent` | ✅ Implemented |
+| Right to Object | Art. 21 | `/wompbot_optout` | ✅ Implemented |
 | Right to Rectification | Art. 16 | Contact admin | ✅ Supported |
-| Right to Restriction | Art. 18 | `/wompbot_noconsent` | ✅ Implemented |
+| Right to Restriction | Art. 18 | `/wompbot_optout` | ✅ Implemented |
 
 ### New User Commands
 
 **Privacy Management**:
-- `/wompbot_consent` - Provide data processing consent (required)
-- `/wompbot_noconsent` - Opt out of data collection
+- `/wompbot_optout` - Opt out of data collection (users opted-in by default)
 - `/download_my_data` - Export all data in JSON format (Art. 15)
 - `/delete_my_data` - Request deletion with a 30-day grace period (Art. 17)
 - `/cancel_deletion` - Cancel a pending deletion request
@@ -435,9 +434,10 @@ docker-compose up -d
 ## ⚠️ Breaking Changes
 
 ### For Users
-- **Consent Required**: Most features now require explicit consent via `/wompbot_consent`
-- **Opt-Out Method**: Use `/wompbot_noconsent` to opt out of data collection
+- **Opt-Out Model**: Users are opted-in by default under legitimate interest (GDPR Art. 6.1.f)
+- **Opt-Out Method**: Use `/wompbot_optout` to opt out of data collection anytime
 - **Data Deletion**: 30-day grace period added (was immediate before)
+- **Privacy First**: Easy access to all GDPR rights via simple commands
 
 ### For Administrators
 - **Database Changes**: New tables added (backward compatible)

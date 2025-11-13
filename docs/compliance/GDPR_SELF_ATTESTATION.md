@@ -4,25 +4,26 @@
 
 **Organization**: WompBot Discord Bot
 **Data Controller**: [Bot Administrator/Organization Name]
-**Attestation Date**: November 7, 2025
+**Attestation Date**: November 13, 2025 (Updated)
 **Auditor**: Internal Code Audit
 **Regulation**: EU GDPR (Regulation 2016/679)
 **Scope**: All data processing activities related to Discord bot operations
 **Status**: ⚠️ **PARTIAL COMPLIANCE - ACTION REQUIRED**
+**Data Processing Model**: **Opt-Out** (Legitimate Interest basis - Art. 6.1.f)
 
 ---
 
 ## Executive Summary
 
-This document provides an honest assessment of WompBot's GDPR compliance status based on a comprehensive code audit conducted on November 7, 2025. The bot implements strong consent management and user rights infrastructure, but **has critical gaps that prevent full compliance**.
+This document provides an honest assessment of WompBot's GDPR compliance status based on a comprehensive code audit, last updated November 13, 2025. The bot operates under **Legitimate Interest (GDPR Art. 6.1.f)** with an opt-out model, and implements strong user rights infrastructure, but **has critical gaps that prevent full compliance**.
 
-**Compliance Score**: ~70% (35/49 controls fully implemented, 14 require action)
+**Compliance Score**: ~72% (36/49 controls fully implemented, 13 require action)
 
 **Implemented Controls**:
-- ✅ Consent management with audit trail (Art. 7)
+- ✅ Opt-out data processing with audit trail (Art. 6.1.f + Art. 21)
 - ✅ Data export functionality (Art. 15)
 - ✅ Partial deletion capability (Art. 17)
-- ✅ Consent withdrawal (Art. 21)
+- ✅ Easy opt-out mechanism (Art. 21)
 - ✅ Lawful basis documented (Art. 6)
 - ✅ Technical security measures (Art. 32)
 - ✅ Breach notification procedures (Art. 33-34)
@@ -164,7 +165,7 @@ This document provides an honest assessment of WompBot's GDPR compliance status 
 
 **Implementation**:
 - ✅ Retention policies documented in `data_retention_config`
-- ✅ Users can delete data via `/delete_my_data` or withdraw consent (`/wompbot_noconsent`)
+- ✅ Users can delete data via `/delete_my_data` or opt out (`/wompbot_optout`)
 - ✅ Admins review storage footprint via `/privacy_settings` and `/privacy_audit`
 - ✅ Ephemeral caches (stats/history) trimmed in scheduled cleanup; primary messages retained until the user requests removal
 
@@ -180,7 +181,7 @@ This document provides an honest assessment of WompBot's GDPR compliance status 
 **Evidence**:
 - File: `bot/features/gdpr_privacy.py` lines 450-530 - Cleanup helpers (cache purges, user-request erasure)
 - File: `bot/main.py` lines 569-601 - Daily cleanup background task (cache enforcement)
-- Commands: `/delete_my_data`, `/wompbot_noconsent`, `/privacy_settings`, `/privacy_audit`
+- Commands: `/delete_my_data`, `/wompbot_optout`, `/privacy_settings`, `/privacy_audit`
 - Database Table: `data_retention_config` - Policy declarations
 
 **Verification Method**: Review `/privacy_settings` output, audit log entries for deletion requests
@@ -246,61 +247,61 @@ This document provides an honest assessment of WompBot's GDPR compliance status 
 
 ## 2. Lawful Basis for Processing (Art. 6)
 
-### 2.1 Consent (Art. 6(1)(a))
-
-**Requirement**: Processing based on freely given, specific, informed, and unambiguous consent.
-
-**Implementation**:
-- ✅ Explicit consent collection via interactive buttons
-- ✅ Clear explanation before consent given
-- ✅ Granular consent (can withdraw anytime)
-- ✅ Consent tracked with timestamp and version
-
-**Consent Flow**:
-1. User triggers feature requiring data
-2. Bot shows consent request with full disclosure
-3. User clicks "I Accept" or "I Decline"
-4. Consent recorded in database with timestamp
-5. User can withdraw via `/wompbot_noconsent`
-
-**Evidence**:
-- File: `bot/privacy_commands.py` lines 15-100 - ConsentView interactive UI
-- File: `bot/features/gdpr_privacy.py` lines 36-90 - Consent recording function
-- Database Table: `user_consent` - Consent records
-- Fields: `consent_given`, `consent_date`, `consent_version`, `consent_method`
-
-**Verification Method**: Test consent flow end-to-end
-**Status**: ✅ **COMPLIANT**
-
----
-
-### 2.2 Legitimate Interest (Art. 6(1)(f))
+### 2.1 Legitimate Interest (Art. 6(1)(f)) - PRIMARY BASIS
 
 **Requirement**: Processing necessary for legitimate interests, balanced against data subject rights.
 
 **Implementation**:
-- ✅ Legitimate Interest Assessment (LIA) conducted
-- ✅ Server statistics: Legitimate interest in community management
-- ✅ Abuse prevention: Legitimate interest in user safety
-- ✅ Balancing test: Minimal data, strong security, opt-out available
+- ✅ Users opted-in by default under legitimate interest
+- ✅ Clear explanation of data processing in privacy policy
+- ✅ Easy opt-out mechanism available anytime
+- ✅ Opt-out status tracked with timestamp and method
 
-**Legitimate Interests Identified**:
-1. **Server Analytics**: Community managers need insights
-2. **Abuse Prevention**: Detecting harmful behavior
-3. **Service Improvement**: Understanding usage patterns
+**Opt-Out Model**:
+1. Users are opted-in by default for conversational AI features
+2. Privacy policy accessible via `/privacy_policy` explains processing
+3. User can opt out anytime via `/wompbot_optout`
+4. Opt-out immediately stops data collection
+5. Opt-out status tracked in database with timestamp
 
-**Balancing Test**:
-- **Necessity**: Data required for stated purposes ✅
+**Evidence**:
+- File: `bot/privacy_commands.py` - Opt-out command implementation
+- File: `bot/features/gdpr_privacy.py` lines 36-90 - Opt-out tracking function
+- Database Table: `user_consent` - Opt-out records
+- Fields: `consent_withdrawn`, `consent_withdrawn_date`, `consent_method`
+
+**Verification Method**: Test opt-out flow end-to-end
+**Status**: ✅ **COMPLIANT**
+
+---
+
+### 2.2 Consent (Art. 6(1)(a)) - OPTIONAL FEATURES
+
+**Requirement**: Processing based on freely given, specific, informed, and unambiguous consent.
+
+**Implementation**:
+- ✅ Explicit consent for optional features (iRacing integration)
+- ✅ Clear explanation before consent given
+- ✅ Granular consent (can withdraw anytime)
+- ✅ Consent tracked with timestamp and version
+
+**Consent Used For**:
+1. **iRacing Account Linking**: User explicitly links their iRacing customer ID
+2. **Optional Third-Party Integrations**: Any feature requiring external data sharing
+
+**Balancing Test for Legitimate Interest**:
+- **Necessity**: Conversational context required for AI responses ✅
 - **Less Intrusive Means**: Minimal data collection ✅
-- **Data Subject Rights**: Opt-out available ✅
-- **Reasonable Expectations**: Clearly communicated ✅
+- **Data Subject Rights**: Opt-out available anytime via `/wompbot_optout` ✅
+- **Reasonable Expectations**: Users expect conversational AI to maintain context ✅
 
 **Evidence**:
 - File: `GDPR_COMPLIANCE.md` section 1.2 - Legitimate interest justification
 - Database: `data_retention_config` - Purpose-linked retention
 - Privacy Policy: Section 3 - Legitimate interest disclosure
+- Command: `/wompbot_optout` - Easy opt-out mechanism
 
-**Verification Method**: Legitimate Interest Assessment documented
+**Verification Method**: Legitimate Interest Assessment documented, opt-out flow tested
 **Status**: ✅ **COMPLIANT**
 
 ---
@@ -329,81 +330,83 @@ This document provides an honest assessment of WompBot's GDPR compliance status 
 
 ---
 
-## 3. Consent Management (Art. 7)
+## 3. Opt-Out Management (Art. 21)
 
-### 3.1 Conditions for Consent
+### 3.1 Right to Object
 
-**Requirement**: Consent must be verifiable, freely given, specific, informed, and unambiguous.
+**Requirement**: Users must be able to object to processing under legitimate interest.
 
 **Checklist**:
-- ✅ **Freely Given**: No service penalty for declining (basic functions remain)
-- ✅ **Specific**: Consent for bot features, not blanket consent
-- ✅ **Informed**: Full disclosure before consent
-- ✅ **Unambiguous**: Clear affirmative action (button click)
-- ✅ **Verifiable**: Consent records stored with timestamp
+- ✅ **Easy Access**: Single command `/wompbot_optout` to object
+- ✅ **Immediate Effect**: Data processing stops immediately upon opt-out
+- ✅ **Transparent**: Privacy policy explains opt-out rights clearly
+- ✅ **Verifiable**: Opt-out records stored with timestamp
+- ✅ **No Penalty**: Users can still use basic bot features after opting out
 
 **Evidence**:
-- File: `bot/privacy_commands.py` lines 25-100 - Consent UI shows all information
-- Database: `user_consent.consent_method` - Tracks how consent was given
-- No pre-ticked boxes or implied consent
-- Clear "I Accept" vs "I Decline" buttons
+- File: `bot/privacy_commands.py` - `/wompbot_optout` command implementation
+- Database: `user_consent.consent_withdrawn`, `consent_withdrawn_date` - Tracks opt-out status
+- Privacy Policy: Clear explanation of opt-out rights and process
+- Command: `/my_privacy_status` - Users can verify their opt-out status
 
-**Verification Method**: Consent flow UI review
+**Verification Method**: Opt-out flow review, immediate cessation verification
 **Status**: ✅ **COMPLIANT**
 
 ---
 
-### 3.2 Withdrawal of Consent
+### 3.2 Opt-Out Processing
 
-**Requirement**: Data subject must be able to withdraw consent as easily as giving it.
+**Requirement**: Opt-out must be processed immediately and effectively.
 
 **Implementation**:
-- ✅ `/wompbot_noconsent` command available
-- ✅ Single command to withdraw (same ease as giving)
+- ✅ `/wompbot_optout` command available
+- ✅ Single command to opt out (simple and clear)
 - ✅ Data processing stops immediately
-- ✅ Withdrawal tracked in database
+- ✅ Opt-out tracked in database with timestamp
+- ✅ User excluded from all behavioral profiling and message storage
 
 **Evidence**:
-- File: `bot/privacy_commands.py` lines 162-190 - Withdraw consent command
-- File: `bot/features/gdpr_privacy.py` lines 60-90 - Withdrawal processing
+- File: `bot/privacy_commands.py` - Opt-out command implementation
+- File: `bot/features/gdpr_privacy.py` lines 60-90 - Opt-out processing
+- File: `bot/main.py` - Opt-out checks before data processing
 - Database: `user_consent.consent_withdrawn`, `consent_withdrawn_date`
 
-**Verification Method**: Test withdrawal flow
+**Verification Method**: Test opt-out flow and verify data processing cessation
 **Status**: ✅ **COMPLIANT**
 
 ---
 
 ### 3.3 Burden of Proof
 
-**Requirement**: Controller must demonstrate consent was given.
+**Requirement**: Controller must demonstrate lawful basis and user opt-out status.
 
 **Implementation**:
-- ✅ All consent actions logged in database
-- ✅ Timestamp of consent recorded
-- ✅ Method of consent recorded
-- ✅ Policy version consented to tracked
+- ✅ All opt-out actions logged in database
+- ✅ Timestamp of opt-out recorded
+- ✅ Method of opt-out recorded (command, interface)
+- ✅ Opt-out status tracked with user consent records
 - ✅ Audit trail immutable (7-year retention)
+- ✅ Legitimate interest documented in privacy policy
 
 **Proof Available**:
 ```sql
 SELECT
     user_id,
-    consent_given,
-    consent_date,
-    consent_version,
-    consent_method,
     consent_withdrawn,
-    consent_withdrawn_date
+    consent_withdrawn_date,
+    consent_method,
+    consent_version
 FROM user_consent
 WHERE user_id = ?;
 ```
 
 **Evidence**:
-- Database Table: `user_consent` - Complete consent records
-- Database Table: `data_audit_log` - Consent actions logged
-- Audit entries: `consent_given`, `consent_withdrawn`
+- Database Table: `user_consent` - Complete opt-out records
+- Database Table: `data_audit_log` - Opt-out actions logged
+- Audit entries: `consent_withdrawn`
+- Privacy Policy: Legitimate interest basis documented
 
-**Verification Method**: Query consent records for any user
+**Verification Method**: Query opt-out records for any user
 **Status**: ✅ **COMPLIANT**
 
 ---
@@ -526,21 +529,22 @@ WHERE user_id = ?;
 
 **Implementation**: ✅ **FULLY IMPLEMENTED**
 
-**Method**: `/wompbot_noconsent` command
+**Method**: `/wompbot_optout` command
 
 **Effects**:
 - ✅ Data marked as opted-out
-- ✅ No further processing
-- ✅ Data not included in analytics
-- ✅ Data not shared with LLM providers
-- ✅ Data retained but not processed
+- ✅ No further processing of messages or behavioral data
+- ✅ Data not included in analytics or behavioral profiling
+- ✅ Data not shared with LLM providers for personalization
+- ✅ Data retained but not processed (restriction in place)
 
 **Evidence**:
-- File: `bot/privacy_commands.py` lines 162-190 - Withdrawal = restriction
-- Database: `user_profiles.opted_out`, `data_processing_allowed` flags
-- Processing checks: All features check opt-out status
+- File: `bot/privacy_commands.py` - `/wompbot_optout` implementation
+- File: `bot/main.py` - Opt-out checks before processing
+- Database: `user_consent.consent_withdrawn` flag
+- Processing checks: All features check opt-out status before processing
 
-**Verification Method**: Verify opted-out users excluded from processing
+**Verification Method**: Verify opted-out users excluded from all processing
 **Status**: ✅ **COMPLIANT**
 
 ---
@@ -583,22 +587,24 @@ WHERE user_id = ?;
 
 ### 4.6 Right to Object (Art. 21)
 
-**Requirement**: Data subject can object to processing.
+**Requirement**: Data subject can object to processing based on legitimate interest.
 
 **Implementation**: ✅ **FULLY IMPLEMENTED**
 
-**Method**: `/wompbot_noconsent` command
+**Method**: `/wompbot_optout` command
 
 **Effects**:
-- ✅ Immediate cessation of processing
-- ✅ Opt-out flag set
-- ✅ No future data collection
-- ✅ Can re-consent later
+- ✅ Immediate cessation of data processing
+- ✅ Opt-out flag set in database
+- ✅ No future data collection or behavioral profiling
+- ✅ Messages stored with redacted content only (metadata preserved)
+- ✅ Bot still responds but without personalization
 
 **Evidence**:
-- File: `bot/privacy_commands.py` lines 162-190 - Objection handling
-- Database: Opt-out status tracked
-- Legacy support: `NoDataCollection` role still honored
+- File: `bot/privacy_commands.py` - `/wompbot_optout` objection handling
+- File: `bot/main.py` - Opt-out status checks before processing
+- Database: `user_consent.consent_withdrawn` tracks opt-out status
+- Privacy policy: Clear explanation of objection rights
 
 **Verification Method**: Verify objection stops processing immediately
 **Status**: ✅ **COMPLIANT**
@@ -639,8 +645,8 @@ WHERE user_id = ?;
 **Access Method**: `/privacy_policy` command
 
 **Supplementary Transparency**:
-- Automated welcome DM (when `PRIVACY_DM_NEW_MEMBERS=1`) outlines consent options, privacy commands, and contact information at first interaction
-- Consent flow reiterates key points before `/wompbot_consent` is accepted
+- Automated welcome DM (when `PRIVACY_DM_NEW_MEMBERS=1`) outlines opt-out options, privacy commands, and contact information at first interaction
+- Privacy policy clearly explains default opt-in status and easy opt-out via `/wompbot_optout`
 
 **Information Provided**:
 - ✅ Identity and contact details of controller
@@ -1058,13 +1064,12 @@ WHERE user_id = ?;
 - `get_privacy_policy()` - Policy retrieval
 
 **Commands Implemented**:
-- `/wompbot_consent` - Provide consent
-- `/wompbot_noconsent` - Withdraw consent
+- `/wompbot_optout` - Opt out of data processing (Art. 21)
 - `/download_my_data` - Export data (Art. 15)
 - `/delete_my_data` - Request deletion (Art. 17)
 - `/cancel_deletion` - Cancel deletion
 - `/privacy_policy` - View policy
-- `/my_privacy_status` - Check status
+- `/my_privacy_status` - Check opt-out status
 - `/privacy_support` - Get help
 
 **Verification**: Code review completed
@@ -1291,10 +1296,10 @@ Contact: ___________________________________
 | Art. 15 | Right of access | ✅ `/download_my_data` |
 | Art. 16 | Right to rectification | ✅ Update mechanisms |
 | Art. 17 | Right to erasure | ✅ `/delete_my_data` |
-| Art. 18 | Right to restriction | ✅ `/wompbot_noconsent` |
+| Art. 18 | Right to restriction | ✅ `/wompbot_optout` |
 | Art. 19 | Notification obligation | ✅ N/A (no recipients) |
 | Art. 20 | Right to data portability | ✅ JSON export |
-| Art. 21 | Right to object | ✅ `/wompbot_noconsent` |
+| Art. 21 | Right to object | ✅ `/wompbot_optout` |
 | Art. 22 | Automated decision-making | ✅ N/A (not used) |
 | Art. 25 | Data protection by design | ✅ Implemented |
 | Art. 30 | Records of processing | ✅ Complete records |
@@ -1310,10 +1315,10 @@ Contact: ___________________________________
 
 | Data Category | Legal Basis | Target Retention | Enforcement / Notes |
 |---------------|-------------|------------------|---------------------|
-| Discord User ID | Contract | Indefinite | Needed for pseudonymous identification. |
-| Username | Contract | 1 year guideline | Updated automatically; retained until user deletion. |
-| Message Content | Consent/LI | 1 year guideline | Removed when user withdraws consent or issues `/delete_my_data`. |
-| Behavioral Data | LI | 1 year guideline | Removed when user withdraws consent/deletes data. |
+| Discord User ID | Legitimate Interest | Indefinite | Needed for pseudonymous identification. |
+| Username | Legitimate Interest | 1 year guideline | Updated automatically; retained until user deletion. |
+| Message Content | Legitimate Interest | 1 year guideline | Removed when user opts out via `/wompbot_optout` or issues `/delete_my_data`. |
+| Behavioral Data | Legitimate Interest | 1 year guideline | Removed when user opts out or deletes data. |
 | Claims/Quotes | Contract | 5 years | Treated as user-generated content; removed on request. |
 | Hot Takes | Consent | 5 years | Public statements, retained unless user requests removal. |
 | Search Queries | LI | 90 days guideline | Cleared during privacy reviews; user deletion honoured. |

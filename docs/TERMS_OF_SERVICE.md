@@ -72,19 +72,26 @@ We share data with these processors to provide services:
 
 ## 4. Your Rights & Controls
 
-### 4.1 Consent Required
-Most features require explicit consent via `/wompbot_consent`. Without consent:
-- Messages are stored with redacted content
-- You're excluded from statistics and features
-- Bot functionality is limited
+### 4.1 Data Processing Model (Opt-Out)
+**WompBot operates under Legitimate Interest (GDPR Art. 6.1.f)**
+
+**Default Behavior**: All users are opted-in by default for:
+- Message history storage for conversational context
+- Behavioral profiling for personalized responses
+- Full access to all bot features
+
+**When You Opt Out** (via `/wompbot_optout`):
+- Messages are stored with redacted content (metadata only)
+- You're excluded from behavioral profiling
+- Bot still responds but without personalization
 
 ### 4.2 Your Data Rights
 - **Access**: `/download_my_data` - Export all your data in JSON format (GDPR Art. 15)
 - **Deletion**: `/delete_my_data` - Request deletion with 30-day grace period (GDPR Art. 17)
   - Currently deletes: messages, claims, quotes, reminders, events, iRacing links
   - Not deleted: user_behavior, search_logs, debate records (admin must handle)
-- **Withdraw Consent**: `/wompbot_noconsent` - Stop data collection immediately
-- **View Status**: `/my_privacy_status` - Check your current consent status
+- **Opt Out**: `/wompbot_optout` - Stop data collection immediately (GDPR Art. 21)
+- **View Status**: `/my_privacy_status` - Check your current opt-out status
 - **Cancel Deletion**: `/cancel_deletion` - Undo deletion request within 30 days
 
 ### 4.3 Data Retention
