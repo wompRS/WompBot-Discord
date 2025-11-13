@@ -3244,10 +3244,15 @@ async def debate_review(interaction: discord.Interaction, file: discord.Attachme
 
         # Check if analysis failed
         if 'error' in analysis:
+            error_msg = analysis.get('raw_analysis', analysis.get('message', 'Unknown error'))
+            # Truncate to fit Discord's 2000 char limit (with room for formatting)
+            if len(error_msg) > 1800:
+                error_msg = error_msg[:1800] + "...\n(truncated)"
+
             await interaction.followup.send(
                 f"❌ **Analysis Error**\n\n"
                 f"The LLM analysis encountered an issue:\n"
-                f"```\n{analysis.get('raw_analysis', analysis.get('message', 'Unknown error'))}\n```"
+                f"```\n{error_msg}\n```"
             )
             return
 
