@@ -5,17 +5,40 @@ import os
 import re
 
 class SelfKnowledge:
-    def __init__(self):
+    def __init__(self, db=None):
         self.docs_path = os.path.join(os.path.dirname(__file__), '..', 'docs')
         self.readme_path = os.path.join(os.path.dirname(__file__), '..', 'README.md')
+        self.db = db
 
-    def is_about_self(self, message_content):
+    def is_follow_up_question(self, message_content):
+        """Detect if this is a follow-up question like 'what else?', 'tell me more', etc."""
+        content_lower = message_content.lower().strip()
+
+        # Very short follow-up patterns
+        follow_up_patterns = [
+            r'^(what|tell me|show me|list|give me)\s+(else|more)[\?\.]?$',
+            r'^(and|how about)\s+',
+            r'^(continue|go on|keep going|more)[\?\.]?$',
+            r'^(anything|what)\s+else[\?\.]?$',
+            r'^(tell me|show me)\s+more[\?\.]?$',
+            r'^(what|any)\s+other',
+            r'^more\s+(feature|command|info)',
+        ]
+
+        for pattern in follow_up_patterns:
+            if re.search(pattern, content_lower):
+                print(f"🔍 Follow-up question detected: {pattern[:50]}...")
+                return True
+
+        return False
+
+    def is_about_self(self, message_content, conversation_history=None, bot_user_id=None):
         """Detect if user is asking about WompBot itself"""
         content_lower = message_content.lower()
 
         # Self-referential patterns
         self_patterns = [
-            r'\b(how do (i|you)|can (i|you)|what (can|does|is)|tell me about)\b.*\b(wompbot|you|this bot|the bot)\b',
+            r'\b(how do (i|you)|can (i|you)|what (can|does|is)|tell me about)\b.*\b(wompbot|you|your|this bot|the bot)\b',
             r'\bwompbot\b.*\b(do|work|feature|command|can)\b',
             r'\b(what are|show me|list)\b.*\b(your|wompbot\'?s?)\b.*\b(feature|command|capabilit)',
             r'\b(how (to|do i))\b.*\b(use|trigger|activate|enable|set up)\b',
@@ -23,10 +46,12 @@ class SelfKnowledge:
             r'\b(explain|describe|tell me about)\b.*\b(claim|fact.?check|quote|wrapped|search|rate limit)',
             r'\bhelp\b.*\bwith\b',
             r'\bwhat (is|does)\b.*\b(your|this)\b',
+            r'\byour (feature|command|capabilit)',
         ]
 
         for pattern in self_patterns:
             if re.search(pattern, content_lower):
+                print(f"🔍 Self-knowledge pattern matched: {pattern[:50]}...")
                 return True
 
         # Direct feature questions
@@ -38,8 +63,21 @@ class SelfKnowledge:
 
         for feature in features:
             if feature in content_lower and any(word in content_lower for word in ['how', 'what', 'explain', 'tell', 'show']):
+                print(f"🔍 Self-knowledge feature matched: {feature}")
                 return True
 
+        # Check for follow-up questions if conversation history is provided
+        if conversation_history and bot_user_id and self.is_follow_up_question(message_content):
+            # Check if the last bot message mentioned features, commands, or capabilities
+            for msg in reversed(conversation_history[-3:]):  # Check last 3 messages
+                if msg.get('user_id') != bot_user_id:  # Skip non-bot messages
+                    continue
+                bot_response = (msg.get('content') or '').lower()
+                if any(word in bot_response for word in ['feature', 'command', 'capability', 'can help', 'designed to']):
+                    print(f"🔍 Follow-up to previous self-knowledge response")
+                    return True
+
+        print(f"❌ Self-knowledge: No match for: '{message_content[:80]}...'")
         return False
 
     def get_relevant_docs(self, message_content):
@@ -80,12 +118,13 @@ class SelfKnowledge:
 
         return docs_to_load
 
-    def load_documentation(self, message_content):
+    def load_documentation(self, message_content, conversation_history=None, bot_user_id=None):
         """Load and format relevant documentation for LLM context"""
-        if not self.is_about_self(message_content):
+        if not self.is_about_self(message_content, conversation_history, bot_user_id):
             return None
 
         docs = self.get_relevant_docs(message_content)
+        print(f"📚 Loading {len(docs)} documentation files")
 
         doc_content = []
         for doc_path in docs:
@@ -99,17 +138,22 @@ class SelfKnowledge:
 
                         doc_name = os.path.basename(doc_path)
                         doc_content.append(f"=== {doc_name} ===\n{content}\n")
+                        print(f"  ✓ Loaded {doc_name}")
                 except Exception as e:
                     print(f"⚠️  Error loading {doc_path}: {e}")
+            else:
+                print(f"⚠️  Doc not found: {doc_path}")
 
         if not doc_content:
+            print(f"⚠️  No documentation content loaded")
             return None
 
+        print(f"✓ Successfully loaded {len(doc_content)} documentation files")
         return "\n".join(doc_content)
 
-    def format_for_llm(self, message_content):
+    def format_for_llm(self, message_content, conversation_history=None, bot_user_id=None):
         """Format documentation as LLM context"""
-        docs = self.load_documentation(message_content)
+        docs = self.load_documentation(message_content, conversation_history, bot_user_id)
 
         if not docs:
             return None

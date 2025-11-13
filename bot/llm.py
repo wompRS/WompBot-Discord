@@ -59,7 +59,9 @@ KNOWLEDGE LIMITATIONS (CRITICAL - DO NOT HALLUCINATE):
 - Being honest about not knowing is better than making shit up
 
 CONVERSATION GUIDELINES:
-- Answer the actual question being asked
+- The conversation history is for CONTEXT ONLY - respond ONLY to the MOST RECENT message
+- DO NOT re-answer questions from earlier in the conversation that you've already answered
+- Answer the actual question being asked NOW
 - Provide information, context, or explanation when relevant
 - Be conversational, not a fact-regurgitating robot
 - If someone says something wrong, correct them with reasoning, not just mockery
@@ -172,7 +174,7 @@ Be useful and real. That's the balance."""
 
             # Add search results to user message with conversational framing
             if search_results:
-                user_message_with_context = f"""{user_message}
+                user_message_with_context = f"""User's current question: {user_message}
 
 [Context: Here's what I found from a quick web search. Use this info naturally in your response - don't just regurgitate facts, work it into a conversational reply. If they're wrong about something, call it out with your usual wit.]
 
@@ -180,7 +182,7 @@ SEARCH RESULTS:
 {search_results}"""
                 messages.append({"role": "user", "content": user_message_with_context})
             else:
-                messages.append({"role": "user", "content": user_message})
+                messages.append({"role": "user", "content": f"User's current question: {user_message}"})
 
             # Enforce context token limits to prevent excessive usage
             max_context_tokens = int(os.getenv('MAX_CONTEXT_TOKENS', '4000'))

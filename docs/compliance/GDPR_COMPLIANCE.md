@@ -2,11 +2,12 @@
 
 ## Overview
 
-This bot implements GDPR-focused privacy controls including consent management, data export, and deletion capabilities. However, **full compliance requires additional configuration and administrative oversight**.
+This bot implements GDPR-compliant privacy controls including **opt-out data processing**, data export, and deletion capabilities. The bot operates under **Legitimate Interest** (GDPR Art. 6.1.f) with user opt-out rights. However, **full compliance requires additional configuration and administrative oversight**.
 
-**Compliance Status**: ⚠️ **Partial Compliance - Action Required** (as of 2025-11-07)
+**Compliance Status**: ⚠️ **Partial Compliance - Action Required** (as of 2025-11-13)
 **Privacy Policy Version**: 1.0
-**Last Audit**: 2025-11-07 (comprehensive code audit)
+**Last Audit**: 2025-11-13 (opt-out model implementation)
+**Data Processing Model**: **Opt-Out** (users are opted-in by default, can opt out anytime)
 
 ### Known Gaps Requiring Action
 1. **Automated Retention**: Only stats_cache is automatically purged. Messages, behavior data, search logs, and audit logs require manual review.
@@ -34,18 +35,24 @@ This bot implements GDPR-focused privacy controls including consent management, 
 
 Per GDPR Article 6, we process personal data under the following legal bases:
 
-### 1.1 Consent (Art. 6(1)(a))
-- **Primary Basis**: Explicit user consent collected via `/wompbot_consent` command
-- **Consent Management**: Users can withdraw consent anytime via `/wompbot_noconsent`
-- **Proof of Consent**: All consent actions logged in `user_consent` table with timestamps
-
-### 1.2 Legitimate Interest (Art. 6(1)(f))
-- **Server Statistics**: Aggregate analytics for community management
-- **Abuse Prevention**: Behavioral analysis for safety and moderation
+### 1.1 Legitimate Interest (Art. 6(1)(f)) - **PRIMARY BASIS**
+- **Conversational AI**: Message history and context required for coherent conversations
+- **Personalization**: Behavioral profiling (tone, style) to match user communication preferences
+- **Server Analytics**: Aggregate analytics for community management
+- **Abuse Prevention**: Safety and moderation through behavioral analysis
 - **Service Improvement**: Usage patterns for feature development
 
-### 1.3 Contract (Art. 6(1)(b))
-- **Feature Delivery**: Processing necessary to provide requested features (reminders, stats, etc.)
+**Balance Test**: Users reasonably expect a conversational AI bot to:
+- Remember previous conversations
+- Adapt to their communication style
+- Provide personalized, context-aware responses
+
+**Opt-Out Rights**: Users can opt out anytime via `/wompbot_optout` command
+- **Proof of Opt-Out**: All opt-out actions logged in `user_consent` table with timestamps
+- **Immediate Effect**: Data collection stops immediately upon opt-out
+
+### 1.2 Contract (Art. 6(1)(b))
+- **Feature Delivery**: Processing necessary to provide requested features (reminders, stats, claims, quotes, etc.)
 
 ---
 
@@ -61,10 +68,10 @@ Per GDPR Article 6, we process personal data under the following legal bases:
 ### 2.2 Behavioral Data
 | Data Type | Purpose | Legal Basis | Retention |
 |-----------|---------|-------------|-----------|
-| Message Content | Context for features | Consent | 1 year |
-| Interaction Patterns | Network analysis | Legitimate Interest | 1 year |
-| Profanity Scores | Community moderation | Legitimate Interest | 1 year |
-| Tone Analysis | Behavioral insights | Consent | 1 year |
+| Message Content | Conversational context | Legitimate Interest (opt-out available) | 1 year |
+| Interaction Patterns | Network analysis | Legitimate Interest (opt-out available) | 1 year |
+| Profanity Scores | Personalization & moderation | Legitimate Interest (opt-out available) | 1 year |
+| Tone Analysis | Response personalization | Legitimate Interest (opt-out available) | 1 year |
 | Claims/Quotes | User-generated content | Contract | 5 years |
 | Debate History | Community engagement | Contract | 3 years |
 
@@ -141,13 +148,14 @@ Per GDPR Article 6, we process personal data under the following legal bases:
 - Includes all personal data
 
 ### 3.4 Right to Object (Art. 21)
-**Command**: `/wompbot_noconsent`
+**Command**: `/wompbot_optout`
 
 **Implementation**:
 - Immediate cessation of data processing
 - User marked as opted-out
-- Future messages not stored
-- Features requiring data disabled
+- Future messages not stored (content redacted)
+- Behavioral profiling disabled
+- Bot still responds but without personalization
 
 ### 3.5 Right to Rectification (Art. 16)
 **Commands**:
@@ -257,13 +265,12 @@ data_retention_config (
 **Commands Module**: [`bot/privacy_commands.py`](bot/privacy_commands.py)
 
 **User Commands**:
-- `/wompbot_consent` - Provide data processing consent
-- `/wompbot_noconsent` - Withdraw consent
+- `/wompbot_optout` - Opt out of data processing (Art. 21)
 - `/download_my_data` - Export all data (Art. 15)
 - `/delete_my_data` - Request deletion (Art. 17)
 - `/cancel_deletion` - Cancel scheduled deletion
 - `/privacy_policy` - View full privacy policy
-- `/my_privacy_status` - View current status
+- `/my_privacy_status` - View current opt-out status
 - `/privacy_support` - Get help
 - `/privacy_settings` *(Admin)* - Live overview of consent + stored data volumes
 - `/privacy_audit` *(Admin)* - Generate JSON privacy audit snapshot
@@ -414,7 +421,7 @@ Per GDPR Art. 17(3), we retain data when required by law:
 
 ### 8.1 GDPR Principles (Art. 5)
 
-- [x] **Lawfulness, Fairness, Transparency**: Privacy policy + consent
+- [x] **Lawfulness, Fairness, Transparency**: Privacy policy + legitimate interest basis + opt-out rights
 - [x] **Purpose Limitation**: Data used only for stated purposes
 - [x] **Data Minimization**: Collect only what's necessary
 - [x] **Accuracy**: Users can correct data via commands
@@ -428,9 +435,9 @@ Per GDPR Art. 17(3), we retain data when required by law:
 - [x] Art. 15: Right of access (`/download_my_data`)
 - [x] Art. 16: Right to rectification (contact admin)
 - [x] Art. 17: Right to erasure (`/delete_my_data`)
-- [x] Art. 18: Right to restriction (`/wompbot_noconsent`)
+- [x] Art. 18: Right to restriction (`/wompbot_optout`)
 - [x] Art. 20: Right to data portability (JSON export)
-- [x] Art. 21: Right to object (`/wompbot_noconsent`)
+- [x] Art. 21: Right to object (`/wompbot_optout`)
 - [x] Art. 22: No automated decision-making (N/A)
 
 ### 8.3 Records of Processing (Art. 30)
