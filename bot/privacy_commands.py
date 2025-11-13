@@ -11,110 +11,6 @@ import io
 from datetime import datetime
 
 
-class ConsentView(View):
-    """Interactive view for consent collection"""
-
-    def __init__(self, privacy_manager, user_id: int, username: str):
-        super().__init__(timeout=300)  # 5 minute timeout
-        self.privacy_manager = privacy_manager
-        self.user_id = user_id
-        self.username = username
-        self.consent_given = None
-
-    @discord.ui.button(label="✅ I Accept", style=discord.ButtonStyle.green)
-    async def accept_button(self, interaction: discord.Interaction, button: Button):
-        """User accepts data processing"""
-        if interaction.user.id != self.user_id:
-            await interaction.response.send_message("❌ This is not for you!", ephemeral=True)
-            return
-
-        success = self.privacy_manager.record_consent(
-            self.user_id,
-            self.username,
-            consent_given=True,
-            consent_method='interactive_button'
-        )
-
-        if success:
-            await interaction.response.send_message(
-                "✅ **Consent Recorded**\n\n"
-                "Thank you! Your consent has been recorded. You can now use all bot features.\n\n"
-                "**Your Rights:**\n"
-                "• `/download_my_data` - Export all your data\n"
-                "• `/delete_my_data` - Delete all your data\n"
-                "• `/wompbot_noconsent` - Withdraw consent anytime\n"
-                "• `/privacy_policy` - View full privacy policy",
-                ephemeral=True
-            )
-        else:
-            await interaction.response.send_message(
-                "❌ Failed to record consent. Please try again or contact an administrator.",
-                ephemeral=True
-            )
-
-        self.consent_given = True
-        self.stop()
-
-    @discord.ui.button(label="❌ I Decline", style=discord.ButtonStyle.red)
-    async def decline_button(self, interaction: discord.Interaction, button: Button):
-        """User declines data processing"""
-        if interaction.user.id != self.user_id:
-            await interaction.response.send_message("❌ This is not for you!", ephemeral=True)
-            return
-
-        await interaction.response.send_message(
-            "📋 **Consent Declined**\n\n"
-            "You have declined data processing. The bot will not collect or store your data.\n\n"
-            "**Limited Functionality:**\n"
-            "Without consent, most bot features will be unavailable. You can change your "
-            "mind anytime with `/wompbot_consent`.\n\n"
-            "**What Happens Now:**\n"
-            "• Your messages will not be stored\n"
-            "• Statistics won't include your data\n"
-            "• Features requiring data storage won't work\n"
-            "• You can still view public information",
-            ephemeral=True
-        )
-
-        self.privacy_manager.record_consent(
-            self.user_id,
-            self.username,
-            consent_given=False,
-            consent_method='interactive_button'
-        )
-
-        self.consent_given = False
-        self.stop()
-
-    @discord.ui.button(label="📜 Read Policy", style=discord.ButtonStyle.gray)
-    async def read_policy_button(self, interaction: discord.Interaction, button: Button):
-        """Show privacy policy"""
-        if interaction.user.id != self.user_id:
-            await interaction.response.send_message("❌ This is not for you!", ephemeral=True)
-            return
-
-        policy = self.privacy_manager.get_privacy_policy()
-
-        if policy:
-            # Truncate policy for Discord's 4096 character limit
-            policy_text = policy['policy_text'][:3900] + "\n\n... (Use `/privacy_policy` for full policy)"
-
-            embed = discord.Embed(
-                title="🔒 WompBot Privacy Policy",
-                description=policy_text,
-                color=discord.Color.blue(),
-                timestamp=policy['effective_date']
-            )
-            embed.set_footer(text=f"Version {policy['version']}")
-
-            await interaction.response.send_message(embed=embed, ephemeral=True)
-        else:
-            await interaction.response.send_message(
-                "❌ Failed to load privacy policy. Please try again later.",
-                ephemeral=True
-            )
-
-
 class DeleteConfirmView(View):
     """Confirmation view for data deletion"""
 
@@ -188,54 +84,21 @@ def setup_privacy_commands(bot, db, privacy_manager):
         privacy_manager: GDPRPrivacyManager instance
     """
 
-    @bot.tree.command(name="wompbot_consent", description="Give consent for data processing (required for most features)")
-    async def wompbot_consent(interaction: discord.Interaction):
-        """Collect user consent for data processing"""
+    @bot.tree.command(name="wompbot_optout", description="Opt out of data collection and processing")
+    async def wompbot_optout(interaction: discord.Interaction):
+        """Opt out of data processing"""
         user_id = interaction.user.id
         username = str(interaction.user)
 
-        # Check if already consented
+        # Check if already opted out
         existing_consent = privacy_manager.check_consent(user_id)
-
-        if existing_consent and existing_consent['consent_given'] and not existing_consent['consent_withdrawn']:
+        if existing_consent and existing_consent.get('consent_withdrawn'):
             await interaction.response.send_message(
-                "✅ You have already given consent for data processing.\n\n"
-                "Use `/wompbot_noconsent` if you wish to withdraw it.",
+                "ℹ️ You are already opted out of data collection.\n\n"
+                "Use `/download_my_data` to export your data or `/delete_my_data` to delete it.",
                 ephemeral=True
             )
             return
-
-        # Show consent form
-        embed = discord.Embed(
-            title="🔒 Data Processing Consent Required",
-            description=(
-                "WompBot needs your consent to collect and process your data per GDPR.\n\n"
-                "**What We Collect:**\n"
-                "• Your messages and interactions\n"
-                "• Usage statistics and patterns\n"
-                "• Claims, quotes, and participation data\n\n"
-                "**How We Use It:**\n"
-                "• Provide bot features (stats, reminders, etc.)\n"
-                "• Generate server analytics\n"
-                "• Track claims and fact-checks\n\n"
-                "**Your Rights:**\n"
-                "• Access your data anytime (`/download_my_data`)\n"
-                "• Delete your data anytime (`/delete_my_data`)\n"
-                "• Withdraw consent anytime (`/wompbot_noconsent`)\n\n"
-                "**Privacy Policy:** Use `/privacy_policy` to read full policy\n\n"
-                "⚠️ Without consent, most bot features will be unavailable."
-            ),
-            color=discord.Color.blue()
-        )
-
-        view = ConsentView(privacy_manager, user_id, username)
-        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
-
-    @bot.tree.command(name="wompbot_noconsent", description="Withdraw consent and opt out of data collection")
-    async def wompbot_noconsent(interaction: discord.Interaction):
-        """Withdraw data processing consent"""
-        user_id = interaction.user.id
-        username = str(interaction.user)
 
         success = privacy_manager.record_consent(
             user_id,
@@ -246,21 +109,22 @@ def setup_privacy_commands(bot, db, privacy_manager):
 
         if success:
             await interaction.response.send_message(
-                "✅ **Consent Withdrawn**\n\n"
-                "Your consent has been withdrawn. You are now opted out of data collection.\n\n"
+                "✅ **You've Opted Out**\n\n"
+                "You are now opted out of data collection and processing.\n\n"
                 "**What This Means:**\n"
-                "• Future messages won't be stored\n"
-                "• Most bot features are disabled\n"
+                "• Future messages won't be stored with content\n"
+                "• Behavioral profiling is disabled\n"
+                "• Bot will still respond but without personalization\n"
                 "• Your existing data remains (for now)\n\n"
                 "**Delete Your Data:**\n"
                 "Use `/delete_my_data` to permanently delete all stored data.\n\n"
-                "**Change Your Mind:**\n"
-                "Use `/wompbot_consent` to opt back in anytime.",
+                "**Privacy Policy:**\n"
+                "Use `/privacy_policy` to view our data processing practices.",
                 ephemeral=True
             )
         else:
             await interaction.response.send_message(
-                "❌ Failed to withdraw consent. Please try again or contact an administrator.",
+                "❌ Failed to opt out. Please try again or contact an administrator.",
                 ephemeral=True
             )
 
@@ -538,7 +402,7 @@ def setup_privacy_commands(bot, db, privacy_manager):
                 embed.add_field(
                     name="📱 Quick Links",
                     value=(
-                        "`/wompbot_consent` - Give consent\n"
+                        "`/wompbot_optout` - Opt out of data collection\n"
                         "`/download_my_data` - Export your data\n"
                         "`/delete_my_data` - Delete your data\n"
                         "`/privacy_support` - Get help"
@@ -558,47 +422,50 @@ def setup_privacy_commands(bot, db, privacy_manager):
 
         consent = privacy_manager.check_consent(user_id)
 
+        # Opt-out model: Active by default unless explicitly opted out
+        opted_out = consent and consent.get('consent_withdrawn', False)
+
         embed = discord.Embed(
             title="🔒 Your Privacy Status",
-            color=discord.Color.green() if (consent and consent['consent_given']) else discord.Color.orange()
+            color=discord.Color.orange() if opted_out else discord.Color.green()
         )
 
-        if consent and consent['consent_given'] and not consent['consent_withdrawn']:
-            status = "✅ Active - Data collection enabled"
-            embed.add_field(name="Consent Status", value=status, inline=False)
+        if not opted_out:
+            status = "✅ Active - Data collection enabled (default)"
+            embed.add_field(name="Status", value=status, inline=False)
             embed.add_field(
-                name="Consent Given",
-                value=consent['consent_date'].strftime('%Y-%m-%d %H:%M UTC'),
-                inline=True
+                name="Legal Basis",
+                value="Legitimate Interest (GDPR Art. 6.1.f)",
+                inline=False
             )
             embed.add_field(
-                name="Policy Version",
-                value=consent['consent_version'],
-                inline=True
-            )
-            embed.add_field(
-                name="Extended Retention",
-                value="Yes" if consent['extended_retention'] else "No",
-                inline=True
+                name="Data Processing",
+                value="• Message history stored\n• Behavioral profiling enabled\n• Personalized responses active",
+                inline=False
             )
         else:
             status = "❌ Opted Out - Data collection disabled"
-            embed.add_field(name="Consent Status", value=status, inline=False)
+            embed.add_field(name="Status", value=status, inline=False)
 
-            if consent and consent['consent_withdrawn']:
+            if consent and consent.get('consent_withdrawn_date'):
                 embed.add_field(
-                    name="Withdrawn On",
+                    name="Opted Out On",
                     value=consent['consent_withdrawn_date'].strftime('%Y-%m-%d %H:%M UTC'),
                     inline=True
                 )
+
+            embed.add_field(
+                name="Current State",
+                value="• No message content stored\n• No behavioral profiling\n• Generic responses only",
+                inline=False
+            )
 
         embed.add_field(
             name="Your Rights",
             value=(
                 "`/download_my_data` - Export all your data\n"
                 "`/delete_my_data` - Request deletion\n"
-                "`/wompbot_noconsent` - Opt out\n"
-                "`/wompbot_consent` - Opt back in"
+                "`/wompbot_optout` - Opt out of data collection"
             ),
             inline=False
         )
@@ -646,8 +513,8 @@ def setup_privacy_commands(bot, db, privacy_manager):
         embed.add_field(
             name="What if I opt out?",
             value=(
-                "Use `/wompbot_noconsent` to stop data collection. Most bot features "
-                "will be unavailable, but your existing data remains until you delete it."
+                "Use `/wompbot_optout` to stop data collection. The bot will still respond "
+                "but without personalization. Your existing data remains until you delete it."
             ),
             inline=False
         )
@@ -740,7 +607,7 @@ def setup_privacy_commands(bot, db, privacy_manager):
                 value=(
                     "`/download_my_data` - Export all data\n"
                     "`/delete_my_data` - Request deletion\n"
-                    "`/wompbot_noconsent` - Withdraw consent\n"
+                    "`/wompbot_optout` - Opt out\n"
                     "`/my_privacy_status` - Check status"
                 ),
                 inline=False

@@ -899,9 +899,9 @@ async def on_message(message):
     if message.author == bot.user:
         return
 
-    # Check GDPR consent status (opted_out = True if no consent given)
+    # Check GDPR opt-out status (users are opted-in by default - legitimate interest basis)
     consent_status = privacy_manager.get_consent_status(message.author.id)
-    opted_out = not consent_status.get('has_consent', False) if consent_status else True
+    opted_out = consent_status.get('consent_withdrawn', False) if consent_status else False
 
     # Store consenting messages (opted-out users are tracked without content)
     db.store_message(message, opted_out=opted_out)
@@ -1421,7 +1421,15 @@ async def handle_bot_mention(message, opted_out):
             user_context = None if opted_out else db.get_user_context(message.author.id)
 
             # Check if question is about WompBot itself - load documentation
-            bot_docs = self_knowledge.format_for_llm(content)
+            # Get full conversation history (including bot messages) for context-aware detection
+            full_conversation_history = db.get_recent_messages(
+                message.channel.id,
+                limit=3,  # Just need last few messages
+                exclude_opted_out=True,
+                exclude_bot_id=None,  # Don't exclude bot messages
+                user_id=message.author.id
+            )
+            bot_docs = self_knowledge.format_for_llm(content, full_conversation_history, bot.user.id)
             if bot_docs:
                 print(f"📚 Loading WompBot documentation for self-knowledge question")
 

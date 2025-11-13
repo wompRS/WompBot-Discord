@@ -49,7 +49,7 @@ A Discord bot powered by OpenRouter LLMs (Hermes/Dolphin models) with conversati
 - **Behavior Analysis**: Profanity scores, tone, honesty patterns
 - **Leaderboards**: `/leaderboard <type> [days]` - messages, questions, profanity
 - **User Stats**: `/stats [@user]` - View detailed user statistics
-- **Privacy Opt-Out**: Role-based exclusion from data collection
+- **Privacy Controls**: Opt-out system with `/wompbot_optout` command (GDPR-compliant)
 
 ### 📈 Chat Statistics
 - **Network Graphs**: `/stats_server [days]` - Who interacts with whom
@@ -295,33 +295,42 @@ docker-compose down
 
 ## Privacy Features
 
-**GDPR-Focused Privacy Controls:**
+**GDPR-Compliant Privacy Controls (Opt-Out Model):**
 
-Users control their data through slash commands:
-- **/wompbot_consent**: Give consent for data processing (required for most features)
-- **/wompbot_noconsent**: Withdraw consent and opt out of data collection
+**Legal Basis**: Data processing operates under **Legitimate Interest** (GDPR Art. 6.1.f) - WompBot collects data by default to provide conversational AI features with context awareness and personalization. Users can opt out at any time.
+
+**Default Behavior**: All users are opted-in by default for:
+- Message history storage
+- Behavioral profiling (tone, style, profanity levels)
+- Personalized responses based on user context
+- Full access to all bot features
+
+**User Privacy Commands:**
+- **/wompbot_optout**: Opt out of data collection and processing
 - **/download_my_data**: Export all your data in JSON format (GDPR Art. 15)
 - **/delete_my_data**: Request deletion with 30-day grace period (GDPR Art. 17)
   - ⚠️ Currently deletes messages, claims, quotes, reminders, events - **does not** delete user_behavior, search_logs, or debate records
-- **/my_privacy_status**: View your current privacy and consent status
+- **/my_privacy_status**: View your current privacy and opt-out status
 - **/privacy_policy**: View the complete privacy policy
-- **/privacy_settings** *(Admin)*: Get a live overview of consent counts and stored data
-- **/privacy_audit** *(Admin)*: Download a JSON report summarizing current privacy posture
+
+**Admin Privacy Commands:**
+- **/privacy_settings**: Get a live overview of consent counts and stored data
+- **/privacy_audit**: Download a JSON report summarizing current privacy posture
 
 **Compliance Status**: See [GDPR Compliance Manual](docs/compliance/GDPR_COMPLIANCE.md) for full details on implemented controls and known gaps.
 
-**Without consent:**
+**When Opted Out:**
 - Message content and usernames are redacted before storage (only metadata retained)
 - Messages are flagged as opted-out
-- Excluded from behavior analysis
+- Excluded from behavioral profiling
 - Not included in conversation context or LLM prompts
-- Most bot features unavailable
+- Bot still responds but without personalization
 
-**Background jobs respect consent & rate limits:**
+**Background jobs respect opt-out status & rate limits:**
 - Scheduled tasks persist their last successful run in `job_last_run`
 - On startup each loop checks the stored timestamp and skips work until the interval (hourly/daily/weekly) elapses
 - Prevents duplicate GDPR cleanup or iRacing snapshots after restarts while keeping cron cadence predictable
-- New members automatically receive a welcome DM outlining consent choices and privacy commands (set `PRIVACY_DM_NEW_MEMBERS=0` to disable)
+- New members automatically receive a welcome DM outlining privacy commands and opt-out options (set `PRIVACY_DM_NEW_MEMBERS=0` to disable)
 
 ## Behavior Analysis
 

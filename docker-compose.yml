@@ -72,6 +72,8 @@ services:
     restart: unless-stopped
     volumes:
       - ./bot:/app
+      - ./README.md:/README.md          # Self-knowledge system needs README
+      - ./docs:/docs                    # Self-knowledge system needs docs
     # SECURITY: Resource limits
     deploy:
       resources:
