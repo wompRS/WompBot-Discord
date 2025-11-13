@@ -7,6 +7,7 @@ import discord
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 import json
+import asyncio
 
 
 class DebateScorekeeper:
@@ -111,8 +112,10 @@ class DebateScorekeeper:
             for msg in debate['messages']:
                 transcript += f"{msg['username']}: {msg['content']}\n"
 
-            # LLM prompt for analysis
-            prompt = f"""Analyze this debate and provide:
+            # LLM prompt for analysis (includes instructions in the prompt since we can't override system_prompt)
+            prompt = f"""As an expert debate judge, analyze this debate objectively and identify logical fallacies.
+
+Analyze this debate and provide:
 1. A score (0-10) for each participant based on argument quality
 2. Logical fallacies detected (if any)
 3. The winner and why
@@ -136,11 +139,12 @@ Respond in JSON format:
     "summary": "..."
 }}"""
 
-            # Call LLM
-            response = await self.llm.generate_response(
-                [],  # No conversation history needed
-                prompt,
-                system_prompt="You are an expert debate judge. Analyze arguments objectively and identify logical fallacies."
+            # Call LLM (user_message, conversation_history)
+            # Use asyncio.to_thread since generate_response is synchronous
+            response = await asyncio.to_thread(
+                self.llm.generate_response,
+                prompt,  # user_message
+                []       # conversation_history - empty for debate analysis
             )
 
             # Try to parse JSON from response
