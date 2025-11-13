@@ -106,6 +106,36 @@ class DebateScorekeeper:
     async def _analyze_debate(self, debate: Dict) -> Dict:
         """Use LLM to analyze debate arguments and determine winner"""
         try:
+            # Get unique participants and their historical context
+            participants = set()
+            for msg in debate['messages']:
+                if 'user_id' in msg:
+                    participants.add((msg['user_id'], msg['username']))
+                else:
+                    participants.add((None, msg['username']))
+
+            # Build participant context section
+            participant_context = ""
+            for user_id, username in participants:
+                if user_id:
+                    context = self.db.get_user_context(user_id)
+                    if context:
+                        profile = context.get('profile')
+                        behavior = context.get('behavior')
+
+                        participant_context += f"\n### {username} - Historical Profile:\n"
+
+                        if profile:
+                            participant_context += f"- Total messages: {profile.get('total_messages', 0)}\n"
+                            participant_context += f"- Average message length: {profile.get('avg_message_length', 0)} chars\n"
+
+                        if behavior:
+                            participant_context += f"- Typical tone: {behavior.get('tone', 'neutral')}\n"
+                            participant_context += f"- Profanity score: {behavior.get('profanity_score', 0)}/10\n"
+                            participant_context += f"- Question rate: {behavior.get('question_rate', 0)}%\n"
+                            if behavior.get('personality_summary'):
+                                participant_context += f"- Personality: {behavior.get('personality_summary')}\n"
+
             # Build debate transcript
             transcript = f"Debate Topic: {debate['topic']}\n\n"
 
@@ -115,12 +145,19 @@ class DebateScorekeeper:
             # LLM prompt for comprehensive rhetorical analysis
             prompt = f"""You are a comprehensive debate analyst. Evaluate this debate across ALL classical rhetoric dimensions: Logos (logic), Ethos (credibility), Pathos (emotion), AND factual accuracy.
 
+## PARTICIPANT HISTORICAL CONTEXT:
+Use this information about each participant's typical communication style and personality to inform your analysis:
+{participant_context if participant_context else "No historical data available for participants."}
+
+**Consider whether their behavior in this debate is consistent with their typical patterns, or if they're behaving differently than usual.**
+
 ## CRITICAL ANALYSIS INSTRUCTIONS:
 **You MUST read through the ENTIRE debate CHRONOLOGICALLY from start to finish.** Do not just count aggregate line totals or skim. Systematically analyze:
 1. **The flow of arguments** - How does each argument develop and respond to previous points?
 2. **Context and substance** - What is the actual meaning and substance of each argument in the order it was made?
 3. **Evolution of positions** - How do arguments shift, adapt, or remain consistent through the debate?
 4. **Responses to challenges** - Does each participant address counter-arguments or deflect?
+5. **Historical patterns** - Is this person's behavior typical for them, or are they unusually aggressive/dismissive/logical/emotional?
 
 Read EVERY message in ORDER and track how the debate unfolds chronologically. Your analysis must demonstrate understanding of the debate's progression, not just statistics.
 
