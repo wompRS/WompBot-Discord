@@ -5,6 +5,9 @@ python-dateutil==2.9.0  # Natural language date parsing for event scheduling
 aiohttp==3.9.5  # SECURITY: Updated to fix CVE-2024-23334 (HTTP request smuggling)
 tavily-python==0.3.9  # Updated for latest features
 requests==2.32.3  # SECURITY: Updated to fix multiple CVEs
+httpx==0.24.1  # Pin for openai compatibility
+openai==1.12.0  # OpenAI API for embeddings (RAG system) - stable version
+pgvector==0.3.5  # PostgreSQL vector extension Python client
 scikit-learn==1.5.1  # Updated for performance and security
 networkx==3.3  # Updated for bug fixes
 pandas==2.2.2  # Updated for performance improvements

@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   postgres:
-    image: postgres:15-alpine
+    image: pgvector/pgvector:pg15
     container_name: discord_bot_db
     environment:
       POSTGRES_DB: discord_bot
@@ -16,6 +16,7 @@ services:
       - ./sql/rate_limiting_migration.sql:/docker-entrypoint-initdb.d/04_rate_limiting.sql
       - ./sql/cost_tracking_migration.sql:/docker-entrypoint-initdb.d/05_cost_tracking.sql
       - ./sql/advanced_rate_limits_migration.sql:/docker-entrypoint-initdb.d/06_advanced_rate_limits.sql
+      - ./sql/rag_migration.sql:/docker-entrypoint-initdb.d/07_rag.sql
       - ./backups:/backups  # Backup directory
     # SECURITY: Database port NOT exposed to host (only accessible within Docker network)
     # If you need local access for debugging, use: ports: ["127.0.0.1:5432:5432"]
@@ -45,7 +46,10 @@ services:
       DISCORD_TOKEN: ${DISCORD_TOKEN}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
       TAVILY_API_KEY: ${TAVILY_API_KEY}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
       MODEL_NAME: ${MODEL_NAME}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL}
+      RAG_SIMILARITY_THRESHOLD: ${RAG_SIMILARITY_THRESHOLD}
       CONTEXT_WINDOW_MESSAGES: ${CONTEXT_WINDOW_MESSAGES}
       MAX_CONTEXT_TOKENS: ${MAX_CONTEXT_TOKENS}
       OPT_OUT_ROLE_NAME: ${OPT_OUT_ROLE_NAME}

@@ -131,6 +131,7 @@ Be useful and real. That's the balance."""
         conversation_history,
         user_context=None,
         search_results=None,
+        rag_context=None,
         retry_count=0,
         bot_user_id=None,
         user_id=None,
@@ -141,6 +142,7 @@ Be useful and real. That's the balance."""
 
         Args:
             max_tokens: Optional override for max tokens (defaults to MAX_TOKENS_PER_REQUEST env var or 1000)
+            rag_context: RAG-retrieved context (semantic matches, facts, summaries)
         """
         import time
 
@@ -183,6 +185,32 @@ Be useful and real. That's the balance."""
                     context_note += f"- Analysis period: {behavior.get('analysis_period_start')} to {behavior.get('analysis_period_end')}\n"
 
                 messages[0]["content"] += context_note
+
+            # Add RAG-retrieved context (semantic search, facts, summaries)
+            if rag_context:
+                rag_note = "\n\n## RELEVANT HISTORICAL CONTEXT (RAG):\n"
+
+                # User facts (compact knowledge)
+                if rag_context.get('user_facts'):
+                    rag_note += "**Known Facts About User:**\n"
+                    for fact in rag_context['user_facts'][:5]:  # Top 5 facts
+                        confidence = fact.get('confidence', 0.8)
+                        rag_note += f"- {fact['fact']} (confidence: {confidence:.0%})\n"
+                    rag_note += "\n"
+
+                # Recent conversation summary
+                if rag_context.get('recent_summary'):
+                    rag_note += f"**Recent Conversation Summary:**\n{rag_context['recent_summary']}\n\n"
+
+                # Semantically relevant past messages
+                if rag_context.get('semantic_matches'):
+                    rag_note += "**Relevant Past Conversations:**\n"
+                    for match in rag_context['semantic_matches'][:3]:  # Top 3 matches
+                        timestamp = match['timestamp'].strftime('%Y-%m-%d')
+                        similarity = match.get('similarity', 0)
+                        rag_note += f"- [{timestamp}, {similarity:.0%} relevant] {match['username']}: {match['content'][:100]}...\n"
+
+                messages[0]["content"] += rag_note
 
             # Increased conversation history window for better context
             history_window = int(os.getenv('CONTEXT_WINDOW_MESSAGES', '6'))
