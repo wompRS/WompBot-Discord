@@ -92,8 +92,9 @@ else:
 iracing_team_manager = iRacingTeamManager(db)
 print("✅ iRacing Team Manager loaded")
 
-WOMPIE_USERNAME = "Wompie__"
-WOMPIE_USER_ID = None  # Will be set in on_ready()
+WOMPIE_USERNAME = "wompie__"  # Discord username (lowercase)
+# Get Wompie's Discord user ID from environment (permanent, can't be spoofed)
+WOMPIE_USER_ID = int(os.getenv('WOMPIE_USER_ID', '0')) if os.getenv('WOMPIE_USER_ID') else None
 
 # iRacing series popularity cache
 iracing_popularity_cache = {}  # {time_range: {'data': [(series, count), ...], 'timestamp': datetime}}
@@ -808,13 +809,19 @@ async def on_ready():
 
     # Set Wompie user ID for claims tracker and personality command
     global WOMPIE_USER_ID
-    for guild in bot.guilds:
-        member = discord.utils.get(guild.members, name=WOMPIE_USERNAME)
-        if member:
-            claims_tracker.wompie_user_id = member.id
-            WOMPIE_USER_ID = member.id  # Set global ID for personality command
-            print(f'👑 Wompie identified: {member.id}')
-            break
+    if WOMPIE_USER_ID:
+        # Already set from environment variable
+        claims_tracker.wompie_user_id = WOMPIE_USER_ID
+        print(f'👑 Wompie ID from environment: {WOMPIE_USER_ID}')
+    else:
+        # Fall back to searching by username
+        for guild in bot.guilds:
+            member = discord.utils.get(guild.members, name=WOMPIE_USERNAME)
+            if member:
+                claims_tracker.wompie_user_id = member.id
+                WOMPIE_USER_ID = member.id
+                print(f'👑 Wompie identified by username: {member.id}')
+                break
 
     # Initialize cost tracker with bot instance
     global cost_tracker
@@ -2027,6 +2034,18 @@ async def verify_claim_slash(interaction: discord.Interaction, claim_id: int, st
     except Exception as e:
         await interaction.followup.send(f"❌ Error verifying claim: {str(e)}")
 
+@bot.tree.command(name="whoami", description="Show your Discord user information")
+async def whoami_slash(interaction: discord.Interaction):
+    """Show user their Discord ID and username"""
+    await interaction.response.send_message(
+        f"**Your Discord Information:**\n"
+        f"• Username: {interaction.user.name}\n"
+        f"• Display Name: {interaction.user.display_name}\n"
+        f"• User ID: `{interaction.user.id}`\n"
+        f"• Mention: {interaction.user.mention}",
+        ephemeral=True
+    )
+
 @bot.tree.command(name="personality", description="Change bot personality mode (Wompie only)")
 @app_commands.describe(
     mode="Personality mode: default, feyd (Feyd-Rautha), or bogan (Aussie)"
@@ -2041,7 +2060,8 @@ async def personality_slash(interaction: discord.Interaction, mode: app_commands
     # Check if user is Wompie (by Discord ID for security)
     if WOMPIE_USER_ID is None or interaction.user.id != WOMPIE_USER_ID:
         await interaction.response.send_message(
-            "❌ This command is restricted to Wompie only.",
+            f"❌ This command is restricted to Wompie only.\n"
+            f"Your user ID: `{interaction.user.id}`",
             ephemeral=True
         )
         return

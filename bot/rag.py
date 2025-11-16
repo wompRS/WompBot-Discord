@@ -243,20 +243,20 @@ class RAGSystem:
                 return []
 
             # Build search query
-            params = [query_embedding, limit]
+            params = [query_embedding, query_embedding, limit]
             where_clauses = []
 
             if channel_id:
-                where_clauses.append(f"m.channel_id = ${len(params) + 1}")
+                where_clauses.append("m.channel_id = %s")
                 params.append(channel_id)
 
             if user_id:
-                where_clauses.append(f"m.user_id = ${len(params) + 1}")
+                where_clauses.append("m.user_id = %s")
                 params.append(user_id)
 
             if max_age_days:
                 cutoff_date = datetime.now() - timedelta(days=max_age_days)
-                where_clauses.append(f"m.timestamp >= ${len(params) + 1}")
+                where_clauses.append("m.timestamp >= %s")
                 params.append(cutoff_date)
 
             where_clause = " AND " + " AND ".join(where_clauses) if where_clauses else ""
