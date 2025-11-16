@@ -1,6 +1,6 @@
 # WompBot - Discord Bot
 
-A Discord bot powered by OpenRouter LLMs (Hermes/Dolphin models) with conversation memory, web search, claims tracking, user behavior analysis, and iRacing integration.
+A Discord bot powered by OpenRouter LLMs (Claude Sonnet) with intelligent RAG memory system, semantic search, web search, claims tracking, user behavior analysis, and iRacing integration.
 
 ## Features
 
@@ -21,6 +21,17 @@ A Discord bot powered by OpenRouter LLMs (Hermes/Dolphin models) with conversati
   - Cost tracking with $1 spending alerts via DM
 - **Message Storage**: PostgreSQL database tracks all conversations
 - **Small Talk Aware**: Greetings get a quick canned reply before the LLM fires
+
+### 🧠 RAG (Intelligent Memory System)
+- **Semantic Search**: Vector embeddings enable finding relevant past conversations by meaning, not just keywords
+- **Hybrid Memory Architecture**: Combines working memory (last 10 messages) with long-term retrieval
+- **Automatic User Facts**: Learns your preferences, projects, and skills automatically
+- **40% Token Reduction**: Smaller context window with smarter retrieval saves costs
+- **Background Processing**: Automatic embedding generation every 5 minutes
+- **Conversation Summaries**: AI-generated summaries for broader context
+- **Full History Access**: Search across entire message database without token bloat
+- **pgvector Integration**: Fast vector similarity search with PostgreSQL
+- See [RAG System Documentation](docs/features/RAG_SYSTEM.md) for details
 
 ### 📋 Claims & Accountability
 - **Auto Claims Detection**: LLM detects bold predictions, facts, and guarantees
