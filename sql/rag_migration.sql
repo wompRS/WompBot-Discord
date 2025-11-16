@@ -8,7 +8,7 @@ CREATE EXTENSION IF NOT EXISTS vector;
 -- Stores vector embeddings for semantic search
 CREATE TABLE IF NOT EXISTS message_embeddings (
     id SERIAL PRIMARY KEY,
-    message_id BIGINT REFERENCES messages(message_id) ON DELETE CASCADE,
+    message_id BIGINT UNIQUE REFERENCES messages(message_id) ON DELETE CASCADE,
     embedding vector(1536),  -- OpenAI text-embedding-3-small dimension
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -18,10 +18,6 @@ CREATE TABLE IF NOT EXISTS message_embeddings (
 CREATE INDEX IF NOT EXISTS message_embeddings_vector_idx
 ON message_embeddings USING ivfflat (embedding vector_cosine_ops)
 WITH (lists = 100);
-
--- Index for fast message lookups
-CREATE INDEX IF NOT EXISTS message_embeddings_message_id_idx
-ON message_embeddings(message_id);
 
 -- Conversation summaries table
 -- Stores AI-generated summaries of conversation segments
