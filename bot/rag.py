@@ -242,8 +242,8 @@ class RAGSystem:
             if not query_embedding:
                 return []
 
-            # Build search query
-            params = [query_embedding, query_embedding, limit]
+            # Build search query - params order: query_embedding, WHERE values, query_embedding, limit
+            params = [query_embedding]
             where_clauses = []
 
             if channel_id:
@@ -259,13 +259,16 @@ class RAGSystem:
                 where_clauses.append("m.timestamp >= %s")
                 params.append(cutoff_date)
 
+            # Add query_embedding again for ORDER BY and limit at the end
+            params.extend([query_embedding, limit])
+
             where_clause = " AND " + " AND ".join(where_clauses) if where_clauses else ""
 
             # Perform vector similarity search
             with self.db.get_connection() as conn:
                 register_vector(conn)
                 with conn.cursor() as cur:
-                    # Use cosine similarity
+                    # Use cosine similarity - cast parameters to vector type
                     cur.execute(f"""
                         SELECT
                             m.message_id,
@@ -273,11 +276,11 @@ class RAGSystem:
                             m.username,
                             m.content,
                             m.timestamp,
-                            (1 - (me.embedding <=> %s)) as similarity
+                            (1 - (me.embedding <=> %s::vector)) as similarity
                         FROM message_embeddings me
                         JOIN messages m ON m.message_id = me.message_id
                         {where_clause}
-                        ORDER BY me.embedding <=> %s
+                        ORDER BY me.embedding <=> %s::vector
                         LIMIT %s
                     """, params)
                     results = cur.fetchall()

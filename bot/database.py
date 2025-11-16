@@ -1140,7 +1140,7 @@ class Database:
         """
         try:
             with self.get_connection() as conn:
-                with conn.cursor() as cur:
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
                     cur.execute("""
                         SELECT personality
                         FROM server_personality
