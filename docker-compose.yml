@@ -45,6 +45,7 @@ services:
     container_name: discord_bot
     environment:
       DISCORD_TOKEN: ${DISCORD_TOKEN}
+      WOMPIE_USER_ID: ${WOMPIE_USER_ID}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
       TAVILY_API_KEY: ${TAVILY_API_KEY}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
