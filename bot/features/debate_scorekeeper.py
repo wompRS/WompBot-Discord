@@ -461,129 +461,131 @@ Please regenerate the analysis as valid JSON only:
     async def _save_debate(self, debate: Dict, ended_at: datetime, analysis: Dict) -> Optional[int]:
         """Save debate to database"""
         try:
-            with self.db.conn.cursor() as cur:
-                # Insert debate
-                cur.execute("""
-                    INSERT INTO debates (
-                        topic, guild_id, channel_id,
-                        started_by_user_id, started_by_username,
-                        started_at, ended_at,
-                        participant_count, message_count,
-                        transcript, analysis
-                    )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    RETURNING id
-                """, (
-                    debate['topic'],
-                    debate['guild_id'],
-                    debate['channel_id'],
-                    debate['started_by_user_id'],
-                    debate['started_by_username'],
-                    debate['started_at'],
-                    ended_at,
-                    len(debate['participants']),
-                    len(debate['messages']),
-                    json.dumps(debate['messages']),
-                    json.dumps(analysis)
-                ))
-
-                debate_id = cur.fetchone()[0]
-
-                # Insert participant records
-                for user_id in debate['participants']:
-                    # Get participant username from messages
-                    username = next(
-                        (m['username'] for m in debate['messages'] if m['user_id'] == user_id),
-                        'Unknown'
-                    )
-
-                    # Get score from analysis if available
-                    score = None
-                    if 'participants' in analysis and username in analysis['participants']:
-                        score = analysis['participants'][username].get('score')
-
-                    # Check if winner
-                    is_winner = (username == analysis.get('winner', ''))
-
+            with self.db.get_connection() as conn:
+                with conn.cursor() as cur:
+                    # Insert debate
                     cur.execute("""
-                        INSERT INTO debate_participants (
-                            debate_id, user_id, username,
-                            message_count, score, is_winner
+                        INSERT INTO debates (
+                            topic, guild_id, channel_id,
+                            started_by_user_id, started_by_username,
+                            started_at, ended_at,
+                            participant_count, message_count,
+                            transcript, analysis
                         )
-                        VALUES (%s, %s, %s, %s, %s, %s)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        RETURNING id
                     """, (
-                        debate_id,
-                        user_id,
-                        username,
-                        sum(1 for m in debate['messages'] if m['user_id'] == user_id),
-                        score,
-                        is_winner
+                        debate['topic'],
+                        debate['guild_id'],
+                        debate['channel_id'],
+                        debate['started_by_user_id'],
+                        debate['started_by_username'],
+                        debate['started_at'],
+                        ended_at,
+                        len(debate['participants']),
+                        len(debate['messages']),
+                        json.dumps(debate['messages']),
+                        json.dumps(analysis)
                     ))
 
-                self.db.conn.commit()
-                return debate_id
+                    debate_id = cur.fetchone()[0]
+
+                    # Insert participant records
+                    for user_id in debate['participants']:
+                        # Get participant username from messages
+                        username = next(
+                            (m['username'] for m in debate['messages'] if m['user_id'] == user_id),
+                            'Unknown'
+                        )
+
+                        # Get score from analysis if available
+                        score = None
+                        if 'participants' in analysis and username in analysis['participants']:
+                            score = analysis['participants'][username].get('score')
+
+                        # Check if winner
+                        is_winner = (username == analysis.get('winner', ''))
+
+                        cur.execute("""
+                            INSERT INTO debate_participants (
+                                debate_id, user_id, username,
+                                message_count, score, is_winner
+                            )
+                            VALUES (%s, %s, %s, %s, %s, %s)
+                        """, (
+                            debate_id,
+                            user_id,
+                            username,
+                            sum(1 for m in debate['messages'] if m['user_id'] == user_id),
+                            score,
+                            is_winner
+                        ))
+
+                    conn.commit()
+                    return debate_id
 
         except Exception as e:
             print(f"❌ Error saving debate: {e}")
-            self.db.conn.rollback()
+            conn.rollback()
             return None
 
     async def get_debate_stats(self, user_id: int) -> Optional[Dict]:
         """Get debate statistics for a user"""
         try:
-            with self.db.conn.cursor() as cur:
-                # Total debates participated in
-                cur.execute("""
-                    SELECT COUNT(*)
-                    FROM debate_participants
-                    WHERE user_id = %s
-                """, (user_id,))
-                total_debates = cur.fetchone()[0] or 0
+            with self.db.get_connection() as conn:
+                with conn.cursor() as cur:
+                    # Total debates participated in
+                    cur.execute("""
+                        SELECT COUNT(*)
+                        FROM debate_participants
+                        WHERE user_id = %s
+                    """, (user_id,))
+                    total_debates = cur.fetchone()[0] or 0
 
-                if total_debates == 0:
-                    return None
+                    if total_debates == 0:
+                        return None
 
-                # Wins
-                cur.execute("""
-                    SELECT COUNT(*)
-                    FROM debate_participants
-                    WHERE user_id = %s AND is_winner = TRUE
-                """, (user_id,))
-                wins = cur.fetchone()[0] or 0
+                    # Wins
+                    cur.execute("""
+                        SELECT COUNT(*)
+                        FROM debate_participants
+                        WHERE user_id = %s AND is_winner = TRUE
+                    """, (user_id,))
+                    wins = cur.fetchone()[0] or 0
 
-                # Average score
-                cur.execute("""
-                    SELECT AVG(score)
-                    FROM debate_participants
-                    WHERE user_id = %s AND score IS NOT NULL
-                """, (user_id,))
-                avg_score_result = cur.fetchone()[0]
-                avg_score = round(float(avg_score_result), 2) if avg_score_result else None
+                    # Average score
+                    cur.execute("""
+                        SELECT AVG(score)
+                        FROM debate_participants
+                        WHERE user_id = %s AND score IS NOT NULL
+                    """, (user_id,))
+                    avg_score_result = cur.fetchone()[0]
+                    avg_score = round(float(avg_score_result), 2) if avg_score_result else None
 
-                # Most debated topic (approximation - topics they participated in most)
-                cur.execute("""
-                    SELECT d.topic, COUNT(*) as count
-                    FROM debate_participants dp
-                    JOIN debates d ON d.id = dp.debate_id
-                    WHERE dp.user_id = %s
-                    GROUP BY d.topic
-                    ORDER BY count DESC
-                    LIMIT 1
-                """, (user_id,))
-                topic_result = cur.fetchone()
-                favorite_topic = topic_result[0] if topic_result else None
+                    # Most debated topic (approximation - topics they participated in most)
+                    cur.execute("""
+                        SELECT d.topic, COUNT(*) as count
+                        FROM debate_participants dp
+                        JOIN debates d ON d.id = dp.debate_id
+                        WHERE dp.user_id = %s
+                        GROUP BY d.topic
+                        ORDER BY count DESC
+                        LIMIT 1
+                    """, (user_id,))
+                    topic_result = cur.fetchone()
+                    favorite_topic = topic_result[0] if topic_result else None
 
-                # Win rate
-                win_rate = round((wins / total_debates * 100), 1) if total_debates > 0 else 0
+                    # Win rate
+                    win_rate = round((wins / total_debates * 100), 1) if total_debates > 0 else 0
 
-                return {
-                    'total_debates': total_debates,
-                    'wins': wins,
-                    'losses': total_debates - wins,
-                    'win_rate': win_rate,
-                    'avg_score': avg_score,
-                    'favorite_topic': favorite_topic
-                }
+                    return {
+                        'total_debates': total_debates,
+                        'wins': wins,
+                        'losses': total_debates - wins,
+                        'win_rate': win_rate,
+                        'avg_score': avg_score,
+                        'favorite_topic': favorite_topic
+                    }
 
         except Exception as e:
             print(f"❌ Error getting debate stats: {e}")
@@ -592,38 +594,39 @@ Please regenerate the analysis as valid JSON only:
     async def get_leaderboard(self, guild_id: int, limit: int = 10) -> List[Dict]:
         """Get debate leaderboard for a guild"""
         try:
-            with self.db.conn.cursor() as cur:
-                cur.execute("""
-                    SELECT
-                        dp.user_id,
-                        dp.username,
-                        COUNT(*) as total_debates,
-                        SUM(CASE WHEN dp.is_winner THEN 1 ELSE 0 END) as wins,
-                        AVG(dp.score) as avg_score
-                    FROM debate_participants dp
-                    JOIN debates d ON d.id = dp.debate_id
-                    WHERE d.guild_id = %s AND dp.score IS NOT NULL
-                    GROUP BY dp.user_id, dp.username
-                    HAVING COUNT(*) >= 2
-                    ORDER BY
-                        SUM(CASE WHEN dp.is_winner THEN 1 ELSE 0 END) DESC,
-                        AVG(dp.score) DESC
-                    LIMIT %s
-                """, (guild_id, limit))
+            with self.db.get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT
+                            dp.user_id,
+                            dp.username,
+                            COUNT(*) as total_debates,
+                            SUM(CASE WHEN dp.is_winner THEN 1 ELSE 0 END) as wins,
+                            AVG(dp.score) as avg_score
+                        FROM debate_participants dp
+                        JOIN debates d ON d.id = dp.debate_id
+                        WHERE d.guild_id = %s AND dp.score IS NOT NULL
+                        GROUP BY dp.user_id, dp.username
+                        HAVING COUNT(*) >= 2
+                        ORDER BY
+                            SUM(CASE WHEN dp.is_winner THEN 1 ELSE 0 END) DESC,
+                            AVG(dp.score) DESC
+                        LIMIT %s
+                    """, (guild_id, limit))
 
-                leaderboard = []
-                for row in cur.fetchall():
-                    win_rate = round((row[3] / row[2] * 100), 1) if row[2] > 0 else 0
-                    leaderboard.append({
-                        'user_id': row[0],
-                        'username': row[1],
-                        'total_debates': row[2],
-                        'wins': row[3],
-                        'win_rate': win_rate,
-                        'avg_score': round(float(row[4]), 2) if row[4] else 0
-                    })
+                    leaderboard = []
+                    for row in cur.fetchall():
+                        win_rate = round((row[3] / row[2] * 100), 1) if row[2] > 0 else 0
+                        leaderboard.append({
+                            'user_id': row[0],
+                            'username': row[1],
+                            'total_debates': row[2],
+                            'wins': row[3],
+                            'win_rate': win_rate,
+                            'avg_score': round(float(row[4]), 2) if row[4] else 0
+                        })
 
-                return leaderboard
+                    return leaderboard
 
         except Exception as e:
             print(f"❌ Error getting leaderboard: {e}")

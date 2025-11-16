@@ -53,22 +53,23 @@ class ChatStatistics:
     def get_cached_stats(self, stat_type: str, scope: str, start_date: datetime, end_date: datetime) -> Optional[dict]:
         """Retrieve cached statistics if still valid"""
         try:
-            with self.db.conn.cursor() as cur:
-                cur.execute("""
-                    SELECT results, valid_until
-                    FROM stats_cache
-                    WHERE stat_type = %s
-                      AND scope = %s
-                      AND start_date = %s
-                      AND end_date = %s
-                      AND valid_until > NOW()
-                    ORDER BY computed_at DESC
-                    LIMIT 1
-                """, (stat_type, scope, start_date, end_date))
+            with self.db.get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT results, valid_until
+                        FROM stats_cache
+                        WHERE stat_type = %s
+                          AND scope = %s
+                          AND start_date = %s
+                          AND end_date = %s
+                          AND valid_until > NOW()
+                        ORDER BY computed_at DESC
+                        LIMIT 1
+                    """, (stat_type, scope, start_date, end_date))
 
-                result = cur.fetchone()
-                if result:
-                    return result[0]  # Return JSONB results
+                    result = cur.fetchone()
+                    if result:
+                        return result[0]  # Return JSONB results
 
             return None
         except Exception as e:
@@ -81,12 +82,13 @@ class ChatStatistics:
         try:
             valid_until = datetime.now() + timedelta(hours=cache_hours)
 
-            with self.db.conn.cursor() as cur:
-                cur.execute("""
-                    INSERT INTO stats_cache
-                    (stat_type, scope, start_date, end_date, results, valid_until)
-                    VALUES (%s, %s, %s, %s, %s, %s)
-                """, (stat_type, scope, start_date, end_date, json.dumps(results), valid_until))
+            with self.db.get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        INSERT INTO stats_cache
+                        (stat_type, scope, start_date, end_date, results, valid_until)
+                        VALUES (%s, %s, %s, %s, %s, %s)
+                    """, (stat_type, scope, start_date, end_date, json.dumps(results), valid_until))
         except Exception as e:
             print(f"❌ Error caching stats: {e}")
 
@@ -94,31 +96,32 @@ class ChatStatistics:
                                   end_date: datetime, exclude_opted_out: bool = True) -> List[dict]:
         """Get messages for analysis, excluding opted-out users"""
         try:
-            with self.db.conn.cursor() as cur:
-                query = """
-                    SELECT m.message_id, m.user_id, m.username, m.content,
-                           m.timestamp, m.channel_id
-                    FROM messages m
-                    LEFT JOIN user_profiles up ON up.user_id = m.user_id
-                    WHERE m.timestamp BETWEEN %s AND %s
-                """
-                params = [start_date, end_date]
+            with self.db.get_connection() as conn:
+                with conn.cursor() as cur:
+                    query = """
+                        SELECT m.message_id, m.user_id, m.username, m.content,
+                               m.timestamp, m.channel_id
+                        FROM messages m
+                        LEFT JOIN user_profiles up ON up.user_id = m.user_id
+                        WHERE m.timestamp BETWEEN %s AND %s
+                    """
+                    params = [start_date, end_date]
 
-                if exclude_opted_out:
-                    query += " AND COALESCE(m.opted_out, FALSE) = FALSE AND COALESCE(up.opted_out, FALSE) = FALSE"
+                    if exclude_opted_out:
+                        query += " AND COALESCE(m.opted_out, FALSE) = FALSE AND COALESCE(up.opted_out, FALSE) = FALSE"
 
-                if channel_id:
-                    query += " AND m.channel_id = %s"
-                    params.append(channel_id)
+                    if channel_id:
+                        query += " AND m.channel_id = %s"
+                        params.append(channel_id)
 
-                query += " ORDER BY m.timestamp ASC"
+                    query += " ORDER BY m.timestamp ASC"
 
-                cur.execute(query, params)
+                    cur.execute(query, params)
 
-                columns = [desc[0] for desc in cur.description]
-                results = cur.fetchall()
+                    columns = [desc[0] for desc in cur.description]
+                    results = cur.fetchall()
 
-                return [dict(zip(columns, row)) for row in results]
+                    return [dict(zip(columns, row)) for row in results]
         except Exception as e:
             print(f"❌ Error fetching messages: {e}")
             return []

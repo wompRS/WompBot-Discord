@@ -98,29 +98,31 @@ class HotTakesTracker:
             }
         """
         try:
-            with self.db.conn.cursor() as cur:
-                # Get message reactions (we'll update this from Discord API)
-                # For now, track replies from database
-                cur.execute("""
-                    SELECT COUNT(*)
-                    FROM messages
-                    WHERE channel_id = %s
-                    AND timestamp > (
-                        SELECT timestamp FROM messages WHERE message_id = %s
-                    )
-                    AND timestamp < (
-                        SELECT timestamp + interval '1 hour' FROM messages WHERE message_id = %s
-                    )
-                """, (channel_id, message_id, message_id))
+            with self.db.get_connection() as conn:
 
-                reply_count = cur.fetchone()[0] or 0
+                with conn.cursor() as cur:
+                    # Get message reactions (we'll update this from Discord API)
+                    # For now, track replies from database
+                    cur.execute("""
+                        SELECT COUNT(*)
+                        FROM messages
+                        WHERE channel_id = %s
+                        AND timestamp > (
+                            SELECT timestamp FROM messages WHERE message_id = %s
+                        )
+                        AND timestamp < (
+                            SELECT timestamp + interval '1 hour' FROM messages WHERE message_id = %s
+                        )
+                    """, (channel_id, message_id, message_id))
 
-                return {
-                    'total_reactions': 0,  # Will be updated from Discord API
-                    'reaction_diversity': 0.0,
-                    'reply_count': reply_count,
-                    'community_score': min(reply_count * 2, 10)  # Scale to 0-10
-                }
+                    reply_count = cur.fetchone()[0] or 0
+
+                    return {
+                        'total_reactions': 0,  # Will be updated from Discord API
+                        'reaction_diversity': 0.0,
+                        'reply_count': reply_count,
+                        'community_score': min(reply_count * 2, 10)  # Scale to 0-10
+                    }
 
         except Exception as e:
             print(f"❌ Error tracking community reaction: {e}")
@@ -153,19 +155,21 @@ class HotTakesTracker:
                 diversity = 0.0
 
             # Update hot take with reaction data
-            with self.db.conn.cursor() as cur:
-                cur.execute("""
-                    UPDATE hot_takes
-                    SET total_reactions = %s,
-                        reaction_diversity = %s,
-                        community_score = %s
-                    WHERE id = %s
-                """, (
-                    total_reactions,
-                    diversity,
-                    min((total_reactions * diversity) * 2, 10),  # Community score 0-10
-                    hot_take_id
-                ))
+            with self.db.get_connection() as conn:
+
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        UPDATE hot_takes
+                        SET total_reactions = %s,
+                            reaction_diversity = %s,
+                            community_score = %s
+                        WHERE id = %s
+                    """, (
+                        total_reactions,
+                        diversity,
+                        min((total_reactions * diversity) * 2, 10),  # Community score 0-10
+                        hot_take_id
+                    ))
 
             print(f"📊 Updated reactions for hot take #{hot_take_id}: {total_reactions} reactions, {diversity:.2f} diversity")
 
@@ -243,17 +247,20 @@ Respond with ONLY a number 0-10 and brief explanation:
         try:
             community_data = await self.track_community_reaction(message.id, message.channel.id)
 
-            with self.db.conn.cursor() as cur:
-                cur.execute("""
-                    INSERT INTO hot_takes
-                    (claim_id, controversy_score, community_score,
-                     total_reactions, reaction_diversity, reply_count,
-                     vindication_status, created_at)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (claim_id) DO UPDATE SET
-                        controversy_score = EXCLUDED.controversy_score,
-                        community_score = EXCLUDED.community_score
-                    RETURNING id
+            with self.db.get_connection() as conn:
+
+
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        INSERT INTO hot_takes
+                        (claim_id, controversy_score, community_score,
+                         total_reactions, reaction_diversity, reply_count,
+                         vindication_status, created_at)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                        ON CONFLICT (claim_id) DO UPDATE SET
+                            controversy_score = EXCLUDED.controversy_score,
+                            community_score = EXCLUDED.community_score
+                        RETURNING id
                 """, (
                     claim_id,
                     0.0,  # Will be scored later if high engagement
@@ -284,78 +291,80 @@ Respond with ONLY a number 0-10 and brief explanation:
         """
         try:
             # First, check if this message already has a claim
-            with self.db.conn.cursor() as cur:
-                cur.execute("SELECT id FROM claims WHERE message_id = %s", (message.id,))
-                result = cur.fetchone()
+            with self.db.get_connection() as conn:
 
-                if result:
-                    claim_id = result[0]
-                    print(f"📝 Found existing claim #{claim_id} for message")
-                else:
-                    # Create a claim for this message
-                    # Get context (3 messages before)
-                    context_messages = self.db.get_recent_messages(message.channel.id, limit=4)
-                    context = "\n".join([f"{m['username']}: {m['content']}" for m in context_messages[:-1]])
+                with conn.cursor() as cur:
+                    cur.execute("SELECT id FROM claims WHERE message_id = %s", (message.id,))
+                    result = cur.fetchone()
+
+                    if result:
+                        claim_id = result[0]
+                        print(f"📝 Found existing claim #{claim_id} for message")
+                    else:
+                        # Create a claim for this message
+                        # Get context (3 messages before)
+                        context_messages = self.db.get_recent_messages(message.channel.id, limit=4)
+                        context = "\n".join([f"{m['username']}: {m['content']}" for m in context_messages[:-1]])
+
+                        cur.execute("""
+                            INSERT INTO claims
+                            (user_id, username, message_id, channel_id, channel_name,
+                             claim_text, claim_type, confidence_level, context, timestamp)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                            ON CONFLICT (message_id) DO NOTHING
+                            RETURNING id
+                        """, (
+                            message.author.id,
+                            str(message.author),
+                            message.id,
+                            message.channel.id,
+                            message.channel.name,
+                            message.content,
+                            'opinion',  # Default type for manual hot takes
+                            'certain',
+                            context,
+                            message.created_at
+                        ))
+
+                        result = cur.fetchone()
+                        if result:
+                            claim_id = result[0]
+                            print(f"📝 Created claim #{claim_id} from manual hot take")
+                        else:
+                            return None
+
+                    # Check if hot take already exists
+                    cur.execute("SELECT id FROM hot_takes WHERE claim_id = %s", (claim_id,))
+                    if cur.fetchone():
+                        print(f"🔥 Hot take already exists for claim #{claim_id}")
+                        return None
+
+                    # Create hot take
+                    community_data = await self.track_community_reaction(message.id, message.channel.id)
 
                     cur.execute("""
-                        INSERT INTO claims
-                        (user_id, username, message_id, channel_id, channel_name,
-                         claim_text, claim_type, confidence_level, context, timestamp)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                        ON CONFLICT (message_id) DO NOTHING
+                        INSERT INTO hot_takes
+                        (claim_id, controversy_score, community_score,
+                         total_reactions, reaction_diversity, reply_count,
+                         vindication_status, created_at)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                         RETURNING id
                     """, (
-                        message.author.id,
-                        str(message.author),
-                        message.id,
-                        message.channel.id,
-                        message.channel.name,
-                        message.content,
-                        'opinion',  # Default type for manual hot takes
-                        'certain',
-                        context,
-                        message.created_at
+                        claim_id,
+                        5.0,  # Default manual hot takes to moderate controversy
+                        community_data['community_score'],
+                        community_data['total_reactions'],
+                        community_data['reaction_diversity'],
+                        community_data['reply_count'],
+                        'pending',
+                        datetime.now()
                     ))
 
                     result = cur.fetchone()
                     if result:
-                        claim_id = result[0]
-                        print(f"📝 Created claim #{claim_id} from manual hot take")
-                    else:
-                        return None
-
-                # Check if hot take already exists
-                cur.execute("SELECT id FROM hot_takes WHERE claim_id = %s", (claim_id,))
-                if cur.fetchone():
-                    print(f"🔥 Hot take already exists for claim #{claim_id}")
-                    return None
-
-                # Create hot take
-                community_data = await self.track_community_reaction(message.id, message.channel.id)
-
-                cur.execute("""
-                    INSERT INTO hot_takes
-                    (claim_id, controversy_score, community_score,
-                     total_reactions, reaction_diversity, reply_count,
-                     vindication_status, created_at)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                    RETURNING id
-                """, (
-                    claim_id,
-                    5.0,  # Default manual hot takes to moderate controversy
-                    community_data['community_score'],
-                    community_data['total_reactions'],
-                    community_data['reaction_diversity'],
-                    community_data['reply_count'],
-                    'pending',
-                    datetime.now()
-                ))
-
-                result = cur.fetchone()
-                if result:
-                    hot_take_id = result[0]
-                    print(f"🔥 Manual hot take #{hot_take_id} created by {added_by_user}")
-                    return hot_take_id
+                        hot_take_id = result[0]
+                        print(f"🔥 Manual hot take #{hot_take_id} created by {added_by_user}")
+                        return hot_take_id
 
             return None
 
@@ -369,46 +378,48 @@ Respond with ONLY a number 0-10 and brief explanation:
         Threshold: 5+ reactions OR 3+ replies within 1 hour.
         """
         try:
-            with self.db.conn.cursor() as cur:
-                cur.execute("""
-                    SELECT total_reactions, reply_count, controversy_score
-                    FROM hot_takes
-                    WHERE id = %s
-                """, (hot_take_id,))
+            with self.db.get_connection() as conn:
 
-                result = cur.fetchone()
-                if not result:
-                    return
-
-                total_reactions, reply_count, current_score = result
-
-                # Check if meets threshold and hasn't been scored yet
-                if (total_reactions >= 5 or reply_count >= 3) and current_score == 0.0:
-                    print(f"🎯 Hot take #{hot_take_id} meets threshold - sending to LLM for scoring")
-
-                    # Get claim context
+                with conn.cursor() as cur:
                     cur.execute("""
-                        SELECT c.claim_text, c.context
-                        FROM claims c
-                        JOIN hot_takes ht ON ht.claim_id = c.id
-                        WHERE ht.id = %s
+                        SELECT total_reactions, reply_count, controversy_score
+                        FROM hot_takes
+                        WHERE id = %s
                     """, (hot_take_id,))
 
-                    claim_data = cur.fetchone()
-                    if claim_data:
-                        claim_text, context = claim_data
+                    result = cur.fetchone()
+                    if not result:
+                        return
 
-                        # Score with LLM
-                        controversy_score = await self.score_controversy_with_llm(claim_text, context)
+                    total_reactions, reply_count, current_score = result
 
-                        # Update score
+                    # Check if meets threshold and hasn't been scored yet
+                    if (total_reactions >= 5 or reply_count >= 3) and current_score == 0.0:
+                        print(f"🎯 Hot take #{hot_take_id} meets threshold - sending to LLM for scoring")
+
+                        # Get claim context
                         cur.execute("""
-                            UPDATE hot_takes
-                            SET controversy_score = %s
-                            WHERE id = %s
-                        """, (controversy_score, hot_take_id))
+                            SELECT c.claim_text, c.context
+                            FROM claims c
+                            JOIN hot_takes ht ON ht.claim_id = c.id
+                            WHERE ht.id = %s
+                        """, (hot_take_id,))
 
-                        print(f"✅ Hot take #{hot_take_id} scored: {controversy_score}/10")
+                        claim_data = cur.fetchone()
+                        if claim_data:
+                            claim_text, context = claim_data
+
+                            # Score with LLM
+                            controversy_score = await self.score_controversy_with_llm(claim_text, context)
+
+                            # Update score
+                            cur.execute("""
+                                UPDATE hot_takes
+                                SET controversy_score = %s
+                                WHERE id = %s
+                            """, (controversy_score, hot_take_id))
+
+                            print(f"✅ Hot take #{hot_take_id} scored: {controversy_score}/10")
 
         except Exception as e:
             print(f"❌ Error checking high engagement: {e}")
@@ -424,24 +435,26 @@ Respond with ONLY a number 0-10 and brief explanation:
                 return False
 
             # Calculate age score (how well it aged)
-            with self.db.conn.cursor() as cur:
-                cur.execute("""
-                    UPDATE hot_takes
-                    SET vindication_status = %s,
-                        vindication_date = %s,
-                        vindication_notes = %s,
-                        age_score = CASE
-                            WHEN %s = 'won' THEN 10.0
-                            WHEN %s = 'mixed' THEN 5.0
-                            WHEN %s = 'lost' THEN 0.0
-                            ELSE NULL
-                        END
-                    WHERE id = %s
-                """, (status, datetime.now(), notes, status, status, status, hot_take_id))
+            with self.db.get_connection() as conn:
 
-                if cur.rowcount > 0:
-                    print(f"⚖️  Hot take #{hot_take_id} vindicated as: {status}")
-                    return True
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        UPDATE hot_takes
+                        SET vindication_status = %s,
+                            vindication_date = %s,
+                            vindication_notes = %s,
+                            age_score = CASE
+                                WHEN %s = 'won' THEN 10.0
+                                WHEN %s = 'mixed' THEN 5.0
+                                WHEN %s = 'lost' THEN 0.0
+                                ELSE NULL
+                            END
+                        WHERE id = %s
+                    """, (status, datetime.now(), notes, status, status, status, hot_take_id))
+
+                    if cur.rowcount > 0:
+                        print(f"⚖️  Hot take #{hot_take_id} vindicated as: {status}")
+                        return True
 
             return False
 
@@ -463,65 +476,68 @@ Respond with ONLY a number 0-10 and brief explanation:
         try:
             cutoff_date = datetime.now() - timedelta(days=days)
 
-            with self.db.conn.cursor() as cur:
-                if leaderboard_type == 'controversial':
-                    query = """
-                        SELECT c.username, c.claim_text, ht.controversy_score,
-                               ht.community_score, ht.total_reactions, ht.created_at
-                        FROM hot_takes ht
-                        JOIN claims c ON c.id = ht.claim_id
-                        WHERE ht.created_at > %s AND ht.controversy_score > 0
-                        ORDER BY ht.controversy_score DESC
-                        LIMIT %s
-                    """
-                elif leaderboard_type == 'vindicated':
-                    query = """
-                        SELECT c.username, c.claim_text, ht.age_score,
-                               ht.vindication_status, ht.vindication_date
-                        FROM hot_takes ht
-                        JOIN claims c ON c.id = ht.claim_id
-                        WHERE ht.created_at > %s AND ht.vindication_status = 'won'
-                        ORDER BY ht.age_score DESC
-                        LIMIT %s
-                    """
-                elif leaderboard_type == 'worst':
-                    query = """
-                        SELECT c.username, c.claim_text, ht.age_score,
-                               ht.vindication_status, ht.vindication_date
-                        FROM hot_takes ht
-                        JOIN claims c ON c.id = ht.claim_id
-                        WHERE ht.created_at > %s AND ht.vindication_status = 'lost'
-                        ORDER BY ht.age_score ASC
-                        LIMIT %s
-                    """
-                elif leaderboard_type == 'community':
-                    query = """
-                        SELECT c.username, c.claim_text, ht.community_score,
-                               ht.total_reactions, ht.reply_count, ht.created_at
-                        FROM hot_takes ht
-                        JOIN claims c ON c.id = ht.claim_id
-                        WHERE ht.created_at > %s
-                        ORDER BY ht.community_score DESC
-                        LIMIT %s
-                    """
-                else:  # combined
-                    query = """
-                        SELECT c.username, c.claim_text,
-                               (ht.controversy_score * COALESCE(ht.age_score, 5)) as combined_score,
-                               ht.controversy_score, ht.age_score, ht.community_score
-                        FROM hot_takes ht
-                        JOIN claims c ON c.id = ht.claim_id
-                        WHERE ht.created_at > %s AND ht.controversy_score > 0
-                        ORDER BY combined_score DESC
-                        LIMIT %s
-                    """
+            with self.db.get_connection() as conn:
 
-                cur.execute(query, (cutoff_date, limit))
 
-                columns = [desc[0] for desc in cur.description]
-                results = cur.fetchall()
+                with conn.cursor() as cur:
+                    if leaderboard_type == 'controversial':
+                        query = """
+                            SELECT c.username, c.claim_text, ht.controversy_score,
+                                   ht.community_score, ht.total_reactions, ht.created_at
+                            FROM hot_takes ht
+                            JOIN claims c ON c.id = ht.claim_id
+                            WHERE ht.created_at > %s AND ht.controversy_score > 0
+                            ORDER BY ht.controversy_score DESC
+                            LIMIT %s
+                        """
+                    elif leaderboard_type == 'vindicated':
+                        query = """
+                            SELECT c.username, c.claim_text, ht.age_score,
+                                   ht.vindication_status, ht.vindication_date
+                            FROM hot_takes ht
+                            JOIN claims c ON c.id = ht.claim_id
+                            WHERE ht.created_at > %s AND ht.vindication_status = 'won'
+                            ORDER BY ht.age_score DESC
+                            LIMIT %s
+                        """
+                    elif leaderboard_type == 'worst':
+                        query = """
+                            SELECT c.username, c.claim_text, ht.age_score,
+                                   ht.vindication_status, ht.vindication_date
+                            FROM hot_takes ht
+                            JOIN claims c ON c.id = ht.claim_id
+                            WHERE ht.created_at > %s AND ht.vindication_status = 'lost'
+                            ORDER BY ht.age_score ASC
+                            LIMIT %s
+                        """
+                    elif leaderboard_type == 'community':
+                        query = """
+                            SELECT c.username, c.claim_text, ht.community_score,
+                                   ht.total_reactions, ht.reply_count, ht.created_at
+                            FROM hot_takes ht
+                            JOIN claims c ON c.id = ht.claim_id
+                            WHERE ht.created_at > %s
+                            ORDER BY ht.community_score DESC
+                            LIMIT %s
+                        """
+                    else:  # combined
+                        query = """
+                            SELECT c.username, c.claim_text,
+                                   (ht.controversy_score * COALESCE(ht.age_score, 5)) as combined_score,
+                                   ht.controversy_score, ht.age_score, ht.community_score
+                            FROM hot_takes ht
+                            JOIN claims c ON c.id = ht.claim_id
+                            WHERE ht.created_at > %s AND ht.controversy_score > 0
+                            ORDER BY combined_score DESC
+                            LIMIT %s
+                        """
 
-                return [dict(zip(columns, row)) for row in results]
+                    cur.execute(query, (cutoff_date, limit))
+
+                    columns = [desc[0] for desc in cur.description]
+                    results = cur.fetchall()
+
+                    return [dict(zip(columns, row)) for row in results]
 
         except Exception as e:
             print(f"❌ Error fetching leaderboard: {e}")
@@ -532,30 +548,32 @@ Respond with ONLY a number 0-10 and brief explanation:
         Get user's hot takes statistics.
         """
         try:
-            with self.db.conn.cursor() as cur:
-                cur.execute("""
-                    SELECT
-                        COUNT(*) as total_hot_takes,
-                        AVG(ht.controversy_score) as avg_controversy,
-                        AVG(ht.community_score) as avg_community,
-                        COUNT(*) FILTER (WHERE ht.vindication_status = 'won') as vindicated_count,
-                        COUNT(*) FILTER (WHERE ht.vindication_status = 'lost') as failed_count,
-                        MAX(ht.controversy_score) as spiciest_take
-                    FROM hot_takes ht
-                    JOIN claims c ON c.id = ht.claim_id
-                    WHERE c.user_id = %s
-                """, (user_id,))
+            with self.db.get_connection() as conn:
 
-                row = cur.fetchone()
-                if row:
-                    return {
-                        'total_hot_takes': row[0] or 0,
-                        'avg_controversy': float(row[1] or 0),
-                        'avg_community': float(row[2] or 0),
-                        'vindicated_count': row[3] or 0,
-                        'failed_count': row[4] or 0,
-                        'spiciest_take': float(row[5] or 0)
-                    }
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT
+                            COUNT(*) as total_hot_takes,
+                            AVG(ht.controversy_score) as avg_controversy,
+                            AVG(ht.community_score) as avg_community,
+                            COUNT(*) FILTER (WHERE ht.vindication_status = 'won') as vindicated_count,
+                            COUNT(*) FILTER (WHERE ht.vindication_status = 'lost') as failed_count,
+                            MAX(ht.controversy_score) as spiciest_take
+                        FROM hot_takes ht
+                        JOIN claims c ON c.id = ht.claim_id
+                        WHERE c.user_id = %s
+                    """, (user_id,))
+
+                    row = cur.fetchone()
+                    if row:
+                        return {
+                            'total_hot_takes': row[0] or 0,
+                            'avg_controversy': float(row[1] or 0),
+                            'avg_community': float(row[2] or 0),
+                            'vindicated_count': row[3] or 0,
+                            'failed_count': row[4] or 0,
+                            'spiciest_take': float(row[5] or 0)
+                        }
 
             return {}
 

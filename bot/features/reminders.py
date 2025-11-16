@@ -167,32 +167,35 @@ class ReminderSystem:
             if remind_at <= datetime.now():
                 return None
 
-            with self.db.conn.cursor() as cur:
-                cur.execute("""
-                    INSERT INTO reminders
-                    (user_id, username, channel_id, message_id,
-                     reminder_text, time_string, remind_at,
-                     recurring, recurring_interval, created_at)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    RETURNING id
-                """, (
-                    user_id,
-                    username,
-                    channel_id,
-                    message_id,
-                    reminder_text,
-                    time_string,
-                    remind_at,
-                    recurring,
-                    recurring_interval,
-                    datetime.now()
-                ))
+            with self.db.get_connection() as conn:
 
-                result = cur.fetchone()
-                if result:
-                    reminder_id = result[0]
-                    print(f"⏰ Reminder #{reminder_id} created for {username} at {remind_at}")
-                    return (reminder_id, remind_at)
+
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        INSERT INTO reminders
+                        (user_id, username, channel_id, message_id,
+                         reminder_text, time_string, remind_at,
+                         recurring, recurring_interval, created_at)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        RETURNING id
+                    """, (
+                        user_id,
+                        username,
+                        channel_id,
+                        message_id,
+                        reminder_text,
+                        time_string,
+                        remind_at,
+                        recurring,
+                        recurring_interval,
+                        datetime.now()
+                    ))
+
+                    result = cur.fetchone()
+                    if result:
+                        reminder_id = result[0]
+                        print(f"⏰ Reminder #{reminder_id} created for {username} at {remind_at}")
+                        return (reminder_id, remind_at)
 
             return None
 
@@ -205,20 +208,22 @@ class ReminderSystem:
         Get all reminders that are due (remind_at <= now and not completed).
         """
         try:
-            with self.db.conn.cursor() as cur:
-                cur.execute("""
-                    SELECT id, user_id, username, channel_id, message_id,
-                           reminder_text, time_string, remind_at, recurring, recurring_interval
-                    FROM reminders
-                    WHERE remind_at <= %s
-                    AND completed = FALSE
-                    ORDER BY remind_at ASC
-                """, (datetime.now(),))
+            with self.db.get_connection() as conn:
 
-                columns = [desc[0] for desc in cur.description]
-                results = cur.fetchall()
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT id, user_id, username, channel_id, message_id,
+                               reminder_text, time_string, remind_at, recurring, recurring_interval
+                        FROM reminders
+                        WHERE remind_at <= %s
+                        AND completed = FALSE
+                        ORDER BY remind_at ASC
+                    """, (datetime.now(),))
 
-                return [dict(zip(columns, row)) for row in results]
+                    columns = [desc[0] for desc in cur.description]
+                    results = cur.fetchall()
+
+                    return [dict(zip(columns, row)) for row in results]
 
         except Exception as e:
             print(f"❌ Error fetching due reminders: {e}")
@@ -227,15 +232,17 @@ class ReminderSystem:
     async def mark_completed(self, reminder_id: int):
         """Mark a reminder as completed."""
         try:
-            with self.db.conn.cursor() as cur:
-                cur.execute("""
-                    UPDATE reminders
-                    SET completed = TRUE,
-                        completed_at = %s
-                    WHERE id = %s
-                """, (datetime.now(), reminder_id))
+            with self.db.get_connection() as conn:
 
-                print(f"✅ Reminder #{reminder_id} marked as completed")
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        UPDATE reminders
+                        SET completed = TRUE,
+                            completed_at = %s
+                        WHERE id = %s
+                    """, (datetime.now(), reminder_id))
+
+                    print(f"✅ Reminder #{reminder_id} marked as completed")
 
         except Exception as e:
             print(f"❌ Error marking reminder complete: {e}")
@@ -255,30 +262,32 @@ class ReminderSystem:
                 return
 
             # Create new reminder
-            with self.db.conn.cursor() as cur:
-                cur.execute("""
-                    INSERT INTO reminders
-                    (user_id, username, channel_id, message_id,
-                     reminder_text, time_string, remind_at,
-                     recurring, recurring_interval, created_at)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    RETURNING id
-                """, (
-                    reminder['user_id'],
-                    reminder['username'],
-                    reminder['channel_id'],
-                    reminder['message_id'],
-                    reminder['reminder_text'],
-                    reminder['time_string'],
-                    next_remind_at,
-                    True,
-                    reminder['recurring_interval'],
-                    datetime.now()
-                ))
+            with self.db.get_connection() as conn:
 
-                result = cur.fetchone()
-                if result:
-                    print(f"🔄 Recurring reminder rescheduled for {next_remind_at}")
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        INSERT INTO reminders
+                        (user_id, username, channel_id, message_id,
+                         reminder_text, time_string, remind_at,
+                         recurring, recurring_interval, created_at)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        RETURNING id
+                    """, (
+                        reminder['user_id'],
+                        reminder['username'],
+                        reminder['channel_id'],
+                        reminder['message_id'],
+                        reminder['reminder_text'],
+                        reminder['time_string'],
+                        next_remind_at,
+                        True,
+                        reminder['recurring_interval'],
+                        datetime.now()
+                    ))
+
+                    result = cur.fetchone()
+                    if result:
+                        print(f"🔄 Recurring reminder rescheduled for {next_remind_at}")
 
         except Exception as e:
             print(f"❌ Error rescheduling recurring reminder: {e}")
@@ -286,19 +295,21 @@ class ReminderSystem:
     async def get_user_reminders(self, user_id: int) -> list:
         """Get all active reminders for a user."""
         try:
-            with self.db.conn.cursor() as cur:
-                cur.execute("""
-                    SELECT id, reminder_text, remind_at, recurring, created_at
-                    FROM reminders
-                    WHERE user_id = %s
-                    AND completed = FALSE
-                    ORDER BY remind_at ASC
-                """, (user_id,))
+            with self.db.get_connection() as conn:
 
-                columns = [desc[0] for desc in cur.description]
-                results = cur.fetchall()
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT id, reminder_text, remind_at, recurring, created_at
+                        FROM reminders
+                        WHERE user_id = %s
+                        AND completed = FALSE
+                        ORDER BY remind_at ASC
+                    """, (user_id,))
 
-                return [dict(zip(columns, row)) for row in results]
+                    columns = [desc[0] for desc in cur.description]
+                    results = cur.fetchall()
+
+                    return [dict(zip(columns, row)) for row in results]
 
         except Exception as e:
             print(f"❌ Error fetching user reminders: {e}")
@@ -310,15 +321,17 @@ class ReminderSystem:
         Returns True if successful.
         """
         try:
-            with self.db.conn.cursor() as cur:
-                cur.execute("""
-                    DELETE FROM reminders
-                    WHERE id = %s AND user_id = %s AND completed = FALSE
-                """, (reminder_id, user_id))
+            with self.db.get_connection() as conn:
 
-                if cur.rowcount > 0:
-                    print(f"🗑️ Reminder #{reminder_id} cancelled by user {user_id}")
-                    return True
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        DELETE FROM reminders
+                        WHERE id = %s AND user_id = %s AND completed = FALSE
+                    """, (reminder_id, user_id))
+
+                    if cur.rowcount > 0:
+                        print(f"🗑️ Reminder #{reminder_id} cancelled by user {user_id}")
+                        return True
 
             return False
 

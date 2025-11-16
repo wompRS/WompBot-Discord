@@ -2,6 +2,64 @@
 
 All notable changes to WompBot will be documented in this file.
 
+## [2025-11-16] - Database Connection Pooling & Parallel Processing
+
+### Added
+- **Database Connection Pooling**: Implemented PostgreSQL ThreadedConnectionPool for concurrent request handling
+  - Pool size configurable via `DB_POOL_MIN` (default: 2) and `DB_POOL_MAX` (default: 10) in `.env`
+  - Thread-safe database access using context managers
+  - Enables true parallel processing for multiple simultaneous users
+- **Enhanced User Context**: Expanded historical user context for better personalized responses
+  - Conversation history window: 6 → 20 messages (`CONTEXT_WINDOW_MESSAGES`)
+  - Token budget: 4,000 → 8,000 tokens (`MAX_CONTEXT_TOKENS`)
+  - User behavioral profile expanded from 3 basic fields to comprehensive personality analysis
+
+### Changed
+- **Database Architecture** (`bot/database.py`):
+  - Replaced single shared connection with `psycopg2.pool.ThreadedConnectionPool`
+  - Added `get_connection()` context manager for safe connection checkout/return
+  - Updated all database operations across 14 files to use connection pooling
+  - Pool automatically manages connections with retry logic and health checks
+- **Concurrent Request Support** (`bot/main.py`):
+  - Bot can now handle up to 3 concurrent LLM requests per user (`MAX_CONCURRENT_REQUESTS`)
+  - Up to 10 concurrent database connections across all users
+  - Non-blocking async architecture with `asyncio.to_thread()` for LLM calls
+- **LLM Context Building** (`bot/llm.py`):
+  - Enhanced user context to include comprehensive behavioral patterns
+  - Added communication style, honesty patterns, and activity metrics
+  - Improved context formatting for better LLM understanding
+
+### Fixed
+- **Repeated Message Detection Bug**: Fixed `NameError: name 'user_message' is not defined` in message handler
+  - Changed undefined `user_message` variable to correct `content` variable
+  - Anti-gaming repeated message detection now works properly
+- **Database Thread Safety**: All database operations now thread-safe
+  - Fixed race conditions from shared connection usage
+  - Eliminated database blocking issues during concurrent requests
+
+### Technical Details
+**Files Modified for Connection Pooling:**
+- `bot/database.py` - 33 methods updated
+- `bot/cost_tracker.py` - 1 method updated
+- `bot/features/chat_stats.py` - 3 methods updated
+- `bot/features/claims.py` - 6 methods updated
+- `bot/features/debate_scorekeeper.py` - 3 methods updated
+- `bot/features/events.py` - 5 methods updated
+- `bot/features/gdpr_privacy.py` - 10 methods updated
+- `bot/features/hot_takes.py` - 8 methods updated
+- `bot/features/iracing.py` - 2 methods updated
+- `bot/features/iracing_teams.py` - 13 methods updated
+- `bot/features/quote_of_the_day.py` - 4 methods updated
+- `bot/features/reminders.py` - 6 methods updated
+- `bot/features/yearly_wrapped.py` - 6 methods updated
+- `bot/main.py` - 3 methods updated
+
+**Performance Impact:**
+- Multiple users can now interact with bot simultaneously without blocking
+- Database operations execute in parallel across connection pool
+- LLM requests process concurrently (up to 3 per user)
+- Eliminated single-connection bottleneck that caused queuing delays
+
 ## [2025-11-03] - Dual-Model Architecture & Fact-Check Improvements
 
 ### Added
