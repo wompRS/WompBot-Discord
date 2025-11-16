@@ -14,6 +14,7 @@ from llm import LLMClient
 from local_llm import LocalLLMClient
 from cost_tracker import CostTracker
 from search import SearchEngine
+from rag import RAGSystem
 from features.claims import ClaimsTracker
 from features.fact_check import FactChecker
 from features.chat_stats import ChatStatistics
@@ -46,6 +47,7 @@ cost_tracker = None  # Will be initialized in on_ready when bot is available
 llm = LLMClient(cost_tracker=None)  # Cost tracker will be set in on_ready
 local_llm = LocalLLMClient()  # Local uncensored LLM (optional)
 search = SearchEngine()
+rag = RAGSystem(db, llm)  # RAG system for semantic search and intelligent context
 
 # Setup feature modules
 claims_tracker = ClaimsTracker(db, llm)
@@ -692,6 +694,35 @@ async def before_analyze_user_behavior():
     await bot.wait_until_ready()
     print("🧠 User behavior analysis task started (runs hourly)")
 
+@tasks.loop(minutes=5)  # Process embeddings every 5 minutes
+async def process_embeddings():
+    """Background task to generate embeddings for new messages"""
+    if not rag.enabled:
+        return  # Skip if RAG is disabled
+
+    if not await _job_guard("process_embeddings", timedelta(minutes=5), jitter_seconds=30):
+        return
+
+    try:
+        # Process up to 100 messages per run
+        count = await rag.process_embedding_queue(limit=100)
+
+        if count > 0:
+            print(f"🧠 Processed {count} message embeddings")
+
+        if db:
+            db.update_job_last_run("process_embeddings")
+
+    except Exception as e:
+        print(f"❌ Error processing embeddings: {e}")
+
+@process_embeddings.before_loop
+async def before_process_embeddings():
+    """Wait for bot to be ready before starting embedding processing"""
+    await bot.wait_until_ready()
+    if rag.enabled:
+        print("🧠 RAG embedding processor task started (runs every 5 minutes)")
+
 async def generate_leaderboard_response(channel, stat_type, days):
     """Generate and send leaderboard embed"""
     try:
@@ -836,6 +867,11 @@ async def on_ready():
     if not analyze_user_behavior.is_running():
         analyze_user_behavior.start()
         print("🧠 Automatic user behavior analysis enabled (runs hourly)")
+
+    # Start RAG embedding processing task
+    if rag.enabled and not process_embeddings.is_running():
+        process_embeddings.start()
+        print("🧠 RAG embedding processing enabled (runs every 5 minutes)")
 
     # Start iRacing popularity update task
     if iracing and not update_iracing_popularity.is_running():
@@ -1428,13 +1464,13 @@ async def handle_bot_mention(message, opted_out):
 
         # Start typing indicator
         async with message.channel.typing():
-            # Get conversation context - only this user's messages and bot responses to them
+            # Get conversation context - last 10 messages from ALL users in channel
             conversation_history = db.get_recent_messages(
                 message.channel.id,
-                limit=int(os.getenv('CONTEXT_WINDOW_MESSAGES', 6)),
+                limit=10,  # Last 10 messages total (all users)
                 exclude_opted_out=True,
-                exclude_bot_id=bot.user.id,
-                user_id=message.author.id  # Only get this user's conversation history
+                exclude_bot_id=bot.user.id
+                # No user_id filter - get messages from all users
             )
 
             # Clean Discord mentions from conversation history
@@ -1493,6 +1529,14 @@ async def handle_bot_mention(message, opted_out):
                     db.store_search_log(content, len(search_results_raw), message.author.id, message.channel.id)
                     db.record_feature_usage(message.author.id, 'search')
 
+            # Get RAG context (semantic search, facts, summaries)
+            rag_context = await rag.get_relevant_context(
+                content,
+                message.channel.id,
+                message.author.id,
+                limit=3
+            )
+
             # Generate response
             # Only pass user info for text mentions ("wompbot") to reduce cost logging noise
             # Use bot docs if available, otherwise use search results
@@ -1504,6 +1548,7 @@ async def handle_bot_mention(message, opted_out):
                 conversation_history,
                 user_context,
                 context_for_llm,
+                rag_context,
                 0,
                 bot.user.id,
                 message.author.id if is_text_mention else None,
@@ -1549,6 +1594,7 @@ async def handle_bot_mention(message, opted_out):
                     conversation_history,
                     user_context,
                     context_for_llm,
+                    rag_context,
                     0,
                     bot.user.id,
                     message.author.id if is_text_mention else None,
