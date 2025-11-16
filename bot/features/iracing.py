@@ -278,23 +278,25 @@ class iRacingIntegration:
             True if successful
         """
         try:
-            with self.db.conn.cursor() as cur:
-                cur.execute("""
-                    INSERT INTO iracing_links (discord_user_id, iracing_cust_id, iracing_name, linked_at)
-                    VALUES (%s, %s, %s, NOW())
-                    ON CONFLICT (discord_user_id)
-                    DO UPDATE SET
-                        iracing_cust_id = EXCLUDED.iracing_cust_id,
-                        iracing_name = EXCLUDED.iracing_name,
-                        linked_at = NOW()
-                """, (discord_user_id, iracing_cust_id, iracing_name))
+            with self.db.get_connection() as conn:
 
-                self.db.conn.commit()
-                return True
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        INSERT INTO iracing_links (discord_user_id, iracing_cust_id, iracing_name, linked_at)
+                        VALUES (%s, %s, %s, NOW())
+                        ON CONFLICT (discord_user_id)
+                        DO UPDATE SET
+                            iracing_cust_id = EXCLUDED.iracing_cust_id,
+                            iracing_name = EXCLUDED.iracing_name,
+                            linked_at = NOW()
+                    """, (discord_user_id, iracing_cust_id, iracing_name))
+
+                    conn.commit()
+                    return True
 
         except Exception as e:
             print(f"❌ Error linking accounts: {e}")
-            self.db.conn.rollback()
+            conn.rollback()
             return False
 
     async def get_linked_iracing_id(self, discord_user_id: int) -> Optional[int]:
@@ -308,15 +310,17 @@ class iRacingIntegration:
             iRacing customer ID or None
         """
         try:
-            with self.db.conn.cursor() as cur:
-                cur.execute("""
-                    SELECT iracing_cust_id, iracing_name
-                    FROM iracing_links
-                    WHERE discord_user_id = %s
-                """, (discord_user_id,))
+            with self.db.get_connection() as conn:
 
-                result = cur.fetchone()
-                return result if result else None
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT iracing_cust_id, iracing_name
+                        FROM iracing_links
+                        WHERE discord_user_id = %s
+                    """, (discord_user_id,))
+
+                    result = cur.fetchone()
+                    return result if result else None
 
         except Exception as e:
             print(f"❌ Error getting linked account: {e}")

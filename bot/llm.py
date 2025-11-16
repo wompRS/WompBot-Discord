@@ -153,15 +153,40 @@ Be useful and real. That's the balance."""
                 profile = user_context.get("profile")
                 behavior = user_context.get("behavior")
 
+            # Build comprehensive user context if available
             if profile and behavior:
                 username = profile.get("username") or profile.get("user_id", "Unknown user")
-                context_note = f"\n\nUser context for {username}:\n"
-                context_note += f"- Profanity level: {behavior.get('profanity_score', 0)}/10\n"
-                context_note += f"- Tone: {behavior.get('tone_analysis', 'Unknown')}\n"
-                context_note += f"- Style: {behavior.get('conversation_style', 'Unknown')}"
+                context_note = f"\n\n## HISTORICAL USER CONTEXT for {username}:\n"
+                context_note += "Use this to understand their communication style, personality, and typical behavior.\n\n"
+
+                # Communication patterns
+                context_note += f"**Communication Style:**\n"
+                if behavior.get('conversation_style'):
+                    context_note += f"- Style: {behavior.get('conversation_style')}\n"
+                if behavior.get('tone_analysis'):
+                    context_note += f"- Typical Tone: {behavior.get('tone_analysis')}\n"
+                if behavior.get('profanity_score') is not None:
+                    context_note += f"- Profanity level: {behavior.get('profanity_score', 0)}/10\n"
+
+                # Honesty and behavior patterns
+                if behavior.get('honesty_patterns'):
+                    context_note += f"\n**Behavioral Patterns:**\n"
+                    context_note += f"- {behavior.get('honesty_patterns')}\n"
+
+                # Activity level
+                if behavior.get('message_count'):
+                    context_note += f"\n**Activity:**\n"
+                    context_note += f"- Message count in recent period: {behavior.get('message_count')}\n"
+
+                # Analysis period context
+                if behavior.get('analysis_period_start') and behavior.get('analysis_period_end'):
+                    context_note += f"- Analysis period: {behavior.get('analysis_period_start')} to {behavior.get('analysis_period_end')}\n"
+
                 messages[0]["content"] += context_note
 
-            for msg in conversation_history[-6:]:  # Last 6 messages
+            # Increased conversation history window for better context
+            history_window = int(os.getenv('CONTEXT_WINDOW_MESSAGES', '6'))
+            for msg in conversation_history[-history_window:]:
                 if not msg.get("content"):
                     continue
 

@@ -131,15 +131,16 @@ class CostTracker:
     def get_cost_breakdown(self):
         """Get cost breakdown by model"""
         try:
-            with self.db.conn.cursor() as cur:
-                cur.execute("""
-                    SELECT model, SUM(cost_usd) as total_cost
-                    FROM api_costs
-                    GROUP BY model
-                    ORDER BY total_cost DESC
-                """)
-                results = cur.fetchall()
-                return {row[0]: float(row[1]) for row in results}
+            with self.db.get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT model, SUM(cost_usd) as total_cost
+                        FROM api_costs
+                        GROUP BY model
+                        ORDER BY total_cost DESC
+                    """)
+                    results = cur.fetchall()
+                    return {row[0]: float(row[1]) for row in results}
         except Exception as e:
             print(f"❌ Error getting cost breakdown: {e}")
             return {}

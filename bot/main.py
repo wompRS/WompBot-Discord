@@ -1179,22 +1179,24 @@ async def on_reaction_add(reaction, user):
 
     # Track reactions for hot takes (update community engagement)
     try:
-        with db.conn.cursor() as cur:
-            # Check if this message has a hot take
-            cur.execute("""
-                SELECT ht.id
-                FROM hot_takes ht
-                JOIN claims c ON c.id = ht.claim_id
-                WHERE c.message_id = %s
-            """, (reaction.message.id,))
+        with db.get_connection() as conn:
 
-            result = cur.fetchone()
-            if result:
-                hot_take_id = result[0]
-                await hot_takes_tracker.update_reaction_metrics(reaction.message, hot_take_id)
+            with conn.cursor() as cur:
+                # Check if this message has a hot take
+                cur.execute("""
+                    SELECT ht.id
+                    FROM hot_takes ht
+                    JOIN claims c ON c.id = ht.claim_id
+                    WHERE c.message_id = %s
+                """, (reaction.message.id,))
 
-                # Check if now meets threshold for LLM scoring
-                await hot_takes_tracker.check_and_score_high_engagement(hot_take_id, reaction.message)
+                result = cur.fetchone()
+                if result:
+                    hot_take_id = result[0]
+                    await hot_takes_tracker.update_reaction_metrics(reaction.message, hot_take_id)
+
+                    # Check if now meets threshold for LLM scoring
+                    await hot_takes_tracker.check_and_score_high_engagement(hot_take_id, reaction.message)
     except Exception as e:
         print(f"❌ Error tracking hot take reaction: {e}")
 
@@ -1206,18 +1208,20 @@ async def on_reaction_remove(reaction, user):
 
     # Update hot takes reaction metrics
     try:
-        with db.conn.cursor() as cur:
-            cur.execute("""
-                SELECT ht.id
-                FROM hot_takes ht
-                JOIN claims c ON c.id = ht.claim_id
-                WHERE c.message_id = %s
-            """, (reaction.message.id,))
+        with db.get_connection() as conn:
 
-            result = cur.fetchone()
-            if result:
-                hot_take_id = result[0]
-                await hot_takes_tracker.update_reaction_metrics(reaction.message, hot_take_id)
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT ht.id
+                    FROM hot_takes ht
+                    JOIN claims c ON c.id = ht.claim_id
+                    WHERE c.message_id = %s
+                """, (reaction.message.id,))
+
+                result = cur.fetchone()
+                if result:
+                    hot_take_id = result[0]
+                    await hot_takes_tracker.update_reaction_metrics(reaction.message, hot_take_id)
     except Exception as e:
         print(f"❌ Error updating hot take reaction removal: {e}")
 
@@ -1389,6 +1393,23 @@ async def handle_bot_mention(message, opted_out):
             await message.channel.send(
                 f"⏱️ Token limit reached! You've used {tokens_used:,}/{limit:,} tokens this hour.\n"
                 f"Reset in {reset_minutes}m {reset_seconds}s."
+            )
+            return
+
+        # Repeated message detection (anti-gaming)
+        repeated_check = db.check_repeated_messages(
+            message.author.id,
+            content
+        )
+
+        if not repeated_check['allowed']:
+            similar_count = repeated_check['similar_count']
+            threshold = repeated_check['threshold']
+            window_minutes = repeated_check['window_minutes']
+
+            await message.channel.send(
+                f"🚫 Repeated message detected! You've asked {similar_count} similar questions in the last {window_minutes} minutes.\n"
+                f"Please wait before asking similar questions again. (Limit: {threshold} similar messages per {window_minutes}m)"
             )
             return
 
@@ -1926,23 +1947,25 @@ async def verify_claim_slash(interaction: discord.Interaction, claim_id: int, st
     await interaction.response.defer()
 
     try:
-        with db.conn.cursor() as cur:
-            cur.execute("""
-                UPDATE claims
-                SET verification_status = %s,
-                    verification_date = %s,
-                    verification_notes = %s
-                WHERE id = %s
-                RETURNING claim_text, username
-            """, (status, datetime.now(), notes, claim_id))
+        with db.get_connection() as conn:
 
-            result = cur.fetchone()
+            with conn.cursor() as cur:
+                cur.execute("""
+                    UPDATE claims
+                    SET verification_status = %s,
+                        verification_date = %s,
+                        verification_notes = %s
+                    WHERE id = %s
+                    RETURNING claim_text, username
+                """, (status, datetime.now(), notes, claim_id))
 
-            if result:
-                claim_text, username = result
-                await interaction.followup.send(f"✅ Claim #{claim_id} by {username} marked as **{status}**\n> {claim_text[:200]}")
-            else:
-                await interaction.followup.send(f"❌ Claim #{claim_id} not found")
+                result = cur.fetchone()
+
+                if result:
+                    claim_text, username = result
+                    await interaction.followup.send(f"✅ Claim #{claim_id} by {username} marked as **{status}**\n> {claim_text[:200]}")
+                else:
+                    await interaction.followup.send(f"❌ Claim #{claim_id} not found")
 
     except Exception as e:
         await interaction.followup.send(f"❌ Error verifying claim: {str(e)}")

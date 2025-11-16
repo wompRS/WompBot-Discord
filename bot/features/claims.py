@@ -109,34 +109,35 @@ Respond in JSON format:
             # Get surrounding context (3 messages before)
             context_messages = self.db.get_recent_messages(message.channel.id, limit=4)
             context = "\n".join([f"{m['username']}: {m['content']}" for m in context_messages[:-1]])
-            
-            with self.db.conn.cursor() as cur:
-                cur.execute("""
-                    INSERT INTO claims 
-                    (user_id, username, message_id, channel_id, channel_name, 
-                     claim_text, claim_type, confidence_level, context, timestamp)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (message_id) DO NOTHING
-                    RETURNING id
-                """, (
-                    message.author.id,
-                    str(message.author),
-                    message.id,
-                    message.channel.id,
-                    message.channel.name,
-                    claim_data['claim_text'],
-                    claim_data['claim_type'],
-                    claim_data['confidence_level'],
-                    context,
-                    message.created_at
-                ))
-                
-                result = cur.fetchone()
-                if result:
-                    claim_id = result[0]
-                    print(f"📝 Tracked claim #{claim_id} from {message.author}")
-                    return claim_id
-            
+
+            with self.db.get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        INSERT INTO claims
+                        (user_id, username, message_id, channel_id, channel_name,
+                         claim_text, claim_type, confidence_level, context, timestamp)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        ON CONFLICT (message_id) DO NOTHING
+                        RETURNING id
+                    """, (
+                        message.author.id,
+                        str(message.author),
+                        message.id,
+                        message.channel.id,
+                        message.channel.name,
+                        claim_data['claim_text'],
+                        claim_data['claim_type'],
+                        claim_data['confidence_level'],
+                        context,
+                        message.created_at
+                    ))
+
+                    result = cur.fetchone()
+                    if result:
+                        claim_id = result[0]
+                        print(f"📝 Tracked claim #{claim_id} from {message.author}")
+                        return claim_id
+
             return None
             
         except Exception as e:
@@ -146,35 +147,36 @@ Respond in JSON format:
     async def handle_claim_edit(self, before, after):
         """Track when a tracked claim is edited"""
         try:
-            with self.db.conn.cursor() as cur:
-                # Check if message has a tracked claim
-                cur.execute("SELECT id, original_text, edit_history FROM claims WHERE message_id = %s", (before.id,))
-                result = cur.fetchone()
-                
-                if result:
-                    claim_id, original_text, edit_history = result
-                    
-                    # Initialize edit history
-                    if not edit_history:
-                        edit_history = []
-                        original_text = before.content
-                    
-                    # Add edit to history
-                    edit_history.append({
-                        'text': after.content,
-                        'timestamp': datetime.now().isoformat()
-                    })
-                    
-                    cur.execute("""
-                        UPDATE claims 
-                        SET is_edited = TRUE,
-                            original_text = %s,
-                            edit_history = %s,
-                            claim_text = %s
-                        WHERE id = %s
-                    """, (original_text, json.dumps(edit_history), after.content, claim_id))
-                    
-                    print(f"✏️  Claim #{claim_id} edited - history preserved")
+            with self.db.get_connection() as conn:
+                with conn.cursor() as cur:
+                    # Check if message has a tracked claim
+                    cur.execute("SELECT id, original_text, edit_history FROM claims WHERE message_id = %s", (before.id,))
+                    result = cur.fetchone()
+
+                    if result:
+                        claim_id, original_text, edit_history = result
+
+                        # Initialize edit history
+                        if not edit_history:
+                            edit_history = []
+                            original_text = before.content
+
+                        # Add edit to history
+                        edit_history.append({
+                            'text': after.content,
+                            'timestamp': datetime.now().isoformat()
+                        })
+
+                        cur.execute("""
+                            UPDATE claims
+                            SET is_edited = TRUE,
+                                original_text = %s,
+                                edit_history = %s,
+                                claim_text = %s
+                            WHERE id = %s
+                        """, (original_text, json.dumps(edit_history), after.content, claim_id))
+
+                        print(f"✏️  Claim #{claim_id} edited - history preserved")
         
         except Exception as e:
             print(f"❌ Error tracking claim edit: {e}")
@@ -182,17 +184,18 @@ Respond in JSON format:
     async def handle_claim_deletion(self, message):
         """Track when a tracked claim is deleted"""
         try:
-            with self.db.conn.cursor() as cur:
-                cur.execute("""
-                    UPDATE claims 
-                    SET is_deleted = TRUE,
-                        deleted_at = %s,
-                        deleted_text = claim_text
-                    WHERE message_id = %s
-                """, (datetime.now(), message.id))
-                
-                if cur.rowcount > 0:
-                    print(f"🗑️  Claim from message {message.id} marked as deleted")
+            with self.db.get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        UPDATE claims
+                        SET is_deleted = TRUE,
+                            deleted_at = %s,
+                            deleted_text = claim_text
+                        WHERE message_id = %s
+                    """, (datetime.now(), message.id))
+
+                    if cur.rowcount > 0:
+                        print(f"🗑️  Claim from message {message.id} marked as deleted")
         
         except Exception as e:
             print(f"❌ Error tracking claim deletion: {e}")
@@ -200,24 +203,25 @@ Respond in JSON format:
     async def get_user_claims(self, user_id, include_deleted=False):
         """Get all claims by a user"""
         try:
-            with self.db.conn.cursor() as cur:
-                query = """
-                    SELECT id, claim_text, claim_type, confidence_level, 
-                           timestamp, verification_status, is_edited, is_deleted,
-                           message_id, channel_id
-                    FROM claims 
-                    WHERE user_id = %s
-                """
-                if not include_deleted:
-                    query += " AND is_deleted = FALSE"
-                query += " ORDER BY timestamp DESC"
-                
-                cur.execute(query, (user_id,))
-                
-                columns = [desc[0] for desc in cur.description]
-                results = cur.fetchall()
-                
-                return [dict(zip(columns, row)) for row in results]
+            with self.db.get_connection() as conn:
+                with conn.cursor() as cur:
+                    query = """
+                        SELECT id, claim_text, claim_type, confidence_level,
+                               timestamp, verification_status, is_edited, is_deleted,
+                               message_id, channel_id
+                        FROM claims
+                        WHERE user_id = %s
+                    """
+                    if not include_deleted:
+                        query += " AND is_deleted = FALSE"
+                    query += " ORDER BY timestamp DESC"
+
+                    cur.execute(query, (user_id,))
+
+                    columns = [desc[0] for desc in cur.description]
+                    results = cur.fetchall()
+
+                    return [dict(zip(columns, row)) for row in results]
         
         except Exception as e:
             print(f"❌ Error fetching user claims: {e}")
@@ -305,45 +309,46 @@ If no contradiction, respond with:
         try:
             # Get context (2 messages before and after)
             all_messages = self.db.get_recent_messages(message.channel.id, limit=10)
-            
+
             # Find the quoted message in context
             quote_index = next((i for i, m in enumerate(all_messages) if m.get('message_id') == message.id), None)
-            
+
             context = ""
             if quote_index is not None:
                 start = max(0, quote_index - 2)
                 end = min(len(all_messages), quote_index + 3)
                 context_messages = all_messages[start:end]
                 context = "\n".join([f"{m['username']}: {m['content']}" for m in context_messages])
-            
-            with self.db.conn.cursor() as cur:
-                cur.execute("""
-                    INSERT INTO quotes 
-                    (user_id, username, message_id, channel_id, channel_name,
-                     quote_text, context, timestamp, added_by_user_id, added_by_username)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (message_id) 
-                    DO UPDATE SET reaction_count = quotes.reaction_count + 1
-                    RETURNING id
-                """, (
-                    message.author.id,
-                    str(message.author),
-                    message.id,
-                    message.channel.id,
-                    message.channel.name,
-                    message.content,
-                    context,
-                    message.created_at,
-                    added_by_user.id,
-                    str(added_by_user)
-                ))
-                
-                result = cur.fetchone()
-                if result:
-                    quote_id = result[0]
-                    print(f"☁️  Quote #{quote_id} saved from {message.author}")
-                    return quote_id
-            
+
+            with self.db.get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        INSERT INTO quotes
+                        (user_id, username, message_id, channel_id, channel_name,
+                         quote_text, context, timestamp, added_by_user_id, added_by_username)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        ON CONFLICT (message_id)
+                        DO UPDATE SET reaction_count = quotes.reaction_count + 1
+                        RETURNING id
+                    """, (
+                        message.author.id,
+                        str(message.author),
+                        message.id,
+                        message.channel.id,
+                        message.channel.name,
+                        message.content,
+                        context,
+                        message.created_at,
+                        added_by_user.id,
+                        str(added_by_user)
+                    ))
+
+                    result = cur.fetchone()
+                    if result:
+                        quote_id = result[0]
+                        print(f"☁️  Quote #{quote_id} saved from {message.author}")
+                        return quote_id
+
             return None
             
         except Exception as e:
@@ -353,23 +358,24 @@ If no contradiction, respond with:
     def get_user_quotes(self, user_id, limit=None):
         """Get all quotes from a user"""
         try:
-            with self.db.conn.cursor() as cur:
-                query = """
-                    SELECT id, quote_text, timestamp, reaction_count, 
-                           channel_name, message_id, context
-                    FROM quotes 
-                    WHERE user_id = %s
-                    ORDER BY timestamp DESC
-                """
-                if limit:
-                    query += f" LIMIT {limit}"
-                
-                cur.execute(query, (user_id,))
-                
-                columns = [desc[0] for desc in cur.description]
-                results = cur.fetchall()
-                
-                return [dict(zip(columns, row)) for row in results]
+            with self.db.get_connection() as conn:
+                with conn.cursor() as cur:
+                    query = """
+                        SELECT id, quote_text, timestamp, reaction_count,
+                               channel_name, message_id, context
+                        FROM quotes
+                        WHERE user_id = %s
+                        ORDER BY timestamp DESC
+                    """
+                    if limit:
+                        query += f" LIMIT {limit}"
+
+                    cur.execute(query, (user_id,))
+
+                    columns = [desc[0] for desc in cur.description]
+                    results = cur.fetchall()
+
+                    return [dict(zip(columns, row)) for row in results]
         
         except Exception as e:
             print(f"❌ Error fetching quotes: {e}")

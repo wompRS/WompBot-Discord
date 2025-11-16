@@ -59,98 +59,100 @@ class YearlyWrapped:
     async def _get_message_stats(self, user_id: int, start_date: datetime, end_date: datetime) -> Dict:
         """Get message activity statistics"""
         try:
-            with self.db.conn.cursor() as cur:
-                # Total messages
-                cur.execute("""
-                    SELECT COUNT(*)
-                    FROM messages
-                    WHERE user_id = %s
-                      AND timestamp BETWEEN %s AND %s
-                      AND opted_out = FALSE
-                """, (user_id, start_date, end_date))
-                total_messages = cur.fetchone()[0] or 0
+            with self.db.get_connection() as conn:
 
-                # Server rank
-                cur.execute("""
-                    SELECT COUNT(*) + 1 as rank
-                    FROM (
-                        SELECT user_id, COUNT(*) as msg_count
+                with conn.cursor() as cur:
+                    # Total messages
+                    cur.execute("""
+                        SELECT COUNT(*)
                         FROM messages
-                        WHERE timestamp BETWEEN %s AND %s
+                        WHERE user_id = %s
+                          AND timestamp BETWEEN %s AND %s
                           AND opted_out = FALSE
-                        GROUP BY user_id
-                        HAVING COUNT(*) > (
-                            SELECT COUNT(*)
+                    """, (user_id, start_date, end_date))
+                    total_messages = cur.fetchone()[0] or 0
+
+                    # Server rank
+                    cur.execute("""
+                        SELECT COUNT(*) + 1 as rank
+                        FROM (
+                            SELECT user_id, COUNT(*) as msg_count
                             FROM messages
-                            WHERE user_id = %s
-                              AND timestamp BETWEEN %s AND %s
+                            WHERE timestamp BETWEEN %s AND %s
                               AND opted_out = FALSE
-                        )
-                    ) ranked
-                """, (start_date, end_date, user_id, start_date, end_date))
-                server_rank = cur.fetchone()[0] or 1
+                            GROUP BY user_id
+                            HAVING COUNT(*) > (
+                                SELECT COUNT(*)
+                                FROM messages
+                                WHERE user_id = %s
+                                  AND timestamp BETWEEN %s AND %s
+                                  AND opted_out = FALSE
+                            )
+                        ) ranked
+                    """, (start_date, end_date, user_id, start_date, end_date))
+                    server_rank = cur.fetchone()[0] or 1
 
-                # Most active month
-                cur.execute("""
-                    SELECT EXTRACT(MONTH FROM timestamp) as month, COUNT(*) as count
-                    FROM messages
-                    WHERE user_id = %s
-                      AND timestamp BETWEEN %s AND %s
-                      AND opted_out = FALSE
-                    GROUP BY EXTRACT(MONTH FROM timestamp)
-                    ORDER BY count DESC
-                    LIMIT 1
-                """, (user_id, start_date, end_date))
-                month_result = cur.fetchone()
-                most_active_month = int(month_result[0]) if month_result else None
+                    # Most active month
+                    cur.execute("""
+                        SELECT EXTRACT(MONTH FROM timestamp) as month, COUNT(*) as count
+                        FROM messages
+                        WHERE user_id = %s
+                          AND timestamp BETWEEN %s AND %s
+                          AND opted_out = FALSE
+                        GROUP BY EXTRACT(MONTH FROM timestamp)
+                        ORDER BY count DESC
+                        LIMIT 1
+                    """, (user_id, start_date, end_date))
+                    month_result = cur.fetchone()
+                    most_active_month = int(month_result[0]) if month_result else None
 
-                # Most active day of week
-                cur.execute("""
-                    SELECT EXTRACT(DOW FROM timestamp) as dow, COUNT(*) as count
-                    FROM messages
-                    WHERE user_id = %s
-                      AND timestamp BETWEEN %s AND %s
-                      AND opted_out = FALSE
-                    GROUP BY EXTRACT(DOW FROM timestamp)
-                    ORDER BY count DESC
-                    LIMIT 1
-                """, (user_id, start_date, end_date))
-                dow_result = cur.fetchone()
-                most_active_dow = int(dow_result[0]) if dow_result else None
+                    # Most active day of week
+                    cur.execute("""
+                        SELECT EXTRACT(DOW FROM timestamp) as dow, COUNT(*) as count
+                        FROM messages
+                        WHERE user_id = %s
+                          AND timestamp BETWEEN %s AND %s
+                          AND opted_out = FALSE
+                        GROUP BY EXTRACT(DOW FROM timestamp)
+                        ORDER BY count DESC
+                        LIMIT 1
+                    """, (user_id, start_date, end_date))
+                    dow_result = cur.fetchone()
+                    most_active_dow = int(dow_result[0]) if dow_result else None
 
-                # Most active hour
-                cur.execute("""
-                    SELECT EXTRACT(HOUR FROM timestamp) as hour, COUNT(*) as count
-                    FROM messages
-                    WHERE user_id = %s
-                      AND timestamp BETWEEN %s AND %s
-                      AND opted_out = FALSE
-                    GROUP BY EXTRACT(HOUR FROM timestamp)
-                    ORDER BY count DESC
-                    LIMIT 1
-                """, (user_id, start_date, end_date))
-                hour_result = cur.fetchone()
-                most_active_hour = int(hour_result[0]) if hour_result else None
+                    # Most active hour
+                    cur.execute("""
+                        SELECT EXTRACT(HOUR FROM timestamp) as hour, COUNT(*) as count
+                        FROM messages
+                        WHERE user_id = %s
+                          AND timestamp BETWEEN %s AND %s
+                          AND opted_out = FALSE
+                        GROUP BY EXTRACT(HOUR FROM timestamp)
+                        ORDER BY count DESC
+                        LIMIT 1
+                    """, (user_id, start_date, end_date))
+                    hour_result = cur.fetchone()
+                    most_active_hour = int(hour_result[0]) if hour_result else None
 
-                # First and last message dates
-                cur.execute("""
-                    SELECT MIN(timestamp), MAX(timestamp)
-                    FROM messages
-                    WHERE user_id = %s
-                      AND timestamp BETWEEN %s AND %s
-                      AND opted_out = FALSE
-                """, (user_id, start_date, end_date))
-                first_msg, last_msg = cur.fetchone()
+                    # First and last message dates
+                    cur.execute("""
+                        SELECT MIN(timestamp), MAX(timestamp)
+                        FROM messages
+                        WHERE user_id = %s
+                          AND timestamp BETWEEN %s AND %s
+                          AND opted_out = FALSE
+                    """, (user_id, start_date, end_date))
+                    first_msg, last_msg = cur.fetchone()
 
-                return {
-                    'total_messages': total_messages,
-                    'server_rank': server_rank,
-                    'most_active_month': most_active_month,
-                    'most_active_day_of_week': most_active_dow,
-                    'most_active_hour': most_active_hour,
-                    'first_message': first_msg,
-                    'last_message': last_msg
-                }
+                    return {
+                        'total_messages': total_messages,
+                        'server_rank': server_rank,
+                        'most_active_month': most_active_month,
+                        'most_active_day_of_week': most_active_dow,
+                        'most_active_hour': most_active_hour,
+                        'first_message': first_msg,
+                        'last_message': last_msg
+                    }
 
         except Exception as e:
             print(f"❌ Error getting message stats: {e}")
@@ -167,56 +169,58 @@ class YearlyWrapped:
     async def _get_social_stats(self, user_id: int, start_date: datetime, end_date: datetime) -> Dict:
         """Get social interaction statistics"""
         try:
-            with self.db.conn.cursor() as cur:
-                # Top conversation partner (who they reply to most)
-                cur.execute("""
-                    SELECT replied_to_user_id, COUNT(*) as count
-                    FROM message_interactions
-                    WHERE user_id = %s
-                      AND replied_to_user_id IS NOT NULL
-                      AND timestamp BETWEEN %s AND %s
-                    GROUP BY replied_to_user_id
-                    ORDER BY count DESC
-                    LIMIT 1
-                """, (user_id, start_date, end_date))
-                top_partner_result = cur.fetchone()
-                top_conversation_partner = top_partner_result[0] if top_partner_result else None
-                top_partner_count = top_partner_result[1] if top_partner_result else 0
+            with self.db.get_connection() as conn:
 
-                # Who replies to them most
-                cur.execute("""
-                    SELECT user_id, COUNT(*) as count
-                    FROM message_interactions
-                    WHERE replied_to_user_id = %s
-                      AND timestamp BETWEEN %s AND %s
-                    GROUP BY user_id
-                    ORDER BY count DESC
-                    LIMIT 1
-                """, (user_id, start_date, end_date))
-                top_replier_result = cur.fetchone()
-                top_replier = top_replier_result[0] if top_replier_result else None
-                top_replier_count = top_replier_result[1] if top_replier_result else 0
+                with conn.cursor() as cur:
+                    # Top conversation partner (who they reply to most)
+                    cur.execute("""
+                        SELECT replied_to_user_id, COUNT(*) as count
+                        FROM message_interactions
+                        WHERE user_id = %s
+                          AND replied_to_user_id IS NOT NULL
+                          AND timestamp BETWEEN %s AND %s
+                        GROUP BY replied_to_user_id
+                        ORDER BY count DESC
+                        LIMIT 1
+                    """, (user_id, start_date, end_date))
+                    top_partner_result = cur.fetchone()
+                    top_conversation_partner = top_partner_result[0] if top_partner_result else None
+                    top_partner_count = top_partner_result[1] if top_partner_result else 0
 
-                # Total replies sent and received
-                cur.execute("""
-                    SELECT
-                        (SELECT COUNT(*) FROM message_interactions
-                         WHERE user_id = %s AND replied_to_user_id IS NOT NULL
-                         AND timestamp BETWEEN %s AND %s) as replies_sent,
-                        (SELECT COUNT(*) FROM message_interactions
-                         WHERE replied_to_user_id = %s
-                         AND timestamp BETWEEN %s AND %s) as replies_received
-                """, (user_id, start_date, end_date, user_id, start_date, end_date))
-                replies_sent, replies_received = cur.fetchone()
+                    # Who replies to them most
+                    cur.execute("""
+                        SELECT user_id, COUNT(*) as count
+                        FROM message_interactions
+                        WHERE replied_to_user_id = %s
+                          AND timestamp BETWEEN %s AND %s
+                        GROUP BY user_id
+                        ORDER BY count DESC
+                        LIMIT 1
+                    """, (user_id, start_date, end_date))
+                    top_replier_result = cur.fetchone()
+                    top_replier = top_replier_result[0] if top_replier_result else None
+                    top_replier_count = top_replier_result[1] if top_replier_result else 0
 
-                return {
-                    'top_conversation_partner': top_conversation_partner,
-                    'top_partner_count': top_partner_count,
-                    'top_replier': top_replier,
-                    'top_replier_count': top_replier_count,
-                    'replies_sent': replies_sent or 0,
-                    'replies_received': replies_received or 0
-                }
+                    # Total replies sent and received
+                    cur.execute("""
+                        SELECT
+                            (SELECT COUNT(*) FROM message_interactions
+                             WHERE user_id = %s AND replied_to_user_id IS NOT NULL
+                             AND timestamp BETWEEN %s AND %s) as replies_sent,
+                            (SELECT COUNT(*) FROM message_interactions
+                             WHERE replied_to_user_id = %s
+                             AND timestamp BETWEEN %s AND %s) as replies_received
+                    """, (user_id, start_date, end_date, user_id, start_date, end_date))
+                    replies_sent, replies_received = cur.fetchone()
+
+                    return {
+                        'top_conversation_partner': top_conversation_partner,
+                        'top_partner_count': top_partner_count,
+                        'top_replier': top_replier,
+                        'top_replier_count': top_replier_count,
+                        'replies_sent': replies_sent or 0,
+                        'replies_received': replies_received or 0
+                    }
 
         except Exception as e:
             print(f"❌ Error getting social stats: {e}")
@@ -232,62 +236,64 @@ class YearlyWrapped:
     async def _get_claims_stats(self, user_id: int, start_date: datetime, end_date: datetime) -> Dict:
         """Get claims and hot takes statistics"""
         try:
-            with self.db.conn.cursor() as cur:
-                # Total claims
-                cur.execute("""
-                    SELECT COUNT(*)
-                    FROM claims
-                    WHERE user_id = %s
-                      AND timestamp BETWEEN %s AND %s
-                """, (user_id, start_date, end_date))
-                total_claims = cur.fetchone()[0] or 0
+            with self.db.get_connection() as conn:
 
-                # Hot takes stats
-                cur.execute("""
-                    SELECT
-                        COUNT(*) as hot_take_count,
-                        AVG(ht.controversy_score) as avg_controversy,
-                        SUM(CASE WHEN ht.vindication_status = 'won' THEN 1 ELSE 0 END) as vindicated,
-                        SUM(CASE WHEN ht.vindication_status = 'lost' THEN 1 ELSE 0 END) as wrong
-                    FROM hot_takes ht
-                    JOIN claims c ON c.id = ht.claim_id
-                    WHERE c.user_id = %s
-                      AND c.timestamp BETWEEN %s AND %s
-                """, (user_id, start_date, end_date))
-                ht_result = cur.fetchone()
-                hot_take_count = ht_result[0] or 0
-                avg_controversy = float(ht_result[1]) if ht_result[1] else 0.0
-                vindicated = ht_result[2] or 0
-                wrong = ht_result[3] or 0
+                with conn.cursor() as cur:
+                    # Total claims
+                    cur.execute("""
+                        SELECT COUNT(*)
+                        FROM claims
+                        WHERE user_id = %s
+                          AND timestamp BETWEEN %s AND %s
+                    """, (user_id, start_date, end_date))
+                    total_claims = cur.fetchone()[0] or 0
 
-                # Controversy rank in server
-                cur.execute("""
-                    SELECT COUNT(*) + 1 as rank
-                    FROM (
-                        SELECT c.user_id, AVG(ht.controversy_score) as avg_score
+                    # Hot takes stats
+                    cur.execute("""
+                        SELECT
+                            COUNT(*) as hot_take_count,
+                            AVG(ht.controversy_score) as avg_controversy,
+                            SUM(CASE WHEN ht.vindication_status = 'won' THEN 1 ELSE 0 END) as vindicated,
+                            SUM(CASE WHEN ht.vindication_status = 'lost' THEN 1 ELSE 0 END) as wrong
                         FROM hot_takes ht
                         JOIN claims c ON c.id = ht.claim_id
-                        WHERE c.timestamp BETWEEN %s AND %s
-                        GROUP BY c.user_id
-                        HAVING AVG(ht.controversy_score) > (
-                            SELECT AVG(ht2.controversy_score)
-                            FROM hot_takes ht2
-                            JOIN claims c2 ON c2.id = ht2.claim_id
-                            WHERE c2.user_id = %s
-                              AND c2.timestamp BETWEEN %s AND %s
-                        )
-                    ) ranked
-                """, (start_date, end_date, user_id, start_date, end_date))
-                controversy_rank = cur.fetchone()[0] or 1 if hot_take_count > 0 else None
+                        WHERE c.user_id = %s
+                          AND c.timestamp BETWEEN %s AND %s
+                    """, (user_id, start_date, end_date))
+                    ht_result = cur.fetchone()
+                    hot_take_count = ht_result[0] or 0
+                    avg_controversy = float(ht_result[1]) if ht_result[1] else 0.0
+                    vindicated = ht_result[2] or 0
+                    wrong = ht_result[3] or 0
 
-                return {
-                    'total_claims': total_claims,
-                    'hot_take_count': hot_take_count,
-                    'avg_controversy_score': round(avg_controversy, 2),
-                    'vindicated': vindicated,
-                    'wrong': wrong,
-                    'controversy_rank': controversy_rank
-                }
+                    # Controversy rank in server
+                    cur.execute("""
+                        SELECT COUNT(*) + 1 as rank
+                        FROM (
+                            SELECT c.user_id, AVG(ht.controversy_score) as avg_score
+                            FROM hot_takes ht
+                            JOIN claims c ON c.id = ht.claim_id
+                            WHERE c.timestamp BETWEEN %s AND %s
+                            GROUP BY c.user_id
+                            HAVING AVG(ht.controversy_score) > (
+                                SELECT AVG(ht2.controversy_score)
+                                FROM hot_takes ht2
+                                JOIN claims c2 ON c2.id = ht2.claim_id
+                                WHERE c2.user_id = %s
+                                  AND c2.timestamp BETWEEN %s AND %s
+                            )
+                        ) ranked
+                    """, (start_date, end_date, user_id, start_date, end_date))
+                    controversy_rank = cur.fetchone()[0] or 1 if hot_take_count > 0 else None
+
+                    return {
+                        'total_claims': total_claims,
+                        'hot_take_count': hot_take_count,
+                        'avg_controversy_score': round(avg_controversy, 2),
+                        'vindicated': vindicated,
+                        'wrong': wrong,
+                        'controversy_rank': controversy_rank
+                    }
 
         except Exception as e:
             print(f"❌ Error getting claims stats: {e}")
@@ -303,45 +309,47 @@ class YearlyWrapped:
     async def _get_quotes_stats(self, user_id: int, start_date: datetime, end_date: datetime) -> Dict:
         """Get quotes statistics"""
         try:
-            with self.db.conn.cursor() as cur:
-                # Quotes from this user saved by others
-                cur.execute("""
-                    SELECT COUNT(*)
-                    FROM quotes
-                    WHERE user_id = %s
-                      AND timestamp BETWEEN %s AND %s
-                """, (user_id, start_date, end_date))
-                quotes_received = cur.fetchone()[0] or 0
+            with self.db.get_connection() as conn:
 
-                # Quotes this user saved from others
-                cur.execute("""
-                    SELECT COUNT(*)
-                    FROM quotes
-                    WHERE added_by_user_id = %s
-                      AND created_at BETWEEN %s AND %s
-                """, (user_id, start_date, end_date))
-                quotes_saved = cur.fetchone()[0] or 0
+                with conn.cursor() as cur:
+                    # Quotes from this user saved by others
+                    cur.execute("""
+                        SELECT COUNT(*)
+                        FROM quotes
+                        WHERE user_id = %s
+                          AND timestamp BETWEEN %s AND %s
+                    """, (user_id, start_date, end_date))
+                    quotes_received = cur.fetchone()[0] or 0
 
-                # Most quoted person by this user
-                cur.execute("""
-                    SELECT user_id, COUNT(*) as count
-                    FROM quotes
-                    WHERE added_by_user_id = %s
-                      AND created_at BETWEEN %s AND %s
-                    GROUP BY user_id
-                    ORDER BY count DESC
-                    LIMIT 1
-                """, (user_id, start_date, end_date))
-                most_quoted_result = cur.fetchone()
-                most_quoted_person = most_quoted_result[0] if most_quoted_result else None
-                most_quoted_count = most_quoted_result[1] if most_quoted_result else 0
+                    # Quotes this user saved from others
+                    cur.execute("""
+                        SELECT COUNT(*)
+                        FROM quotes
+                        WHERE added_by_user_id = %s
+                          AND created_at BETWEEN %s AND %s
+                    """, (user_id, start_date, end_date))
+                    quotes_saved = cur.fetchone()[0] or 0
 
-                return {
-                    'quotes_received': quotes_received,
-                    'quotes_saved': quotes_saved,
-                    'most_quoted_person': most_quoted_person,
-                    'most_quoted_count': most_quoted_count
-                }
+                    # Most quoted person by this user
+                    cur.execute("""
+                        SELECT user_id, COUNT(*) as count
+                        FROM quotes
+                        WHERE added_by_user_id = %s
+                          AND created_at BETWEEN %s AND %s
+                        GROUP BY user_id
+                        ORDER BY count DESC
+                        LIMIT 1
+                    """, (user_id, start_date, end_date))
+                    most_quoted_result = cur.fetchone()
+                    most_quoted_person = most_quoted_result[0] if most_quoted_result else None
+                    most_quoted_count = most_quoted_result[1] if most_quoted_result else 0
+
+                    return {
+                        'quotes_received': quotes_received,
+                        'quotes_saved': quotes_saved,
+                        'most_quoted_person': most_quoted_person,
+                        'most_quoted_count': most_quoted_count
+                    }
 
         except Exception as e:
             print(f"❌ Error getting quotes stats: {e}")
@@ -355,45 +363,47 @@ class YearlyWrapped:
     async def _get_personality_insights(self, user_id: int, start_date: datetime, end_date: datetime) -> Dict:
         """Get personality insights"""
         try:
-            with self.db.conn.cursor() as cur:
-                # Question rate (messages ending with ?)
-                cur.execute("""
-                    SELECT
-                        COUNT(*) as total,
-                        SUM(CASE WHEN content LIKE '%?' THEN 1 ELSE 0 END) as questions
-                    FROM messages
-                    WHERE user_id = %s
-                      AND timestamp BETWEEN %s AND %s
-                      AND opted_out = FALSE
-                """, (user_id, start_date, end_date))
-                total, questions = cur.fetchone()
-                question_rate = round((questions / total * 100), 1) if total > 0 else 0
+            with self.db.get_connection() as conn:
 
-                # Profanity score (if behavior analysis exists)
-                cur.execute("""
-                    SELECT profanity_score
-                    FROM user_behavior
-                    WHERE user_id = %s
-                    ORDER BY analyzed_at DESC
-                    LIMIT 1
-                """, (user_id,))
-                profanity_result = cur.fetchone()
-                profanity_score = profanity_result[0] if profanity_result else 0
+                with conn.cursor() as cur:
+                    # Question rate (messages ending with ?)
+                    cur.execute("""
+                        SELECT
+                            COUNT(*) as total,
+                            SUM(CASE WHEN content LIKE '%?' THEN 1 ELSE 0 END) as questions
+                        FROM messages
+                        WHERE user_id = %s
+                          AND timestamp BETWEEN %s AND %s
+                          AND opted_out = FALSE
+                    """, (user_id, start_date, end_date))
+                    total, questions = cur.fetchone()
+                    question_rate = round((questions / total * 100), 1) if total > 0 else 0
 
-                # Fact checks triggered by this user
-                cur.execute("""
-                    SELECT COUNT(*)
-                    FROM fact_checks
-                    WHERE requested_by_user_id = %s
-                      AND created_at BETWEEN %s AND %s
-                """, (user_id, start_date, end_date))
-                fact_checks_requested = cur.fetchone()[0] or 0
+                    # Profanity score (if behavior analysis exists)
+                    cur.execute("""
+                        SELECT profanity_score
+                        FROM user_behavior
+                        WHERE user_id = %s
+                        ORDER BY analyzed_at DESC
+                        LIMIT 1
+                    """, (user_id,))
+                    profanity_result = cur.fetchone()
+                    profanity_score = profanity_result[0] if profanity_result else 0
 
-                return {
-                    'question_rate': question_rate,
-                    'profanity_score': profanity_score,
-                    'fact_checks_requested': fact_checks_requested
-                }
+                    # Fact checks triggered by this user
+                    cur.execute("""
+                        SELECT COUNT(*)
+                        FROM fact_checks
+                        WHERE requested_by_user_id = %s
+                          AND created_at BETWEEN %s AND %s
+                    """, (user_id, start_date, end_date))
+                    fact_checks_requested = cur.fetchone()[0] or 0
+
+                    return {
+                        'question_rate': question_rate,
+                        'profanity_score': profanity_score,
+                        'fact_checks_requested': fact_checks_requested
+                    }
 
         except Exception as e:
             print(f"❌ Error getting personality insights: {e}")
@@ -408,93 +418,95 @@ class YearlyWrapped:
         achievements = []
 
         try:
-            with self.db.conn.cursor() as cur:
-                # Night Owl (most active between 12am-6am)
-                cur.execute("""
-                    SELECT
-                        SUM(CASE WHEN EXTRACT(HOUR FROM timestamp) BETWEEN 0 AND 5 THEN 1 ELSE 0 END) as night,
-                        COUNT(*) as total
-                    FROM messages
-                    WHERE user_id = %s
-                      AND timestamp BETWEEN %s AND %s
-                      AND opted_out = FALSE
-                """, (user_id, start_date, end_date))
-                night, total = cur.fetchone()
-                if total > 0 and (night / total) > 0.3:
-                    achievements.append("🦉 Night Owl")
+            with self.db.get_connection() as conn:
 
-                # Early Bird (most active between 6am-10am)
-                cur.execute("""
-                    SELECT
-                        SUM(CASE WHEN EXTRACT(HOUR FROM timestamp) BETWEEN 6 AND 9 THEN 1 ELSE 0 END) as morning,
-                        COUNT(*) as total
-                    FROM messages
-                    WHERE user_id = %s
-                      AND timestamp BETWEEN %s AND %s
-                      AND opted_out = FALSE
-                """, (user_id, start_date, end_date))
-                morning, total = cur.fetchone()
-                if total > 0 and (morning / total) > 0.3:
-                    achievements.append("🌅 Early Bird")
+                with conn.cursor() as cur:
+                    # Night Owl (most active between 12am-6am)
+                    cur.execute("""
+                        SELECT
+                            SUM(CASE WHEN EXTRACT(HOUR FROM timestamp) BETWEEN 0 AND 5 THEN 1 ELSE 0 END) as night,
+                            COUNT(*) as total
+                        FROM messages
+                        WHERE user_id = %s
+                          AND timestamp BETWEEN %s AND %s
+                          AND opted_out = FALSE
+                    """, (user_id, start_date, end_date))
+                    night, total = cur.fetchone()
+                    if total > 0 and (night / total) > 0.3:
+                        achievements.append("🦉 Night Owl")
 
-                # Debate Champion (5+ hot takes)
-                cur.execute("""
-                    SELECT COUNT(*)
-                    FROM hot_takes ht
-                    JOIN claims c ON c.id = ht.claim_id
-                    WHERE c.user_id = %s
-                      AND c.timestamp BETWEEN %s AND %s
-                """, (user_id, start_date, end_date))
-                hot_takes = cur.fetchone()[0] or 0
-                if hot_takes >= 5:
-                    achievements.append("⚔️ Debate Champion")
+                    # Early Bird (most active between 6am-10am)
+                    cur.execute("""
+                        SELECT
+                            SUM(CASE WHEN EXTRACT(HOUR FROM timestamp) BETWEEN 6 AND 9 THEN 1 ELSE 0 END) as morning,
+                            COUNT(*) as total
+                        FROM messages
+                        WHERE user_id = %s
+                          AND timestamp BETWEEN %s AND %s
+                          AND opted_out = FALSE
+                    """, (user_id, start_date, end_date))
+                    morning, total = cur.fetchone()
+                    if total > 0 and (morning / total) > 0.3:
+                        achievements.append("🌅 Early Bird")
 
-                # Quote Machine (5+ quotes saved by others)
-                cur.execute("""
-                    SELECT COUNT(*)
-                    FROM quotes
-                    WHERE user_id = %s
-                      AND timestamp BETWEEN %s AND %s
-                """, (user_id, start_date, end_date))
-                quotes = cur.fetchone()[0] or 0
-                if quotes >= 5:
-                    achievements.append("☁️ Quote Machine")
+                    # Debate Champion (5+ hot takes)
+                    cur.execute("""
+                        SELECT COUNT(*)
+                        FROM hot_takes ht
+                        JOIN claims c ON c.id = ht.claim_id
+                        WHERE c.user_id = %s
+                          AND c.timestamp BETWEEN %s AND %s
+                    """, (user_id, start_date, end_date))
+                    hot_takes = cur.fetchone()[0] or 0
+                    if hot_takes >= 5:
+                        achievements.append("⚔️ Debate Champion")
 
-                # Fact Checker (3+ fact checks requested)
-                cur.execute("""
-                    SELECT COUNT(*)
-                    FROM fact_checks
-                    WHERE requested_by_user_id = %s
-                      AND created_at BETWEEN %s AND %s
-                """, (user_id, start_date, end_date))
-                fact_checks = cur.fetchone()[0] or 0
-                if fact_checks >= 3:
-                    achievements.append("⚠️ Fact Checker")
+                    # Quote Machine (5+ quotes saved by others)
+                    cur.execute("""
+                        SELECT COUNT(*)
+                        FROM quotes
+                        WHERE user_id = %s
+                          AND timestamp BETWEEN %s AND %s
+                    """, (user_id, start_date, end_date))
+                    quotes = cur.fetchone()[0] or 0
+                    if quotes >= 5:
+                        achievements.append("☁️ Quote Machine")
 
-                # Conversationalist (1000+ messages)
-                cur.execute("""
-                    SELECT COUNT(*)
-                    FROM messages
-                    WHERE user_id = %s
-                      AND timestamp BETWEEN %s AND %s
-                      AND opted_out = FALSE
-                """, (user_id, start_date, end_date))
-                messages = cur.fetchone()[0] or 0
-                if messages >= 1000:
-                    achievements.append("💬 Conversationalist")
+                    # Fact Checker (3+ fact checks requested)
+                    cur.execute("""
+                        SELECT COUNT(*)
+                        FROM fact_checks
+                        WHERE requested_by_user_id = %s
+                          AND created_at BETWEEN %s AND %s
+                    """, (user_id, start_date, end_date))
+                    fact_checks = cur.fetchone()[0] or 0
+                    if fact_checks >= 3:
+                        achievements.append("⚠️ Fact Checker")
 
-                # Prophecy Master (3+ vindicated hot takes)
-                cur.execute("""
-                    SELECT COUNT(*)
-                    FROM hot_takes ht
-                    JOIN claims c ON c.id = ht.claim_id
-                    WHERE c.user_id = %s
-                      AND ht.vindication_status = 'won'
-                      AND c.timestamp BETWEEN %s AND %s
-                """, (user_id, start_date, end_date))
-                vindicated = cur.fetchone()[0] or 0
-                if vindicated >= 3:
-                    achievements.append("🔮 Prophecy Master")
+                    # Conversationalist (1000+ messages)
+                    cur.execute("""
+                        SELECT COUNT(*)
+                        FROM messages
+                        WHERE user_id = %s
+                          AND timestamp BETWEEN %s AND %s
+                          AND opted_out = FALSE
+                    """, (user_id, start_date, end_date))
+                    messages = cur.fetchone()[0] or 0
+                    if messages >= 1000:
+                        achievements.append("💬 Conversationalist")
+
+                    # Prophecy Master (3+ vindicated hot takes)
+                    cur.execute("""
+                        SELECT COUNT(*)
+                        FROM hot_takes ht
+                        JOIN claims c ON c.id = ht.claim_id
+                        WHERE c.user_id = %s
+                          AND ht.vindication_status = 'won'
+                          AND c.timestamp BETWEEN %s AND %s
+                    """, (user_id, start_date, end_date))
+                    vindicated = cur.fetchone()[0] or 0
+                    if vindicated >= 3:
+                        achievements.append("🔮 Prophecy Master")
 
         except Exception as e:
             print(f"❌ Error getting achievements: {e}")

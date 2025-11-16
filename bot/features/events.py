@@ -264,71 +264,73 @@ class EventSystem:
             reminder_intervals = ["1 week", "1 day", "1 hour"]
 
         try:
-            with self.db.conn.cursor() as cur:
-                cur.execute("""
-                    INSERT INTO events (
-                        event_name, description, event_date,
-                        created_by_user_id, created_by_username,
-                        channel_id, guild_id,
-                        reminder_intervals, notify_role_id
-                    )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    RETURNING id
-                """, (
-                    event_name,
-                    description,
-                    event_date,
-                    created_by_user_id,
-                    created_by_username,
-                    channel_id,
-                    guild_id,
-                    json.dumps(reminder_intervals),
-                    notify_role_id
-                ))
+            with self.db.get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        INSERT INTO events (
+                            event_name, description, event_date,
+                            created_by_user_id, created_by_username,
+                            channel_id, guild_id,
+                            reminder_intervals, notify_role_id
+                        )
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        RETURNING id
+                    """, (
+                        event_name,
+                        description,
+                        event_date,
+                        created_by_user_id,
+                        created_by_username,
+                        channel_id,
+                        guild_id,
+                        json.dumps(reminder_intervals),
+                        notify_role_id
+                    ))
 
-                event_id = cur.fetchone()[0]
-                self.db.conn.commit()
-                return event_id
+                    event_id = cur.fetchone()[0]
+                    conn.commit()
+                    return event_id
 
         except Exception as e:
             print(f"❌ Error creating event: {e}")
-            self.db.conn.rollback()
+            conn.rollback()
             return None
 
     async def get_upcoming_events(self, guild_id: int, limit: int = 10) -> List[Dict]:
         """Get upcoming events for a guild, sorted by event date"""
         try:
-            with self.db.conn.cursor() as cur:
-                cur.execute("""
-                    SELECT
-                        id, event_name, description, event_date,
-                        created_by_user_id, created_by_username,
-                        channel_id, reminder_intervals, notify_role_id,
-                        created_at
-                    FROM events
-                    WHERE guild_id = %s
-                      AND cancelled = FALSE
-                      AND event_date > NOW()
-                    ORDER BY event_date ASC
-                    LIMIT %s
-                """, (guild_id, limit))
+            with self.db.get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT
+                            id, event_name, description, event_date,
+                            created_by_user_id, created_by_username,
+                            channel_id, reminder_intervals, notify_role_id,
+                            created_at
+                        FROM events
+                        WHERE guild_id = %s
+                          AND cancelled = FALSE
+                          AND event_date > NOW()
+                        ORDER BY event_date ASC
+                        LIMIT %s
+                    """, (guild_id, limit))
 
-                events = []
-                for row in cur.fetchall():
-                    events.append({
-                        'id': row[0],
-                        'event_name': row[1],
-                        'description': row[2],
-                        'event_date': row[3],
-                        'created_by_user_id': row[4],
-                        'created_by_username': row[5],
-                        'channel_id': row[6],
-                        'reminder_intervals': json.loads(row[7]) if row[7] else [],
-                        'notify_role_id': row[8],
-                        'created_at': row[9]
-                    })
+                    events = []
+                    for row in cur.fetchall():
+                        events.append({
+                            'id': row[0],
+                            'event_name': row[1],
+                            'description': row[2],
+                            'event_date': row[3],
+                            'created_by_user_id': row[4],
+                            'created_by_username': row[5],
+                            'channel_id': row[6],
+                            'reminder_intervals': json.loads(row[7]) if row[7] else [],
+                            'notify_role_id': row[8],
+                            'created_at': row[9]
+                        })
 
-                return events
+                    return events
 
         except Exception as e:
             print(f"❌ Error getting upcoming events: {e}")
@@ -340,22 +342,23 @@ class EventSystem:
         Returns True if successful.
         """
         try:
-            with self.db.conn.cursor() as cur:
-                # Check if user is the creator (permission check should be done by caller)
-                cur.execute("""
-                    UPDATE events
-                    SET cancelled = TRUE, cancelled_at = NOW()
-                    WHERE id = %s AND cancelled = FALSE
-                    RETURNING id
-                """, (event_id,))
+            with self.db.get_connection() as conn:
+                with conn.cursor() as cur:
+                    # Check if user is the creator (permission check should be done by caller)
+                    cur.execute("""
+                        UPDATE events
+                        SET cancelled = TRUE, cancelled_at = NOW()
+                        WHERE id = %s AND cancelled = FALSE
+                        RETURNING id
+                    """, (event_id,))
 
-                result = cur.fetchone()
-                self.db.conn.commit()
-                return result is not None
+                    result = cur.fetchone()
+                    conn.commit()
+                    return result is not None
 
         except Exception as e:
             print(f"❌ Error cancelling event: {e}")
-            self.db.conn.rollback()
+            conn.rollback()
             return False
 
     async def get_events_needing_reminders(self) -> List[Dict]:
@@ -368,79 +371,80 @@ class EventSystem:
         - Only return events where a reminder should be sent now
         """
         try:
-            with self.db.conn.cursor() as cur:
-                cur.execute("""
-                    SELECT
-                        id, event_name, description, event_date,
-                        channel_id, guild_id, reminder_intervals,
-                        last_reminder_sent, notify_role_id
-                    FROM events
-                    WHERE cancelled = FALSE
-                      AND event_date > NOW()
-                    ORDER BY event_date ASC
-                """)
+            with self.db.get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT
+                            id, event_name, description, event_date,
+                            channel_id, guild_id, reminder_intervals,
+                            last_reminder_sent, notify_role_id
+                        FROM events
+                        WHERE cancelled = FALSE
+                          AND event_date > NOW()
+                        ORDER BY event_date ASC
+                    """)
 
-                events_needing_reminders = []
-                now = datetime.now()
+                    events_needing_reminders = []
+                    now = datetime.now()
 
-                for row in cur.fetchall():
-                    event_id = row[0]
-                    event_name = row[1]
-                    description = row[2]
-                    event_date = row[3]
-                    channel_id = row[4]
-                    guild_id = row[5]
-                    reminder_intervals = json.loads(row[6]) if row[6] else []
-                    last_reminder_sent = row[7]
-                    notify_role_id = row[8]
+                    for row in cur.fetchall():
+                        event_id = row[0]
+                        event_name = row[1]
+                        description = row[2]
+                        event_date = row[3]
+                        channel_id = row[4]
+                        guild_id = row[5]
+                        reminder_intervals = json.loads(row[6]) if row[6] else []
+                        last_reminder_sent = row[7]
+                        notify_role_id = row[8]
 
-                    # Determine which reminder to send
-                    reminder_to_send = None
+                        # Determine which reminder to send
+                        reminder_to_send = None
 
-                    # Sort intervals by duration (longest first)
-                    sorted_intervals = sorted(
-                        reminder_intervals,
-                        key=lambda x: (self.interval_to_timedelta(x) or timedelta(0)),
-                        reverse=True
-                    )
+                        # Sort intervals by duration (longest first)
+                        sorted_intervals = sorted(
+                            reminder_intervals,
+                            key=lambda x: (self.interval_to_timedelta(x) or timedelta(0)),
+                            reverse=True
+                        )
 
-                    for interval in sorted_intervals:
-                        delta = self.interval_to_timedelta(interval)
-                        if delta is None:
-                            continue
+                        for interval in sorted_intervals:
+                            delta = self.interval_to_timedelta(interval)
+                            if delta is None:
+                                continue
 
-                        # Calculate when this reminder should be sent
-                        reminder_time = event_date - delta
+                            # Calculate when this reminder should be sent
+                            reminder_time = event_date - delta
 
-                        # Check if this reminder is due and hasn't been sent
-                        if now >= reminder_time:
-                            # Check if this is a new reminder to send
-                            if not last_reminder_sent or interval != last_reminder_sent:
-                                # Make sure we don't skip intervals
-                                if not last_reminder_sent:
-                                    # First reminder - send if due
-                                    reminder_to_send = interval
-                                    break
-                                else:
-                                    # Check if this is the next interval after last sent
-                                    last_delta = self.interval_to_timedelta(last_reminder_sent) or timedelta(0)
-                                    if delta < last_delta:
+                            # Check if this reminder is due and hasn't been sent
+                            if now >= reminder_time:
+                                # Check if this is a new reminder to send
+                                if not last_reminder_sent or interval != last_reminder_sent:
+                                    # Make sure we don't skip intervals
+                                    if not last_reminder_sent:
+                                        # First reminder - send if due
                                         reminder_to_send = interval
                                         break
+                                    else:
+                                        # Check if this is the next interval after last sent
+                                        last_delta = self.interval_to_timedelta(last_reminder_sent) or timedelta(0)
+                                        if delta < last_delta:
+                                            reminder_to_send = interval
+                                            break
 
-                    if reminder_to_send:
-                        events_needing_reminders.append({
-                            'id': event_id,
-                            'event_name': event_name,
-                            'description': description,
-                            'event_date': event_date,
-                            'channel_id': channel_id,
-                            'guild_id': guild_id,
-                            'reminder_interval': reminder_to_send,
-                            'notify_role_id': notify_role_id
-                        })
+                        if reminder_to_send:
+                            events_needing_reminders.append({
+                                'id': event_id,
+                                'event_name': event_name,
+                                'description': description,
+                                'event_date': event_date,
+                                'channel_id': channel_id,
+                                'guild_id': guild_id,
+                                'reminder_interval': reminder_to_send,
+                                'notify_role_id': notify_role_id
+                            })
 
-                return events_needing_reminders
+                    return events_needing_reminders
 
         except Exception as e:
             print(f"❌ Error getting events needing reminders: {e}")
@@ -449,19 +453,20 @@ class EventSystem:
     async def mark_reminder_sent(self, event_id: int, interval: str) -> bool:
         """Mark that a reminder has been sent for an event"""
         try:
-            with self.db.conn.cursor() as cur:
-                cur.execute("""
-                    UPDATE events
-                    SET last_reminder_sent = %s
-                    WHERE id = %s
-                """, (interval, event_id))
+            with self.db.get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        UPDATE events
+                        SET last_reminder_sent = %s
+                        WHERE id = %s
+                    """, (interval, event_id))
 
-                self.db.conn.commit()
-                return True
+                    conn.commit()
+                    return True
 
         except Exception as e:
             print(f"❌ Error marking reminder sent: {e}")
-            self.db.conn.rollback()
+            conn.rollback()
             return False
 
     def format_time_until(self, event_date: datetime) -> str:
