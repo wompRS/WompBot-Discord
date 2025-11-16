@@ -8,12 +8,33 @@ class LLMClient:
         self.model = os.getenv('MODEL_NAME', 'cognitivecomputations/dolphin-2.9.2-qwen-110b')
         self.cost_tracker = cost_tracker
 
-        # Load system prompt from file if exists, otherwise use default
-        self.system_prompt = self._load_system_prompt()
+        # Load system prompts from files (cache all personalities)
+        self.system_prompt_default = self._load_system_prompt('default')
+        self.system_prompt_feyd = self._load_system_prompt('feyd')
+        self.system_prompt_bogan = self._load_system_prompt('bogan')
 
-    def _load_system_prompt(self):
-        """Load system prompt from file or use default"""
-        prompt_path = os.path.join(os.path.dirname(__file__), 'prompts', 'system_prompt.txt')
+        # Default to professional personality
+        self.system_prompt = self.system_prompt_default
+
+    def _load_system_prompt(self, personality='default'):
+        """
+        Load system prompt from file or use default
+
+        Args:
+            personality: 'default', 'feyd', or 'bogan'
+
+        Returns:
+            System prompt text
+        """
+        # Determine which file to load
+        if personality == 'feyd':
+            prompt_file = 'system_prompt_feyd.txt'
+        elif personality == 'bogan':
+            prompt_file = 'system_prompt_bogan.txt'
+        else:
+            prompt_file = 'system_prompt.txt'
+
+        prompt_path = os.path.join(os.path.dirname(__file__), 'prompts', prompt_file)
 
         # Try to load from file
         if os.path.exists(prompt_path):
@@ -21,13 +42,13 @@ class LLMClient:
                 with open(prompt_path, 'r', encoding='utf-8') as f:
                     prompt = f.read().strip()
                     if prompt:
-                        print(f"✅ Loaded custom system prompt from {prompt_path}")
+                        print(f"✅ Loaded {personality} personality prompt from {prompt_file}")
                         return prompt
             except Exception as e:
-                print(f"⚠️  Error loading system prompt from file: {e}")
+                print(f"⚠️  Error loading {personality} prompt from file: {e}")
 
         # Fallback to default
-        print("📝 Using default system prompt")
+        print(f"📝 Using fallback prompt for {personality} personality")
         return """You are WompBot, a conversational Discord bot with personality and substance.
 
 CORE PRINCIPLE:
@@ -137,17 +158,27 @@ Be useful and real. That's the balance."""
         user_id=None,
         username=None,
         max_tokens=None,
+        personality='default',
     ):
         """Generate response using OpenRouter with automatic retry on empty responses
 
         Args:
             max_tokens: Optional override for max tokens (defaults to MAX_TOKENS_PER_REQUEST env var or 1000)
             rag_context: RAG-retrieved context (semantic matches, facts, summaries)
+            personality: 'default', 'feyd', or 'bogan' - determines system prompt personality
         """
         import time
 
+        # Select appropriate system prompt based on personality
+        if personality == 'feyd':
+            system_prompt = self.system_prompt_feyd
+        elif personality == 'bogan':
+            system_prompt = self.system_prompt_bogan
+        else:
+            system_prompt = self.system_prompt_default
+
         try:
-            messages = [{"role": "system", "content": self.system_prompt}]
+            messages = [{"role": "system", "content": system_prompt}]
 
             profile = None
             behavior = None

@@ -9,6 +9,7 @@ from typing import List, Dict, Optional, Tuple
 from datetime import datetime, timedelta
 import openai
 from pgvector.psycopg2 import register_vector
+from psycopg2.extras import RealDictCursor
 import numpy as np
 
 
@@ -161,7 +162,7 @@ class RAGSystem:
         try:
             # Get messages needing embeddings
             with self.db.get_connection() as conn:
-                with conn.cursor() as cur:
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
                     cur.execute("""
                         SELECT eq.id, eq.message_id, m.content
                         FROM embedding_queue eq
