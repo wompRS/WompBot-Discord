@@ -93,6 +93,7 @@ iracing_team_manager = iRacingTeamManager(db)
 print("✅ iRacing Team Manager loaded")
 
 WOMPIE_USERNAME = "Wompie__"
+WOMPIE_USER_ID = None  # Will be set in on_ready()
 
 # iRacing series popularity cache
 iracing_popularity_cache = {}  # {time_range: {'data': [(series, count), ...], 'timestamp': datetime}}
@@ -805,11 +806,13 @@ async def on_ready():
     print(f'✅ WompBot logged in as {bot.user}')
     print(f'📊 Connected to {len(bot.guilds)} servers')
 
-    # Set Wompie user ID for claims tracker
+    # Set Wompie user ID for claims tracker and personality command
+    global WOMPIE_USER_ID
     for guild in bot.guilds:
         member = discord.utils.get(guild.members, name=WOMPIE_USERNAME)
         if member:
             claims_tracker.wompie_user_id = member.id
+            WOMPIE_USER_ID = member.id  # Set global ID for personality command
             print(f'👑 Wompie identified: {member.id}')
             break
 
@@ -1529,6 +1532,10 @@ async def handle_bot_mention(message, opted_out):
                     db.store_search_log(content, len(search_results_raw), message.author.id, message.channel.id)
                     db.record_feature_usage(message.author.id, 'search')
 
+            # Get server personality setting
+            server_id = message.guild.id if message.guild else None
+            personality = db.get_server_personality(server_id) if server_id else 'default'
+
             # Get RAG context (semantic search, facts, summaries)
             rag_context = await rag.get_relevant_context(
                 content,
@@ -1553,6 +1560,8 @@ async def handle_bot_mention(message, opted_out):
                 bot.user.id,
                 message.author.id if is_text_mention else None,
                 str(message.author) if is_text_mention else None,
+                None,  # max_tokens (use default)
+                personality,  # personality setting
             )
 
             # Check if response is empty
@@ -1599,6 +1608,8 @@ async def handle_bot_mention(message, opted_out):
                     bot.user.id,
                     message.author.id if is_text_mention else None,
                     str(message.author) if is_text_mention else None,
+                    None,  # max_tokens (use default)
+                    personality,  # personality setting
                 )
 
             # Final check for empty response
@@ -2015,6 +2026,70 @@ async def verify_claim_slash(interaction: discord.Interaction, claim_id: int, st
 
     except Exception as e:
         await interaction.followup.send(f"❌ Error verifying claim: {str(e)}")
+
+@bot.tree.command(name="personality", description="Change bot personality mode (Wompie only)")
+@app_commands.describe(
+    mode="Personality mode: default, feyd (Feyd-Rautha), or bogan (Aussie)"
+)
+@app_commands.choices(mode=[
+    app_commands.Choice(name="Default (Professional)", value="default"),
+    app_commands.Choice(name="Feyd-Rautha (Ruthless)", value="feyd"),
+    app_commands.Choice(name="Australian Bogan", value="bogan")
+])
+async def personality_slash(interaction: discord.Interaction, mode: app_commands.Choice[str]):
+    """Change bot personality mode (Wompie only)"""
+    # Check if user is Wompie (by Discord ID for security)
+    if WOMPIE_USER_ID is None or interaction.user.id != WOMPIE_USER_ID:
+        await interaction.response.send_message(
+            "❌ This command is restricted to Wompie only.",
+            ephemeral=True
+        )
+        return
+
+    try:
+        server_id = interaction.guild_id
+        personality_value = mode.value
+
+        # Update database
+        success = db.set_server_personality(server_id, personality_value, interaction.user.id)
+
+        if success:
+            if personality_value == 'feyd':
+                await interaction.response.send_message(
+                    "⚔️ **Personality changed to Feyd-Rautha Harkonnen**\n\n"
+                    "The bot will now respond with:\n"
+                    "• Cunning, calculating intelligence\n"
+                    "• Sharp-tongued and intellectually ruthless\n"
+                    "• Eloquent but menacing speech\n"
+                    "• Dismissive of weakness and logical fallacies\n"
+                    "• Verbal dominance in every exchange\n\n"
+                    "*\"How delightfully naive...\"*"
+                )
+            elif personality_value == 'bogan':
+                await interaction.response.send_message(
+                    "🍺 **Personality changed to Australian Bogan**\n\n"
+                    "The bot will now respond with:\n"
+                    "• Full-on Aussie bogan speak\n"
+                    "• Heaps of slang and colloquialisms\n"
+                    "• 'Yeah nah' and 'she'll be right' energy\n"
+                    "• Calls everyone 'mate' and 'legend'\n"
+                    "• Still helpful, just sounds like a pub chat\n\n"
+                    "*\"Yeah nah mate, she'll be right!\"*"
+                )
+            else:
+                await interaction.response.send_message(
+                    "✅ **Personality changed to Default (Professional)**\n\n"
+                    "The bot will now respond with:\n"
+                    "• Professional but friendly tone\n"
+                    "• Conversational and helpful\n"
+                    "• Direct and honest\n"
+                    "• Focused on providing value"
+                )
+        else:
+            await interaction.response.send_message("❌ Error updating personality setting", ephemeral=True)
+
+    except Exception as e:
+        await interaction.response.send_message(f"❌ Error changing personality: {str(e)}", ephemeral=True)
 
 @bot.tree.command(name="help", description="Show all commands or get detailed help for a specific command")
 @app_commands.describe(command="Optional: specific command to get detailed help for")

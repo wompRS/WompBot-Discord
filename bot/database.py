@@ -1128,6 +1128,64 @@ class Database:
         except Exception as e:
             print(f"Error recording feature usage: {e}")
 
+    def get_server_personality(self, server_id):
+        """
+        Get personality mode for a server
+
+        Args:
+            server_id: Discord server ID
+
+        Returns:
+            'default' or 'feyd' (defaults to 'default' if not set)
+        """
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT personality
+                        FROM server_personality
+                        WHERE server_id = %s
+                    """, (server_id,))
+                    result = cur.fetchone()
+
+                    if result:
+                        return result['personality']
+                    else:
+                        return 'default'  # Default personality
+        except Exception as e:
+            print(f"Error getting server personality: {e}")
+            return 'default'  # Fail safe to default
+
+    def set_server_personality(self, server_id, personality, user_id):
+        """
+        Set personality mode for a server
+
+        Args:
+            server_id: Discord server ID
+            personality: 'default' or 'feyd'
+            user_id: ID of user who changed the setting
+
+        Returns:
+            True if successful
+        """
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        INSERT INTO server_personality (server_id, personality, enabled_by, enabled_at)
+                        VALUES (%s, %s, %s, CURRENT_TIMESTAMP)
+                        ON CONFLICT (server_id)
+                        DO UPDATE SET
+                            personality = EXCLUDED.personality,
+                            enabled_by = EXCLUDED.enabled_by,
+                            enabled_at = CURRENT_TIMESTAMP
+                    """, (server_id, personality, user_id))
+                    conn.commit()
+                    return True
+        except Exception as e:
+            print(f"Error setting server personality: {e}")
+            return False
+
     def close(self):
         """Close database connection pool"""
         if self.pool:
