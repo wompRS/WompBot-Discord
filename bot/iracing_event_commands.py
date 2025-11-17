@@ -250,55 +250,15 @@ def setup_iracing_event_commands(bot, iracing_team_manager, iracing_client):
             )
             return
 
-        embed = discord.Embed(
-            title=f"📊 Driver Roster - Event {event_id}",
-            color=discord.Color.blue()
+        # Create visualization
+        image_buffer = iracing_viz.create_event_roster_table(
+            event_id=event_id,
+            availability=availability
         )
 
-        # Group by status
-        available = [a for a in availability if a['status'] == 'available']
-        confirmed = [a for a in availability if a['status'] == 'confirmed']
-        maybe = [a for a in availability if a['status'] == 'maybe']
-        unavailable = [a for a in availability if a['status'] == 'unavailable']
-
-        def format_driver(a):
-            name = a['iracing_name'] or f"<@{a['discord_user_id']}>"
-            if a['notes']:
-                return f"• {name} - *{a['notes'][:50]}*"
-            return f"• {name}"
-
-        if confirmed:
-            embed.add_field(
-                name="✔️ Confirmed",
-                value='\n'.join([format_driver(a) for a in confirmed[:10]]),
-                inline=False
-            )
-
-        if available:
-            embed.add_field(
-                name="✅ Available",
-                value='\n'.join([format_driver(a) for a in available[:10]]),
-                inline=False
-            )
-
-        if maybe:
-            embed.add_field(
-                name="❓ Maybe",
-                value='\n'.join([format_driver(a) for a in maybe[:10]]),
-                inline=False
-            )
-
-        if unavailable:
-            embed.add_field(
-                name="❌ Unavailable",
-                value='\n'.join([format_driver(a) for a in unavailable[:10]]),
-                inline=False
-            )
-
-        total_drivers = len(confirmed) + len(available)
-        embed.set_footer(text=f"{total_drivers} driver(s) ready to race")
-
-        await interaction.followup.send(embed=embed)
+        # Send as file attachment
+        file = discord.File(fp=image_buffer, filename="iracing_event_roster.png")
+        await interaction.followup.send(file=file)
 
     # ==================== SPECIAL EVENTS ====================
 
@@ -336,35 +296,16 @@ def setup_iracing_event_commands(bot, iracing_team_manager, iracing_client):
             # Limit to first 20 races
             races = races[:20]
 
-            embed = discord.Embed(
-                title="🏁 Upcoming iRacing Races",
-                description=f"Next {len(races)} official race(s) in the next {hours}h",
-                color=discord.Color.blue()
+            # Create visualization
+            image_buffer = iracing_viz.create_upcoming_races_table(
+                races=races,
+                hours=hours,
+                series_filter=series
             )
 
-            for race in races[:10]:  # Discord field limit
-                series_name = race.get('series_name', 'Unknown Series')
-                track_name = race.get('track_name', 'Unknown Track')
-                start_time = race.get('start_time')
-
-                if start_time:
-                    if isinstance(start_time, str):
-                        start_time = dateparser.parse(start_time)
-                    timestamp = int(start_time.timestamp())
-                    time_str = f"<t:{timestamp}:t> (<t:{timestamp}:R>)"
-                else:
-                    time_str = "Time TBD"
-
-                embed.add_field(
-                    name=f"🏎️ {series_name}",
-                    value=f"**{track_name}**\n{time_str}",
-                    inline=False
-                )
-
-            if len(races) > 10:
-                embed.set_footer(text=f"Showing first 10 of {len(races)} races. Narrow your search with the series parameter.")
-
-            await interaction.followup.send(embed=embed)
+            # Send as file attachment
+            file = discord.File(fp=image_buffer, filename="iracing_upcoming_races.png")
+            await interaction.followup.send(file=file)
 
         except Exception as e:
             print(f"❌ Error fetching upcoming races: {e}")

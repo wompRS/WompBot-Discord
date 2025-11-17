@@ -153,53 +153,15 @@ def setup_iracing_team_commands(bot, iracing_team_manager):
         # Get team members
         members = iracing_team_manager.get_team_members(team_id)
 
-        embed = discord.Embed(
-            title=f"🏁 {team_info['name']} [{team_info['tag']}]",
-            description=team_info.get('description', 'No description'),
-            color=discord.Color.blue()
+        # Create visualization
+        image_buffer = iracing_viz.create_team_info_display(
+            team_info=team_info,
+            members=members
         )
 
-        # Group members by role
-        drivers = [m for m in members if m['role'] == 'driver']
-        managers = [m for m in members if m['role'] == 'manager']
-        crew_chiefs = [m for m in members if m['role'] == 'crew_chief']
-        spotters = [m for m in members if m['role'] == 'spotter']
-
-        if managers:
-            manager_list = '\n'.join([
-                f"<@{m['discord_user_id']}> - {m['iracing_name'] or 'Not linked'}"
-                for m in managers
-            ])
-            embed.add_field(name="👑 Managers", value=manager_list, inline=False)
-
-        if drivers:
-            driver_list = '\n'.join([
-                f"<@{m['discord_user_id']}> - {m['iracing_name'] or 'Not linked'}"
-                for m in drivers[:10]  # Limit to first 10
-            ])
-            if len(drivers) > 10:
-                driver_list += f"\n... and {len(drivers) - 10} more"
-            embed.add_field(name="🏎️ Drivers", value=driver_list, inline=False)
-
-        if crew_chiefs:
-            cc_list = '\n'.join([
-                f"<@{m['discord_user_id']}> - {m['iracing_name'] or 'Not linked'}"
-                for m in crew_chiefs
-            ])
-            embed.add_field(name="🔧 Crew Chiefs", value=cc_list, inline=False)
-
-        if spotters:
-            spotter_list = '\n'.join([
-                f"<@{m['discord_user_id']}> - {m['iracing_name'] or 'Not linked'}"
-                for m in spotters
-            ])
-            embed.add_field(name="📻 Spotters", value=spotter_list, inline=False)
-
-        embed.add_field(name="Total Members", value=str(len(members)), inline=True)
-        embed.add_field(name="Team ID", value=f"`{team_id}`", inline=True)
-        embed.set_footer(text=f"Created {team_info['created_at'].strftime('%Y-%m-%d')}")
-
-        await interaction.followup.send(embed=embed)
+        # Send as file attachment
+        file = discord.File(fp=image_buffer, filename="iracing_team_info.png")
+        await interaction.followup.send(file=file)
 
     @bot.tree.command(name="iracing_team_list", description="List all teams in this server")
     async def iracing_team_list(interaction: discord.Interaction):
@@ -212,28 +174,15 @@ def setup_iracing_team_commands(bot, iracing_team_manager):
             await interaction.followup.send("No teams found in this server. Create one with `/iracing_team_create`!")
             return
 
-        embed = discord.Embed(
-            title=f"🏁 iRacing Teams in {interaction.guild.name}",
-            description=f"Found {len(teams)} team(s)",
-            color=discord.Color.blue()
+        # Create visualization
+        image_buffer = iracing_viz.create_team_list_table(
+            guild_name=interaction.guild.name,
+            teams=teams
         )
 
-        for team in teams[:25]:  # Discord limit is 25 fields
-            member_text = f"{team['member_count']} member(s)"
-            if team['description']:
-                desc = team['description'][:100]  # Truncate long descriptions
-                if len(team['description']) > 100:
-                    desc += "..."
-            else:
-                desc = "No description"
-
-            embed.add_field(
-                name=f"[{team['tag']}] {team['name']}",
-                value=f"{desc}\n{member_text} • ID: `{team['id']}`",
-                inline=False
-            )
-
-        await interaction.followup.send(embed=embed)
+        # Send as file attachment
+        file = discord.File(fp=image_buffer, filename="iracing_team_list.png")
+        await interaction.followup.send(file=file)
 
     @bot.tree.command(name="iracing_my_teams", description="View your teams")
     async def iracing_my_teams(interaction: discord.Interaction):
@@ -249,26 +198,14 @@ def setup_iracing_team_commands(bot, iracing_team_manager):
             )
             return
 
-        embed = discord.Embed(
-            title="🏁 Your iRacing Teams",
-            description=f"You're in {len(teams)} team(s)",
-            color=discord.Color.blue()
+        # Create visualization
+        image_buffer = iracing_viz.create_team_list_table(
+            guild_name=f"{interaction.user.display_name}'s Teams",
+            teams=teams
         )
 
-        for team in teams:
-            role_emoji = {
-                'manager': '👑',
-                'driver': '🏎️',
-                'crew_chief': '🔧',
-                'spotter': '📻'
-            }.get(team['role'], '👤')
-
-            embed.add_field(
-                name=f"{role_emoji} [{team['tag']}] {team['name']}",
-                value=f"Role: **{team['role'].title()}** • ID: `{team['id']}`",
-                inline=False
-            )
-
-        await interaction.followup.send(embed=embed, ephemeral=True)
+        # Send as file attachment
+        file = discord.File(fp=image_buffer, filename="iracing_my_teams.png")
+        await interaction.followup.send(file=file, ephemeral=True)
 
     print("✅ iRacing team commands loaded")

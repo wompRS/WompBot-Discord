@@ -79,6 +79,15 @@ try:
 except Exception as e:
     print(f"⚠️ Failed to load iRacing visualizer: {e}")
 
+stats_viz = None
+
+try:
+    from stats_viz import StatsVisualizer
+    stats_viz = StatsVisualizer()
+    print("✅ Stats visualizer loaded")
+except Exception as e:
+    print(f"⚠️ Failed to load Stats visualizer: {e}")
+
 iracing_credentials = credential_manager.get_iracing_credentials()
 if iracing_credentials:
     iracing_email, iracing_password = iracing_credentials
@@ -2163,30 +2172,44 @@ async def stats_server(interaction: discord.Interaction, date_range: str = "30")
             # Cache results
             chat_stats.cache_stats('network', scope, start_date, end_date, results, cache_hours=6)
 
-        # Format output
-        embed = discord.Embed(
-            title="📊 Server Network Statistics",
-            description=f"Analysis from {start_date.strftime('%m/%d/%Y')} to {end_date.strftime('%m/%d/%Y')}",
-            color=discord.Color.blue()
-        )
+        # Create visualization
+        if stats_viz:
+            nodes = results['nodes']
+            top_users = sorted(nodes.items(), key=lambda x: x[1]['degree'], reverse=True)[:20]
 
-        # Top connected users
-        nodes = results['nodes']
-        top_users = sorted(nodes.items(), key=lambda x: x[1]['degree'], reverse=True)[:10]
+            image_buffer = stats_viz.create_network_table(
+                top_users=top_users,
+                total_users=len(nodes),
+                start_date=start_date,
+                end_date=end_date
+            )
 
-        table_data = []
-        for _, data in top_users:
-            table_data.append([data['username'][:15], str(data['messages']), str(data['degree'])])
+            file = discord.File(fp=image_buffer, filename="network_stats.png")
+            await interaction.followup.send(file=file)
+        else:
+            # Fallback to embed if visualizer not loaded
+            embed = discord.Embed(
+                title="📊 Server Network Statistics",
+                description=f"Analysis from {start_date.strftime('%m/%d/%Y')} to {end_date.strftime('%m/%d/%Y')}",
+                color=discord.Color.blue()
+            )
 
-        table = chat_stats.format_as_discord_table(
-            ['User', 'Messages', 'Connections'],
-            table_data
-        )
+            nodes = results['nodes']
+            top_users = sorted(nodes.items(), key=lambda x: x[1]['degree'], reverse=True)[:10]
 
-        embed.add_field(name="Most Connected Users", value=table, inline=False)
-        embed.set_footer(text=f"Total users analyzed: {len(nodes)} | Cached for 6 hours")
+            table_data = []
+            for _, data in top_users:
+                table_data.append([data['username'][:15], str(data['messages']), str(data['degree'])])
 
-        await interaction.followup.send(embed=embed)
+            table = chat_stats.format_as_discord_table(
+                ['User', 'Messages', 'Connections'],
+                table_data
+            )
+
+            embed.add_field(name="Most Connected Users", value=table, inline=False)
+            embed.set_footer(text=f"Total users analyzed: {len(nodes)} | Cached for 6 hours")
+
+            await interaction.followup.send(embed=embed)
 
     except ValueError as e:
         await interaction.followup.send(f"❌ {str(e)}")
@@ -2230,29 +2253,39 @@ async def stats_topics(interaction: discord.Interaction, date_range: str = "30")
             # Cache results
             chat_stats.cache_stats('topics', scope, start_date, end_date, topics, cache_hours=6)
 
-        # Format output
-        embed = discord.Embed(
-            title="🔥 Trending Topics",
-            description=f"Top keywords from {start_date.strftime('%m/%d/%Y')} to {end_date.strftime('%m/%d/%Y')}",
-            color=discord.Color.orange()
-        )
+        # Create visualization
+        if stats_viz:
+            image_buffer = stats_viz.create_topics_barchart(
+                topics=topics,
+                start_date=start_date,
+                end_date=end_date
+            )
 
-        table_data = []
-        for i, topic in enumerate(topics[:15], 1):
-            # Create bar visualization
-            bar_length = int(topic['score'] * 20)
-            bar = "█" * bar_length
-            table_data.append([f"{i}.", topic['keyword'][:20], str(topic['count']), bar])
+            file = discord.File(fp=image_buffer, filename="trending_topics.png")
+            await interaction.followup.send(file=file)
+        else:
+            # Fallback to embed
+            embed = discord.Embed(
+                title="🔥 Trending Topics",
+                description=f"Top keywords from {start_date.strftime('%m/%d/%Y')} to {end_date.strftime('%m/%d/%Y')}",
+                color=discord.Color.orange()
+            )
 
-        table = chat_stats.format_as_discord_table(
-            ['#', 'Keyword', 'Count', 'Relevance'],
-            table_data
-        )
+            table_data = []
+            for i, topic in enumerate(topics[:15], 1):
+                bar_length = int(topic['score'] * 20)
+                bar = "█" * bar_length
+                table_data.append([f"{i}.", topic['keyword'][:20], str(topic['count']), bar])
 
-        embed.add_field(name="Top Keywords (TF-IDF Analysis)", value=table, inline=False)
-        embed.set_footer(text="Cached for 6 hours | Uses keyword extraction (no LLM)")
+            table = chat_stats.format_as_discord_table(
+                ['#', 'Keyword', 'Count', 'Relevance'],
+                table_data
+            )
 
-        await interaction.followup.send(embed=embed)
+            embed.add_field(name="Top Keywords (TF-IDF Analysis)", value=table, inline=False)
+            embed.set_footer(text="Cached for 6 hours | Uses keyword extraction (no LLM)")
+
+            await interaction.followup.send(embed=embed)
 
     except ValueError as e:
         await interaction.followup.send(f"❌ {str(e)}")
@@ -2304,57 +2337,69 @@ async def stats_primetime(interaction: discord.Interaction, user: discord.Member
             # Cache results
             chat_stats.cache_stats('primetime', scope, start_date, end_date, results, cache_hours=6)
 
-        # Format output
+        # Create visualization
         target_name = user.display_name if user else "Server"
-        embed = discord.Embed(
-            title=f"⏰ Prime Time Analysis - {target_name}",
-            description=f"Activity from {start_date.strftime('%m/%d/%Y')} to {end_date.strftime('%m/%d/%Y')}",
-            color=discord.Color.purple()
-        )
 
-        # Hourly heatmap
-        hourly = results['hourly']
-        max_hour_count = max(hourly.values()) if hourly else 1
+        if stats_viz:
+            image_buffer = stats_viz.create_primetime_heatmap(
+                hourly=results['hourly'],
+                daily=results['daily'],
+                target_name=target_name,
+                start_date=start_date,
+                end_date=end_date
+            )
 
-        hourly_viz = []
-        for hour in range(24):
-            count = hourly.get(hour, 0)
-            bar_length = int((count / max_hour_count) * 15) if max_hour_count > 0 else 0
-            bar = "█" * bar_length
-            time_str = f"{hour:02d}:00"
-            hourly_viz.append([time_str, str(count), bar])
+            file = discord.File(fp=image_buffer, filename="primetime_analysis.png")
+            await interaction.followup.send(file=file)
+        else:
+            # Fallback to embed
+            embed = discord.Embed(
+                title=f"⏰ Prime Time Analysis - {target_name}",
+                description=f"Activity from {start_date.strftime('%m/%d/%Y')} to {end_date.strftime('%m/%d/%Y')}",
+                color=discord.Color.purple()
+            )
 
-        hourly_table = chat_stats.format_as_discord_table(
-            ['Hour', 'Msgs', 'Activity'],
-            hourly_viz
-        )
+            hourly = results['hourly']
+            max_hour_count = max(hourly.values()) if hourly else 1
 
-        embed.add_field(name="Hourly Activity", value=hourly_table, inline=False)
+            hourly_viz = []
+            for hour in range(24):
+                count = hourly.get(hour, 0)
+                bar_length = int((count / max_hour_count) * 15) if max_hour_count > 0 else 0
+                bar = "█" * bar_length
+                time_str = f"{hour:02d}:00"
+                hourly_viz.append([time_str, str(count), bar])
 
-        # Day of week breakdown
-        day_names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-        daily = results['daily']
-        max_day_count = max(daily.values()) if daily else 1
+            hourly_table = chat_stats.format_as_discord_table(
+                ['Hour', 'Msgs', 'Activity'],
+                hourly_viz
+            )
 
-        daily_viz = []
-        for day in range(7):
-            count = daily.get(day, 0)
-            bar_length = int((count / max_day_count) * 15) if max_day_count > 0 else 0
-            bar = "█" * bar_length
-            daily_viz.append([day_names[day], str(count), bar])
+            embed.add_field(name="Hourly Activity", value=hourly_table, inline=False)
 
-        daily_table = chat_stats.format_as_discord_table(
-            ['Day', 'Msgs', 'Activity'],
-            daily_viz
-        )
+            day_names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+            daily = results['daily']
+            max_day_count = max(daily.values()) if daily else 1
 
-        embed.add_field(name="Day of Week", value=daily_table, inline=False)
+            daily_viz = []
+            for day in range(7):
+                count = daily.get(day, 0)
+                bar_length = int((count / max_day_count) * 15) if max_day_count > 0 else 0
+                bar = "█" * bar_length
+                daily_viz.append([day_names[day], str(count), bar])
 
-        peak_hour = results['peak_hour']
-        peak_day = day_names[results['peak_day']]
-        embed.set_footer(text=f"Peak hour: {peak_hour:02d}:00 | Peak day: {peak_day} | Total: {results['total_messages']} msgs")
+            daily_table = chat_stats.format_as_discord_table(
+                ['Day', 'Msgs', 'Activity'],
+                daily_viz
+            )
 
-        await interaction.followup.send(embed=embed)
+            embed.add_field(name="Day of Week", value=daily_table, inline=False)
+
+            peak_hour = results['peak_hour']
+            peak_day = day_names[results['peak_day']]
+            embed.set_footer(text=f"Peak hour: {peak_hour:02d}:00 | Peak day: {peak_day} | Total: {results['total_messages']} msgs")
+
+            await interaction.followup.send(embed=embed)
 
     except ValueError as e:
         await interaction.followup.send(f"❌ {str(e)}")
@@ -2408,34 +2453,48 @@ async def stats_engagement(interaction: discord.Interaction, user: discord.Membe
 
         # Format output
         target_name = user.display_name if user else "Server"
-        embed = discord.Embed(
-            title=f"📈 Engagement Metrics - {target_name}",
-            description=f"Analysis from {start_date.strftime('%m/%d/%Y')} to {end_date.strftime('%m/%d/%Y')}",
-            color=discord.Color.green()
-        )
 
-        # Summary stats
-        embed.add_field(name="Total Messages", value=f"{results['total_messages']:,}", inline=True)
-        embed.add_field(name="Unique Users", value=f"{results['unique_users']}", inline=True)
-        embed.add_field(name="Avg Length", value=f"{results['avg_message_length']:.1f} chars", inline=True)
-
-        if not user:
-            embed.add_field(name="Avg Msgs/User", value=f"{results['avg_messages_per_user']:.1f}", inline=True)
-
-        # Top responders
-        if results['top_responders']:
-            table_data = []
-            for username, count in results['top_responders'][:10]:
-                table_data.append([username[:15], str(count)])
-
-            table = chat_stats.format_as_discord_table(
-                ['User', 'Responses'],
-                table_data
+        if stats_viz:
+            image_buffer = stats_viz.create_engagement_dashboard(
+                stats=results,
+                top_responders=results.get('top_responders', []),
+                target_name=target_name,
+                start_date=start_date,
+                end_date=end_date
             )
 
-            embed.add_field(name="Most Responsive Users", value=table, inline=False)
+            file = discord.File(fp=image_buffer, filename="engagement_metrics.png")
+            await interaction.followup.send(file=file)
+        else:
+            # Fallback to embed if visualizer not loaded
+            embed = discord.Embed(
+                title=f"📈 Engagement Metrics - {target_name}",
+                description=f"Analysis from {start_date.strftime('%m/%d/%Y')} to {end_date.strftime('%m/%d/%Y')}",
+                color=discord.Color.green()
+            )
 
-        await interaction.followup.send(embed=embed)
+            # Summary stats
+            embed.add_field(name="Total Messages", value=f"{results['total_messages']:,}", inline=True)
+            embed.add_field(name="Unique Users", value=f"{results['unique_users']}", inline=True)
+            embed.add_field(name="Avg Length", value=f"{results['avg_message_length']:.1f} chars", inline=True)
+
+            if not user:
+                embed.add_field(name="Avg Msgs/User", value=f"{results['avg_messages_per_user']:.1f}", inline=True)
+
+            # Top responders
+            if results['top_responders']:
+                table_data = []
+                for username, count in results['top_responders'][:10]:
+                    table_data.append([username[:15], str(count)])
+
+                table = chat_stats.format_as_discord_table(
+                    ['User', 'Responses'],
+                    table_data
+                )
+
+                embed.add_field(name="Most Responsive Users", value=table, inline=False)
+
+            await interaction.followup.send(embed=embed)
 
     except ValueError as e:
         await interaction.followup.send(f"❌ {str(e)}")
@@ -2470,7 +2529,7 @@ async def hottakes(interaction: discord.Interaction, leaderboard_type: str = "co
             await interaction.followup.send(f"No hot takes found in the last {days} days.")
             return
 
-        # Format embed based on leaderboard type
+        # Format output based on leaderboard type
         title_map = {
             'controversial': '🔥 Most Controversial Takes',
             'vindicated': '✅ Best Vindicated Takes',
@@ -2479,34 +2538,61 @@ async def hottakes(interaction: discord.Interaction, leaderboard_type: str = "co
             'combined': '👑 Hot Take Kings'
         }
 
-        embed = discord.Embed(
-            title=title_map.get(leaderboard_type, '🔥 Hot Takes'),
-            description=f"Last {days} days",
-            color=discord.Color.red()
-        )
+        if stats_viz:
+            # Define value formatter based on leaderboard type
+            def format_hottakes_value(take):
+                claim_text = take['claim_text'][:100] + ('...' if len(take['claim_text']) > 100 else '')
+                if leaderboard_type == 'controversial':
+                    score_text = f"🔥 Controversy: {take['controversy_score']:.1f}/10"
+                elif leaderboard_type == 'vindicated':
+                    score_text = f"✅ Aged like fine wine: {take['age_score']:.1f}/10"
+                elif leaderboard_type == 'worst':
+                    score_text = f"❌ Aged like milk: {take['age_score']:.1f}/10"
+                elif leaderboard_type == 'community':
+                    score_text = f"⭐ Community: {take['community_score']:.1f}/10 | 👍 {take['total_reactions']} reactions"
+                else:  # combined
+                    score_text = f"👑 Combined: {take['combined_score']:.1f} | 🔥 {take['controversy_score']:.1f} | ✅ {take.get('age_score', 'N/A')}"
+                return f"{claim_text}\n{score_text}"
 
-        for i, take in enumerate(results, 1):
-            username = take['username']
-            claim_text = take['claim_text'][:150] + ('...' if len(take['claim_text']) > 150 else '')
-
-            if leaderboard_type == 'controversial':
-                score_text = f"🔥 Controversy: {take['controversy_score']:.1f}/10"
-            elif leaderboard_type == 'vindicated':
-                score_text = f"✅ Aged like fine wine: {take['age_score']:.1f}/10"
-            elif leaderboard_type == 'worst':
-                score_text = f"❌ Aged like milk: {take['age_score']:.1f}/10"
-            elif leaderboard_type == 'community':
-                score_text = f"⭐ Community: {take['community_score']:.1f}/10 | 👍 {take['total_reactions']} reactions"
-            else:  # combined
-                score_text = f"👑 Combined: {take['combined_score']:.1f} | 🔥 {take['controversy_score']:.1f} | ✅ {take.get('age_score', 'N/A')}"
-
-            embed.add_field(
-                name=f"#{i} - {username}",
-                value=f"> {claim_text}\n\n{score_text}",
-                inline=False
+            image_buffer = stats_viz.create_leaderboard(
+                entries=results,
+                title=title_map.get(leaderboard_type, '🔥 Hot Takes'),
+                subtitle=f"Last {days} days",
+                value_formatter=format_hottakes_value
             )
 
-        await interaction.followup.send(embed=embed)
+            file = discord.File(fp=image_buffer, filename="hottakes_leaderboard.png")
+            await interaction.followup.send(file=file)
+        else:
+            # Fallback to embed if visualizer not loaded
+            embed = discord.Embed(
+                title=title_map.get(leaderboard_type, '🔥 Hot Takes'),
+                description=f"Last {days} days",
+                color=discord.Color.red()
+            )
+
+            for i, take in enumerate(results, 1):
+                username = take['username']
+                claim_text = take['claim_text'][:150] + ('...' if len(take['claim_text']) > 150 else '')
+
+                if leaderboard_type == 'controversial':
+                    score_text = f"🔥 Controversy: {take['controversy_score']:.1f}/10"
+                elif leaderboard_type == 'vindicated':
+                    score_text = f"✅ Aged like fine wine: {take['age_score']:.1f}/10"
+                elif leaderboard_type == 'worst':
+                    score_text = f"❌ Aged like milk: {take['age_score']:.1f}/10"
+                elif leaderboard_type == 'community':
+                    score_text = f"⭐ Community: {take['community_score']:.1f}/10 | 👍 {take['total_reactions']} reactions"
+                else:  # combined
+                    score_text = f"👑 Combined: {take['combined_score']:.1f} | 🔥 {take['controversy_score']:.1f} | ✅ {take.get('age_score', 'N/A')}"
+
+                embed.add_field(
+                    name=f"#{i} - {username}",
+                    value=f"> {claim_text}\n\n{score_text}",
+                    inline=False
+                )
+
+            await interaction.followup.send(embed=embed)
 
     except Exception as e:
         await interaction.followup.send(f"❌ Error fetching hot takes: {str(e)}")
@@ -2526,25 +2612,52 @@ async def mystats_hottakes(interaction: discord.Interaction):
             await interaction.followup.send("You haven't made any hot takes yet. Time to get controversial! 🔥")
             return
 
-        embed = discord.Embed(
-            title=f"🔥 {interaction.user.display_name}'s Hot Takes Stats",
-            color=discord.Color.red()
-        )
+        if stats_viz:
+            # Calculate win rate
+            total_resolved = stats['vindicated_count'] + stats['failed_count']
+            win_rate = (stats['vindicated_count'] / total_resolved) * 100 if total_resolved > 0 else 0
 
-        embed.add_field(name="Total Hot Takes", value=f"{stats['total_hot_takes']}", inline=True)
-        embed.add_field(name="Spiciest Take", value=f"{stats['spiciest_take']:.1f}/10", inline=True)
-        embed.add_field(name="Avg Controversy", value=f"{stats['avg_controversy']:.1f}/10", inline=True)
-        embed.add_field(name="Vindicated", value=f"✅ {stats['vindicated_count']}", inline=True)
-        embed.add_field(name="Proven Wrong", value=f"❌ {stats['failed_count']}", inline=True)
-        embed.add_field(name="Avg Community Score", value=f"{stats['avg_community']:.1f}/10", inline=True)
+            # Format metrics for visualization
+            metrics = [
+                ("Total Hot Takes", stats['total_hot_takes'], 'primary'),
+                ("Spiciest Take", f"{stats['spiciest_take']:.1f}/10", 'danger'),
+                ("Avg Controversy", f"{stats['avg_controversy']:.1f}/10", 'warning'),
+                ("Vindicated ✅", stats['vindicated_count'], 'success'),
+                ("Proven Wrong ❌", stats['failed_count'], 'danger'),
+                ("Avg Community", f"{stats['avg_community']:.1f}/10", 'info'),
+            ]
 
-        # Calculate win rate
-        total_resolved = stats['vindicated_count'] + stats['failed_count']
-        if total_resolved > 0:
-            win_rate = (stats['vindicated_count'] / total_resolved) * 100
-            embed.add_field(name="Win Rate", value=f"{win_rate:.1f}%", inline=True)
+            if total_resolved > 0:
+                metrics.append(("Win Rate", f"{win_rate:.1f}%", 'success'))
 
-        await interaction.followup.send(embed=embed)
+            image_buffer = stats_viz.create_personal_stats_dashboard(
+                username=f"{interaction.user.display_name}'s Hot Takes",
+                metrics=metrics
+            )
+
+            file = discord.File(fp=image_buffer, filename="mystats_hottakes.png")
+            await interaction.followup.send(file=file)
+        else:
+            # Fallback to embed if visualizer not loaded
+            embed = discord.Embed(
+                title=f"🔥 {interaction.user.display_name}'s Hot Takes Stats",
+                color=discord.Color.red()
+            )
+
+            embed.add_field(name="Total Hot Takes", value=f"{stats['total_hot_takes']}", inline=True)
+            embed.add_field(name="Spiciest Take", value=f"{stats['spiciest_take']:.1f}/10", inline=True)
+            embed.add_field(name="Avg Controversy", value=f"{stats['avg_controversy']:.1f}/10", inline=True)
+            embed.add_field(name="Vindicated", value=f"✅ {stats['vindicated_count']}", inline=True)
+            embed.add_field(name="Proven Wrong", value=f"❌ {stats['failed_count']}", inline=True)
+            embed.add_field(name="Avg Community Score", value=f"{stats['avg_community']:.1f}/10", inline=True)
+
+            # Calculate win rate
+            total_resolved = stats['vindicated_count'] + stats['failed_count']
+            if total_resolved > 0:
+                win_rate = (stats['vindicated_count'] / total_resolved) * 100
+                embed.add_field(name="Win Rate", value=f"{win_rate:.1f}%", inline=True)
+
+            await interaction.followup.send(embed=embed)
 
     except Exception as e:
         await interaction.followup.send(f"❌ Error fetching your stats: {str(e)}")
@@ -2926,7 +3039,110 @@ async def wrapped(interaction: discord.Interaction, year: int = None, user: disc
             )
             return
 
-        # Create beautiful embed
+        if stats_viz:
+            # Transform wrapped data into visualization format
+            sections = []
+
+            # Message Activity Section
+            msg_stats = wrapped_data['message_stats']
+            msg_metrics = [("Total Messages", f"{msg_stats['total_messages']:,}")]
+            if msg_stats['server_rank']:
+                msg_metrics.append(("Server Rank", f"#{msg_stats['server_rank']}"))
+            if msg_stats['most_active_month']:
+                month_name = yearly_wrapped.format_month_name(msg_stats['most_active_month'])
+                msg_metrics.append(("Most Active Month", month_name))
+            if msg_stats['most_active_day_of_week'] is not None:
+                day_name = yearly_wrapped.format_day_name(msg_stats['most_active_day_of_week'])
+                msg_metrics.append(("Favorite Day", day_name))
+            if msg_stats['most_active_hour'] is not None:
+                hour = msg_stats['most_active_hour']
+                period = 'AM' if hour < 12 else 'PM'
+                display_hour = hour if hour <= 12 else hour - 12
+                display_hour = 12 if display_hour == 0 else display_hour
+                msg_metrics.append(("Peak Hour", f"{display_hour} {period}"))
+            sections.append({"title": "💬 Message Activity", "metrics": msg_metrics})
+
+            # Social Stats Section
+            social_stats = wrapped_data['social_stats']
+            if social_stats['top_conversation_partner'] or social_stats['replies_sent'] > 0:
+                social_metrics = []
+                if social_stats['replies_sent'] > 0:
+                    social_metrics.append(("Replies Sent", social_stats['replies_sent']))
+                if social_stats['replies_received'] > 0:
+                    social_metrics.append(("Replies Received", social_stats['replies_received']))
+                if social_stats['top_conversation_partner']:
+                    # Get username for partner ID
+                    partner_id = social_stats['top_conversation_partner']
+                    partner_user = interaction.guild.get_member(partner_id)
+                    partner_name = partner_user.display_name if partner_user else f"User {partner_id}"
+                    social_metrics.append(("Top Buddy", f"{partner_name} ({social_stats['top_partner_count']} replies)"))
+                if social_metrics:
+                    sections.append({"title": "👥 Social Network", "metrics": social_metrics})
+
+            # Claims & Hot Takes Section
+            claims_stats = wrapped_data['claims_stats']
+            if claims_stats['total_claims'] > 0 or claims_stats['hot_take_count'] > 0:
+                claims_metrics = []
+                if claims_stats['total_claims'] > 0:
+                    claims_metrics.append(("Claims Tracked", claims_stats['total_claims']))
+                if claims_stats['hot_take_count'] > 0:
+                    claims_metrics.append(("Hot Takes", claims_stats['hot_take_count']))
+                    if claims_stats['avg_controversy_score'] > 0:
+                        claims_metrics.append(("Avg Controversy", f"{claims_stats['avg_controversy_score']}/10"))
+                    if claims_stats['vindicated'] > 0:
+                        claims_metrics.append(("Vindicated ✅", claims_stats['vindicated']))
+                    if claims_stats['wrong'] > 0:
+                        claims_metrics.append(("Wrong ❌", claims_stats['wrong']))
+                if claims_metrics:
+                    sections.append({"title": "🔥 Claims & Hot Takes", "metrics": claims_metrics})
+
+            # Quotes Section
+            quotes_stats = wrapped_data['quotes_stats']
+            if quotes_stats['quotes_received'] > 0 or quotes_stats['quotes_saved'] > 0:
+                quotes_metrics = []
+                if quotes_stats['quotes_received'] > 0:
+                    quotes_metrics.append(("Times Quoted", quotes_stats['quotes_received']))
+                if quotes_stats['quotes_saved'] > 0:
+                    quotes_metrics.append(("Quotes Saved", quotes_stats['quotes_saved']))
+                if quotes_stats['most_quoted_person']:
+                    quotee_id = quotes_stats['most_quoted_person']
+                    quotee_user = interaction.guild.get_member(quotee_id)
+                    quotee_name = quotee_user.display_name if quotee_user else f"User {quotee_id}"
+                    quotes_metrics.append(("Favorite Quotee", quotee_name))
+                if quotes_metrics:
+                    sections.append({"title": "☁️ Quotes", "metrics": quotes_metrics})
+
+            # Personality Section
+            personality = wrapped_data['personality']
+            if personality['question_rate'] > 0 or personality['fact_checks_requested'] > 0:
+                personality_metrics = []
+                if personality['question_rate'] > 0:
+                    personality_metrics.append(("Question Rate", f"{personality['question_rate']}%"))
+                if personality['profanity_score'] > 0:
+                    personality_metrics.append(("Profanity Score", f"{personality['profanity_score']}/10"))
+                if personality['fact_checks_requested'] > 0:
+                    personality_metrics.append(("Fact Checks", personality['fact_checks_requested']))
+                if personality_metrics:
+                    sections.append({"title": "🎭 Personality", "metrics": personality_metrics})
+
+            # Achievements Section
+            achievements = wrapped_data['achievements']
+            if achievements:
+                sections.append({"title": "🏆 Achievements", "metrics": [("", " ".join(achievements))]})
+
+            image_buffer = stats_viz.create_wrapped_summary(
+                username=target_user.display_name,
+                year=target_year,
+                sections=sections
+            )
+
+            file = discord.File(fp=image_buffer, filename=f"wrapped_{target_year}.png")
+            await interaction.followup.send(file=file)
+            db.record_feature_usage(interaction.user.id, 'wrapped')
+            print(f"📊 Generated {target_year} wrapped for {target_user.display_name}")
+            return
+
+        # Create beautiful embed (fallback)
         embed = discord.Embed(
             title=f"📊 {target_year} Wrapped",
             description=f"**{target_user.display_name}'s Year in Review**",
@@ -3276,39 +3492,62 @@ async def debate_stats(interaction: discord.Interaction, user: discord.Member = 
             )
             return
 
-        embed = discord.Embed(
-            title=f"⚔️ Debate Stats: {target_user.display_name}",
-            color=discord.Color.blue()
-        )
-        embed.set_thumbnail(url=target_user.display_avatar.url)
+        if stats_viz:
+            # Format metrics for visualization
+            metrics = [
+                ("Record", f"{stats['wins']}W - {stats['losses']}L", 'primary'),
+                ("Win Rate", f"{stats['win_rate']}%", 'success'),
+                ("Total Debates", stats['total_debates'], 'info'),
+            ]
 
-        embed.add_field(
-            name="📊 Record",
-            value=f"**{stats['wins']}W - {stats['losses']}L**\nWin Rate: {stats['win_rate']}%",
-            inline=True
-        )
+            if stats['avg_score']:
+                metrics.append(("Average Score", f"{stats['avg_score']}/10", 'warning'))
 
-        if stats['avg_score']:
+            if stats['favorite_topic']:
+                metrics.append(("Favorite Topic", stats['favorite_topic'][:50], 'purple'))
+
+            image_buffer = stats_viz.create_personal_stats_dashboard(
+                username=f"{target_user.display_name}'s Debate Stats",
+                metrics=metrics
+            )
+
+            file = discord.File(fp=image_buffer, filename="debate_stats.png")
+            await interaction.followup.send(file=file)
+        else:
+            # Fallback to embed if visualizer not loaded
+            embed = discord.Embed(
+                title=f"⚔️ Debate Stats: {target_user.display_name}",
+                color=discord.Color.blue()
+            )
+            embed.set_thumbnail(url=target_user.display_avatar.url)
+
             embed.add_field(
-                name="⭐ Average Score",
-                value=f"**{stats['avg_score']}/10**",
+                name="📊 Record",
+                value=f"**{stats['wins']}W - {stats['losses']}L**\nWin Rate: {stats['win_rate']}%",
                 inline=True
             )
 
-        embed.add_field(
-            name="💬 Total Debates",
-            value=f"**{stats['total_debates']}**",
-            inline=True
-        )
+            if stats['avg_score']:
+                embed.add_field(
+                    name="⭐ Average Score",
+                    value=f"**{stats['avg_score']}/10**",
+                    inline=True
+                )
 
-        if stats['favorite_topic']:
             embed.add_field(
-                name="🎯 Favorite Topic",
-                value=stats['favorite_topic'][:100],
-                inline=False
+                name="💬 Total Debates",
+                value=f"**{stats['total_debates']}**",
+                inline=True
             )
 
-        await interaction.followup.send(embed=embed)
+            if stats['favorite_topic']:
+                embed.add_field(
+                    name="🎯 Favorite Topic",
+                    value=stats['favorite_topic'][:100],
+                    inline=False
+                )
+
+            await interaction.followup.send(embed=embed)
 
     except Exception as e:
         await interaction.followup.send(f"❌ Error getting stats: {str(e)}")
@@ -3326,22 +3565,38 @@ async def debate_leaderboard(interaction: discord.Interaction):
             await interaction.followup.send("📊 No debate data yet! Start a debate with `/debate_start`")
             return
 
-        embed = discord.Embed(
-            title="🏆 Debate Leaderboard",
-            description="Top debaters by wins and average score",
-            color=discord.Color.gold()
-        )
+        if stats_viz:
+            # Define value formatter for debate leaderboard
+            def format_debate_value(entry):
+                return f"{entry['wins']}W ({entry['win_rate']}%) • Avg: {entry['avg_score']}/10 • {entry['total_debates']} debates"
 
-        for i, entry in enumerate(leaderboard[:10], 1):
-            medal = {1: '🥇', 2: '🥈', 3: '🥉'}.get(i, f'{i}.')
-            value = f"**{entry['wins']}W** ({entry['win_rate']}%) • Avg: {entry['avg_score']}/10 • {entry['total_debates']} debates"
-            embed.add_field(
-                name=f"{medal} {entry['username']}",
-                value=value,
-                inline=False
+            image_buffer = stats_viz.create_leaderboard(
+                entries=leaderboard[:10],
+                title="🏆 Debate Leaderboard",
+                subtitle="Top debaters by wins and average score",
+                value_formatter=format_debate_value
             )
 
-        await interaction.followup.send(embed=embed)
+            file = discord.File(fp=image_buffer, filename="debate_leaderboard.png")
+            await interaction.followup.send(file=file)
+        else:
+            # Fallback to embed if visualizer not loaded
+            embed = discord.Embed(
+                title="🏆 Debate Leaderboard",
+                description="Top debaters by wins and average score",
+                color=discord.Color.gold()
+            )
+
+            for i, entry in enumerate(leaderboard[:10], 1):
+                medal = {1: '🥇', 2: '🥈', 3: '🥉'}.get(i, f'{i}.')
+                value = f"**{entry['wins']}W** ({entry['win_rate']}%) • Avg: {entry['avg_score']}/10 • {entry['total_debates']} debates"
+                embed.add_field(
+                    name=f"{medal} {entry['username']}",
+                    value=value,
+                    inline=False
+                )
+
+            await interaction.followup.send(embed=embed)
 
     except Exception as e:
         await interaction.followup.send(f"❌ Error getting leaderboard: {str(e)}")
@@ -5751,16 +6006,8 @@ async def iracing_timeslots(interaction: discord.Interaction, series: str, week:
                     await interaction.followup.send(error_msg)
                     return
 
-        # Build embed for upcoming sessions
-        embed = discord.Embed(
-            title=f"🏁 {series_name}",
-            description=f"**Week {current_week}** • {track_name}",
-            color=discord.Color.blue()
-        )
-
-        # Group sessions by day
-        sessions_by_day = {}
-
+        # Prepare session data for visualization
+        session_data = []
         for session in sessions[:50]:  # Limit to 50 sessions
             # Get session start time
             start_time_str = session.get('start_time') or session.get('session_start_time')
@@ -5774,81 +6021,28 @@ async def iracing_timeslots(interaction: discord.Interaction, series: str, week:
                 else:
                     start_time = datetime.fromtimestamp(start_time_str, tz=timezone.utc)
 
-                # Get day of week
-                day_name = start_time.strftime('%A, %B %d')
-
-                if day_name not in sessions_by_day:
-                    sessions_by_day[day_name] = []
-
-                # Format time in both UTC and relative
-                time_utc = start_time.strftime('%H:%M UTC')
                 timestamp = int(start_time.timestamp())
 
-                sessions_by_day[day_name].append({
-                    'time_utc': time_utc,
-                    'timestamp': timestamp,
-                    'start_time': start_time
+                session_data.append({
+                    'start_time': start_time_str,
+                    'timestamp': timestamp
                 })
 
             except Exception as e:
                 print(f"⚠️ Error parsing session time: {e}")
                 continue
 
-        # Calculate total sessions
-        total_sessions = sum(len(times) for times in sessions_by_day.values())
+        # Create visualization
+        image_buffer = iracing_viz.create_timeslots_table(
+            series_name=series_name,
+            track_name=track_name,
+            week_num=current_week,
+            sessions=session_data
+        )
 
-        # If fewer than 10 sessions, show as a numbered list
-        if total_sessions < 10:
-            # Flatten all sessions into a single list sorted by time
-            all_times = []
-            for day_name in sessions_by_day.keys():
-                for time_entry in sessions_by_day[day_name]:
-                    all_times.append({
-                        'day_name': day_name,
-                        'timestamp': time_entry['timestamp'],
-                        'start_time': time_entry['start_time']
-                    })
-
-            # Sort by start_time
-            all_times.sort(key=lambda t: t['start_time'])
-
-            # Create numbered list
-            session_list = []
-            for i, time_entry in enumerate(all_times, 1):
-                # Format: "1. <t:timestamp:f>" - Short date/time with AM/PM
-                session_list.append(f"{i}. <t:{time_entry['timestamp']}:f>")
-
-            # Join with newlines
-            sessions_text = "\n".join(session_list)
-
-            embed.add_field(
-                name="📅 Race Sessions",
-                value=sessions_text,
-                inline=False
-            )
-
-            embed.set_footer(text=f"{total_sessions} race sessions • Times shown in your local timezone with AM/PM")
-
-        else:
-            # Show grouped by day for many sessions
-            for day_name in sorted(sessions_by_day.keys(), key=lambda d: sessions_by_day[d][0]['start_time']):
-                times = sessions_by_day[day_name]
-
-                # Sort times by start_time
-                times.sort(key=lambda t: t['start_time'])
-
-                # Format times with AM/PM format
-                time_strings = []
-                for t in times[:10]:  # Max 10 times per day
-                    # Use Discord short time format for automatic timezone conversion
-                    time_strings.append(f"<t:{t['timestamp']}:t>")
-
-                value = " • ".join(time_strings)
-                embed.add_field(name=day_name, value=value, inline=False)
-
-            embed.set_footer(text=f"{total_sessions} race sessions • Times shown in your local timezone with AM/PM")
-
-        await interaction.followup.send(embed=embed)
+        # Send as file attachment
+        file = discord.File(fp=image_buffer, filename="iracing_timeslots.png")
+        await interaction.followup.send(file=file)
 
     except Exception as e:
         await interaction.followup.send(f"❌ Error: {str(e)}")
