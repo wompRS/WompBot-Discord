@@ -13,6 +13,8 @@ import pandas as pd
 from PIL import Image
 from io import BytesIO
 from typing import Dict, List, Optional, Tuple
+from datetime import datetime, timezone
+import dateparser
 import aiohttp
 from pathlib import Path
 
@@ -2496,3 +2498,439 @@ class iRacingVisualizer:
             return '#00bcd4'  # Cyan - Average
         else:
             return '#9e9e9e'  # Gray - Below Average
+
+    def create_timeslots_table(self, series_name: str, track_name: str, week_num: int, sessions: List[Dict]) -> BytesIO:
+        """
+        Create a visual table of race session times
+
+        Args:
+            series_name: Series name
+            track_name: Track name
+            week_num: Week number
+            sessions: List of session dicts with start_time and timestamp
+
+        Returns:
+            BytesIO containing the PNG image
+        """
+        fig = plt.figure(figsize=(12, max(8, len(sessions) * 0.4 + 2)), facecolor=self.COLORS['bg_dark'])
+        ax = fig.add_subplot(111)
+        ax.axis('off')
+        ax.set_xlim(0, 10)
+        ax.set_ylim(0, 10)
+
+        # Title
+        ax.text(5, 9.5, series_name, ha='center', va='top', fontsize=20,
+                fontweight='bold', color=self.COLORS['text_white'])
+        ax.text(5, 9.0, f"Week {week_num} • {track_name}", ha='center', va='top',
+                fontsize=14, color=self.COLORS['text_gray'])
+
+        # Table header
+        y_pos = 8.2
+        ax.text(2, y_pos, "Date & Time", ha='left', va='center', fontsize=12,
+                fontweight='bold', color=self.COLORS['text_white'])
+        ax.text(8, y_pos, "Starts In", ha='left', va='center', fontsize=12,
+                fontweight='bold', color=self.COLORS['text_white'])
+
+        # Add header line
+        ax.plot([0.5, 9.5], [y_pos - 0.15, y_pos - 0.15], color=self.COLORS['accent_blue'], linewidth=2)
+
+        # Session rows
+        y_pos -= 0.5
+        row_height = 0.35
+
+        now = datetime.now(timezone.utc)
+
+        for i, session in enumerate(sessions[:50]):  # Limit to 50
+            # Alternate row background
+            if i % 2 == 0:
+                rect = plt.Rectangle((0.5, y_pos - row_height/2), 9, row_height,
+                                     facecolor=self.COLORS['bg_card'], edgecolor='none')
+                ax.add_patch(rect)
+
+            # Parse time
+            timestamp = session.get('timestamp')
+            start_time = session.get('start_time')
+
+            if timestamp:
+                try:
+                    if isinstance(start_time, str):
+                        session_time = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
+                    else:
+                        session_time = datetime.fromtimestamp(timestamp, tz=timezone.utc)
+
+                    # Format date and time
+                    date_str = session_time.strftime('%a, %b %d')
+                    time_str = session_time.strftime('%I:%M %p UTC')
+
+                    # Calculate time until session
+                    time_diff = session_time - now
+                    hours = int(time_diff.total_seconds() / 3600)
+                    minutes = int((time_diff.total_seconds() % 3600) / 60)
+
+                    if hours < 0:
+                        relative_str = "Past"
+                        color = self.COLORS['text_gray']
+                    elif hours < 1:
+                        relative_str = f"{minutes}m"
+                        color = self.COLORS['accent_green']
+                    elif hours < 24:
+                        relative_str = f"{hours}h {minutes}m"
+                        color = self.COLORS['accent_blue']
+                    else:
+                        days = hours // 24
+                        relative_str = f"{days}d {hours % 24}h"
+                        color = self.COLORS['text_white']
+
+                    # Display
+                    ax.text(2, y_pos, f"{date_str}  {time_str}", ha='left', va='center',
+                           fontsize=10, color=self.COLORS['text_white'])
+                    ax.text(8, y_pos, relative_str, ha='left', va='center', fontsize=10,
+                           color=color, fontweight='bold')
+                except:
+                    pass
+
+            y_pos -= row_height
+
+        # Footer
+        ax.text(5, 0.5, f"{len(sessions)} race sessions", ha='center', va='center',
+               fontsize=10, color=self.COLORS['text_gray'])
+
+        # Save
+        buffer = BytesIO()
+        plt.savefig(buffer, format='png', dpi=150, facecolor=self.COLORS['bg_dark'], bbox_inches='tight')
+        plt.close()
+        buffer.seek(0)
+        return buffer
+
+    def create_upcoming_races_table(self, races: List[Dict], hours: int, series_filter: str = None) -> BytesIO:
+        """
+        Create a visual table of upcoming races
+
+        Args:
+            races: List of race dicts
+            hours: Hours ahead searched
+            series_filter: Optional series filter name
+
+        Returns:
+            BytesIO containing the PNG image
+        """
+        fig = plt.figure(figsize=(14, max(10, len(races) * 0.5 + 3)), facecolor=self.COLORS['bg_dark'])
+        ax = fig.add_subplot(111)
+        ax.axis('off')
+        ax.set_xlim(0, 10)
+        ax.set_ylim(0, 10)
+
+        # Title
+        title = f"🏁 Upcoming iRacing Races"
+        if series_filter:
+            title += f" - {series_filter}"
+        ax.text(5, 9.5, title, ha='center', va='top', fontsize=20,
+                fontweight='bold', color=self.COLORS['text_white'])
+        ax.text(5, 9.0, f"Next {len(races)} races in {hours} hours", ha='center', va='top',
+                fontsize=14, color=self.COLORS['text_gray'])
+
+        # Table header
+        y_pos = 8.3
+        ax.text(1, y_pos, "Series", ha='left', va='center', fontsize=11,
+                fontweight='bold', color=self.COLORS['text_white'])
+        ax.text(5.5, y_pos, "Track", ha='left', va='center', fontsize=11,
+                fontweight='bold', color=self.COLORS['text_white'])
+        ax.text(8.5, y_pos, "Starts", ha='left', va='center', fontsize=11,
+                fontweight='bold', color=self.COLORS['text_white'])
+
+        ax.plot([0.5, 9.5], [y_pos - 0.15, y_pos - 0.15], color=self.COLORS['accent_blue'], linewidth=2)
+
+        # Race rows
+        y_pos -= 0.45
+        row_height = 0.4
+
+        now = datetime.now(timezone.utc)
+
+        for i, race in enumerate(races[:20]):
+            # Alternate row background
+            if i % 2 == 0:
+                rect = plt.Rectangle((0.5, y_pos - row_height/2), 9, row_height,
+                                     facecolor=self.COLORS['bg_card'], edgecolor='none')
+                ax.add_patch(rect)
+
+            series_name = race.get('series_name', 'Unknown')[:35]
+            track_name = race.get('track_name', 'Unknown')[:30]
+            start_time = race.get('start_time')
+
+            # Format start time
+            relative_str = "TBD"
+            if start_time:
+                try:
+                    if isinstance(start_time, str):
+                        start_dt = dateparser.parse(start_time)
+                    else:
+                        start_dt = start_time
+
+                    if start_dt:
+                        time_diff = start_dt - now
+                        minutes = int(time_diff.total_seconds() / 60)
+
+                        if minutes < 60:
+                            relative_str = f"{minutes}m"
+                        elif minutes < 1440:  # < 24 hours
+                            hours_val = minutes // 60
+                            mins = minutes % 60
+                            relative_str = f"{hours_val}h {mins}m"
+                        else:
+                            days = minutes // 1440
+                            relative_str = f"{days}d"
+                except:
+                    pass
+
+            # Display
+            ax.text(1, y_pos, series_name, ha='left', va='center', fontsize=9,
+                   color=self.COLORS['text_white'])
+            ax.text(5.5, y_pos, track_name, ha='left', va='center', fontsize=9,
+                   color=self.COLORS['text_gray'])
+            ax.text(8.5, y_pos, relative_str, ha='left', va='center', fontsize=9,
+                   color=self.COLORS['accent_green'], fontweight='bold')
+
+            y_pos -= row_height
+
+        # Footer
+        if len(races) > 20:
+            ax.text(5, 0.5, f"Showing first 20 of {len(races)} races", ha='center', va='center',
+                   fontsize=10, color=self.COLORS['text_gray'])
+
+        buffer = BytesIO()
+        plt.savefig(buffer, format='png', dpi=150, facecolor=self.COLORS['bg_dark'], bbox_inches='tight')
+        plt.close()
+        buffer.seek(0)
+        return buffer
+
+    def create_event_roster_table(self, event_id: int, availability: List[Dict]) -> BytesIO:
+        """
+        Create a visual table of driver availability for an event
+
+        Args:
+            event_id: Event ID
+            availability: List of availability dicts
+
+        Returns:
+            BytesIO containing the PNG image
+        """
+        fig = plt.figure(figsize=(12, max(8, len(availability) * 0.35 + 3)), facecolor=self.COLORS['bg_dark'])
+        ax = fig.add_subplot(111)
+        ax.axis('off')
+        ax.set_xlim(0, 10)
+        ax.set_ylim(0, 10)
+
+        # Title
+        ax.text(5, 9.5, f"📊 Driver Roster - Event #{event_id}", ha='center', va='top',
+                fontsize=20, fontweight='bold', color=self.COLORS['text_white'])
+
+        # Group by status
+        confirmed = [a for a in availability if a['status'] == 'confirmed']
+        available = [a for a in availability if a['status'] == 'available']
+        maybe = [a for a in availability if a['status'] == 'maybe']
+        unavailable = [a for a in availability if a['status'] == 'unavailable']
+
+        total_ready = len(confirmed) + len(available)
+        ax.text(5, 9.0, f"{total_ready} drivers ready to race", ha='center', va='top',
+                fontsize=14, color=self.COLORS['accent_green'])
+
+        y_pos = 8.3
+
+        # Status sections
+        status_groups = [
+            ("✔️ Confirmed", confirmed, self.COLORS['accent_green']),
+            ("✅ Available", available, self.COLORS['accent_blue']),
+            ("❓ Maybe", maybe, self.COLORS['accent_yellow']),
+            ("❌ Unavailable", unavailable, self.COLORS['accent_red'])
+        ]
+
+        for status_name, drivers, color in status_groups:
+            if not drivers:
+                continue
+
+            # Section header
+            ax.text(1, y_pos, status_name, ha='left', va='center', fontsize=12,
+                    fontweight='bold', color=color)
+            ax.plot([0.5, 9.5], [y_pos - 0.15, y_pos - 0.15], color=color, linewidth=2)
+            y_pos -= 0.4
+
+            # Drivers
+            for i, driver in enumerate(drivers[:10]):  # Limit per section
+                name = driver.get('iracing_name', f"Driver {driver.get('discord_user_id', 'Unknown')}")[:40]
+                notes = driver.get('notes', '')[:60]
+
+                # Alternate background
+                if i % 2 == 0:
+                    rect = plt.Rectangle((0.5, y_pos - 0.15), 9, 0.3,
+                                         facecolor=self.COLORS['bg_card'], edgecolor='none')
+                    ax.add_patch(rect)
+
+                ax.text(1.5, y_pos, name, ha='left', va='center', fontsize=9,
+                       color=self.COLORS['text_white'])
+                if notes:
+                    ax.text(6, y_pos, f"• {notes}", ha='left', va='center', fontsize=8,
+                           color=self.COLORS['text_gray'], fontstyle='italic')
+
+                y_pos -= 0.3
+
+            if len(drivers) > 10:
+                ax.text(1.5, y_pos, f"... and {len(drivers) - 10} more", ha='left', va='center',
+                       fontsize=8, color=self.COLORS['text_gray'], fontstyle='italic')
+                y_pos -= 0.3
+
+            y_pos -= 0.2
+
+        buffer = BytesIO()
+        plt.savefig(buffer, format='png', dpi=150, facecolor=self.COLORS['bg_dark'], bbox_inches='tight')
+        plt.close()
+        buffer.seek(0)
+        return buffer
+
+    def create_team_info_display(self, team_info: Dict, members: List[Dict]) -> BytesIO:
+        """
+        Create a visual display of team information
+
+        Args:
+            team_info: Team info dict
+            members: List of member dicts
+
+        Returns:
+            BytesIO containing the PNG image
+        """
+        fig = plt.figure(figsize=(12, max(10, len(members) * 0.3 + 4)), facecolor=self.COLORS['bg_dark'])
+        ax = fig.add_subplot(111)
+        ax.axis('off')
+        ax.set_xlim(0, 10)
+        ax.set_ylim(0, 10)
+
+        # Team header
+        team_name = team_info.get('name', 'Unknown Team')
+        team_tag = team_info.get('tag', '')
+        description = team_info.get('description', 'No description')[:100]
+        created_date = team_info.get('created_at').strftime('%B %d, %Y') if team_info.get('created_at') else 'Unknown'
+
+        ax.text(5, 9.5, f"🏁 {team_name} [{team_tag}]", ha='center', va='top',
+                fontsize=22, fontweight='bold', color=self.COLORS['text_white'])
+        ax.text(5, 9.0, description, ha='center', va='top', fontsize=11,
+                color=self.COLORS['text_gray'])
+        ax.text(5, 8.5, f"Founded {created_date} • {len(members)} members", ha='center', va='top',
+                fontsize=10, color=self.COLORS['text_gray'])
+
+        y_pos = 7.9
+
+        # Group members by role
+        role_groups = [
+            ("👑 Managers", [m for m in members if m['role'] == 'manager'], self.COLORS['accent_gold']),
+            ("🏎️ Drivers", [m for m in members if m['role'] == 'driver'], self.COLORS['accent_blue']),
+            ("🔧 Crew Chiefs", [m for m in members if m['role'] == 'crew_chief'], self.COLORS['accent_green']),
+            ("📻 Spotters", [m for m in members if m['role'] == 'spotter'], self.COLORS['accent_yellow'])
+        ]
+
+        for role_name, role_members, color in role_groups:
+            if not role_members:
+                continue
+
+            # Section header
+            ax.text(1, y_pos, role_name, ha='left', va='center', fontsize=12,
+                    fontweight='bold', color=color)
+            ax.plot([0.5, 9.5], [y_pos - 0.15, y_pos - 0.15], color=color, linewidth=2)
+            y_pos -= 0.35
+
+            # Members
+            for i, member in enumerate(role_members[:15]):  # Limit per role
+                discord_name = f"User {member.get('discord_user_id', 'Unknown')}"
+                iracing_name = member.get('iracing_name', 'Not linked')
+
+                # Alternate background
+                if i % 2 == 0:
+                    rect = plt.Rectangle((0.5, y_pos - 0.12), 9, 0.25,
+                                         facecolor=self.COLORS['bg_card'], edgecolor='none')
+                    ax.add_patch(rect)
+
+                ax.text(1.5, y_pos, iracing_name, ha='left', va='center', fontsize=9,
+                       color=self.COLORS['text_white'])
+
+                y_pos -= 0.25
+
+            if len(role_members) > 15:
+                ax.text(1.5, y_pos, f"... and {len(role_members) - 15} more", ha='left', va='center',
+                       fontsize=8, color=self.COLORS['text_gray'], fontstyle='italic')
+                y_pos -= 0.25
+
+            y_pos -= 0.3
+
+        buffer = BytesIO()
+        plt.savefig(buffer, format='png', dpi=150, facecolor=self.COLORS['bg_dark'], bbox_inches='tight')
+        plt.close()
+        buffer.seek(0)
+        return buffer
+
+    def create_team_list_table(self, guild_name: str, teams: List[Dict]) -> BytesIO:
+        """
+        Create a visual table of teams in a server
+
+        Args:
+            guild_name: Discord server name
+            teams: List of team dicts
+
+        Returns:
+            BytesIO containing the PNG image
+        """
+        fig = plt.figure(figsize=(14, max(10, len(teams) * 0.45 + 3)), facecolor=self.COLORS['bg_dark'])
+        ax = fig.add_subplot(111)
+        ax.axis('off')
+        ax.set_xlim(0, 10)
+        ax.set_ylim(0, 10)
+
+        # Title
+        ax.text(5, 9.5, f"🏁 iRacing Teams - {guild_name}", ha='center', va='top',
+                fontsize=20, fontweight='bold', color=self.COLORS['text_white'])
+        ax.text(5, 9.0, f"{len(teams)} teams", ha='center', va='top', fontsize=14,
+                color=self.COLORS['text_gray'])
+
+        # Table header
+        y_pos = 8.3
+        ax.text(1, y_pos, "Team", ha='left', va='center', fontsize=11,
+                fontweight='bold', color=self.COLORS['text_white'])
+        ax.text(6, y_pos, "Description", ha='left', va='center', fontsize=11,
+                fontweight='bold', color=self.COLORS['text_white'])
+        ax.text(8.5, y_pos, "Members", ha='center', va='center', fontsize=11,
+                fontweight='bold', color=self.COLORS['text_white'])
+
+        ax.plot([0.5, 9.5], [y_pos - 0.15, y_pos - 0.15], color=self.COLORS['accent_blue'], linewidth=2)
+
+        # Team rows
+        y_pos -= 0.4
+        row_height = 0.4
+
+        for i, team in enumerate(teams[:25]):  # Discord embed limit
+            # Alternate background
+            if i % 2 == 0:
+                rect = plt.Rectangle((0.5, y_pos - row_height/2), 9, row_height,
+                                     facecolor=self.COLORS['bg_card'], edgecolor='none')
+                ax.add_patch(rect)
+
+            team_name = f"[{team['tag']}] {team['name']}"[:40]
+            description = team.get('description', 'No description')[:40]
+            member_count = team.get('member_count', 0)
+            team_id = team.get('id', 'Unknown')
+
+            ax.text(1, y_pos, team_name, ha='left', va='center', fontsize=9,
+                   color=self.COLORS['text_white'], fontweight='bold')
+            ax.text(6, y_pos, description, ha='left', va='center', fontsize=8,
+                   color=self.COLORS['text_gray'])
+            ax.text(8.5, y_pos, str(member_count), ha='center', va='center', fontsize=9,
+                   color=self.COLORS['accent_blue'], fontweight='bold')
+
+            y_pos -= row_height
+
+        # Footer
+        if len(teams) > 25:
+            ax.text(5, 0.5, f"Showing first 25 of {len(teams)} teams", ha='center', va='center',
+                   fontsize=10, color=self.COLORS['text_gray'])
+
+        buffer = BytesIO()
+        plt.savefig(buffer, format='png', dpi=150, facecolor=self.COLORS['bg_dark'], bbox_inches='tight')
+        plt.close()
+        buffer.seek(0)
+        return buffer
