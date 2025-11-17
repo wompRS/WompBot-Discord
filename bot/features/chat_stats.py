@@ -272,11 +272,30 @@ class ChatStatistics:
                             else:
                                 G.add_edge(user_id, prev_user, weight=0.5)
 
+            # Fetch usernames from user_profiles table (preserves usernames even if user left)
+            user_ids = list(G.nodes())
+            username_map = {}
+
+            try:
+                with self.db.get_connection() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute("""
+                            SELECT user_id, username
+                            FROM user_profiles
+                            WHERE user_id = ANY(%s)
+                        """, (user_ids,))
+
+                        for user_id, username in cur.fetchall():
+                            username_map[user_id] = username
+            except Exception as e:
+                print(f"⚠️ Error fetching usernames from profiles: {e}")
+
             # Calculate metrics
             nodes = {}
             for node in G.nodes():
                 degree = G.degree(node)
-                username = G.nodes[node].get('username', 'Unknown')
+                # Prioritize: 1) user_profiles username, 2) graph username, 3) fallback to User ID
+                username = username_map.get(node) or G.nodes[node].get('username') or f'User {node}'
                 nodes[node] = {
                     'username': username,
                     'degree': degree,
