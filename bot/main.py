@@ -4066,7 +4066,7 @@ async def series_autocomplete(
 @app_commands.describe(
     series="Series name (leave blank if using category)",
     category="Show all series in this category for current week",
-    week="Which week to show (current = this week, upcoming = next week, full = entire season)"
+    week="Which week to show: current/previous/upcoming/full or week number (1-12)"
 )
 @app_commands.choices(
     category=[
@@ -4075,11 +4075,6 @@ async def series_autocomplete(
         app_commands.Choice(name="Formula Car", value="formula_car"),
         app_commands.Choice(name="Dirt Oval", value="dirt_oval"),
         app_commands.Choice(name="Dirt Road", value="dirt_road")
-    ],
-    week=[
-        app_commands.Choice(name="Current Week", value="current"),
-        app_commands.Choice(name="Upcoming Week", value="upcoming"),
-        app_commands.Choice(name="Full Season", value="full")
     ]
 )
 @app_commands.autocomplete(series=series_autocomplete)
