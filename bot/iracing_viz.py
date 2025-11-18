@@ -1456,7 +1456,7 @@ class iRacingVisualizer:
         Args:
             series_name: Series name
             schedule: List of schedule entries (one per week)
-            week_filter: "current", "upcoming", or "full"
+            week_filter: "current", "previous", "upcoming", "full", or week number (1-12 or 0-11)
 
         Returns:
             BytesIO containing the PNG image
@@ -1471,21 +1471,41 @@ class iRacingVisualizer:
             except Exception:
                 current_week = None
 
-        if week_filter == "current":
-            # Show only current week
-            current_week = current_week if current_week is not None else self._get_current_iracing_week(schedule)
-            filtered_schedule = [w for w in schedule if w.get('race_week_num') == current_week]
-            title_suffix = f"Week {current_week + 1}"
-        elif week_filter == "upcoming":
-            # Show next week
-            base_week = current_week if current_week is not None else self._get_current_iracing_week(schedule)
-            next_week = (base_week + 1) % len(schedule)
-            filtered_schedule = [w for w in schedule if w.get('race_week_num') == next_week]
-            title_suffix = f"Week {next_week + 1}"
-        else:
-            # Show full season
-            filtered_schedule = schedule
-            title_suffix = "Full Season Schedule"
+        # Handle numeric week filters (1-12 user-facing, or 0-11 internal)
+        try:
+            # Try to parse as integer
+            week_num = int(week_filter)
+            # Convert 1-12 to 0-11 if needed (user-facing format)
+            if week_num >= 1 and week_num <= 12:
+                week_num = week_num - 1
+            # Validate range
+            if week_num < 0 or week_num >= len(schedule):
+                week_num = 0
+            filtered_schedule = [w for w in schedule if w.get('race_week_num') == week_num]
+            title_suffix = f"Week {week_num + 1}"
+        except ValueError:
+            # Not a number, handle string filters
+            if week_filter == "current":
+                # Show only current week
+                current_week = current_week if current_week is not None else self._get_current_iracing_week(schedule)
+                filtered_schedule = [w for w in schedule if w.get('race_week_num') == current_week]
+                title_suffix = f"Week {current_week + 1}"
+            elif week_filter == "previous":
+                # Show previous week
+                base_week = current_week if current_week is not None else self._get_current_iracing_week(schedule)
+                prev_week = (base_week - 1) % len(schedule)
+                filtered_schedule = [w for w in schedule if w.get('race_week_num') == prev_week]
+                title_suffix = f"Week {prev_week + 1}"
+            elif week_filter == "upcoming":
+                # Show next week
+                base_week = current_week if current_week is not None else self._get_current_iracing_week(schedule)
+                next_week = (base_week + 1) % len(schedule)
+                filtered_schedule = [w for w in schedule if w.get('race_week_num') == next_week]
+                title_suffix = f"Week {next_week + 1}"
+            else:
+                # Show full season
+                filtered_schedule = schedule
+                title_suffix = "Full Season Schedule"
 
         # Collect schedule dates for annotations
         start_dates: List[datetime.datetime] = []
