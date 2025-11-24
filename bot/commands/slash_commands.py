@@ -9,6 +9,7 @@ import asyncio
 import discord
 from discord import app_commands
 from datetime import datetime, timedelta
+from typing import Optional
 
 
 def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
