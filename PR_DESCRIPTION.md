@@ -109,11 +109,11 @@ Refactored the monolithic 6,135-line `main.py` into a clean modular architecture
 ## How to Test
 
 ```bash
-# Checkout this branch
+# 1. Checkout this branch
 git fetch origin
 git checkout claude/code-review-audit-011Xt6uCdGQ7rPXBPGN8BGDf
 
-# Run syntax checks
+# 2. (Optional) Run syntax checks locally
 python3 -m py_compile bot/main.py
 python3 -m py_compile bot/tasks/background_jobs.py
 python3 -m py_compile bot/handlers/events.py
@@ -121,9 +121,32 @@ python3 -m py_compile bot/handlers/conversations.py
 python3 -m py_compile bot/commands/prefix_commands.py
 python3 -m py_compile bot/commands/slash_commands.py
 
-# Start the bot (test environment recommended)
-cd bot
-python3 main.py
+# 3. Rebuild and start the bot with Docker Compose
+docker-compose down              # Stop existing containers
+docker-compose build bot         # Rebuild bot container with refactored code
+docker-compose up -d             # Start all services in background
+
+# 4. Monitor logs to verify startup
+docker-compose logs -f bot
+
+# Expected output:
+# ✅ GDPR Privacy Manager loaded
+# ✅ Stats visualizer loaded
+# ✅ iRacing visualizer loaded
+#
+# 🔧 Registering background tasks...
+# ✅ Background tasks registered
+# 🔧 Registering event handlers...
+# ✅ Event handlers registered
+# 🔧 Registering prefix commands...
+# ✅ Prefix commands registered
+# 🔧 Registering slash commands...
+# ✅ Slash commands registered
+#
+# ✅ All modules registered successfully!
+#
+# 🚀 Starting WompBot...
+# ✅ WompBot logged in as [BotName]
 ```
 
 ## Files Changed
