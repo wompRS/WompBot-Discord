@@ -470,8 +470,8 @@ async def check_reminders():
                             value=f"[Jump to message]({message_url})",
                             inline=True
                         )
-                    except:
-                        pass
+                    except (AttributeError, KeyError):
+                        pass  # Channel has no guild or missing required attributes
 
                 embed.set_footer(text=f"Reminder ID: {reminder['id']}")
 
@@ -3903,8 +3903,8 @@ async def iracing_profile(interaction: discord.Interaction, driver_name: str = N
             # Attempt to update linked account with fresh display name
             try:
                 await iracing.link_discord_to_iracing(interaction.user.id, cust_id, display_name)
-            except:
-                pass  # Not critical if update fails
+            except Exception as e:
+                print(f"⚠️ Non-critical: Failed to update iRacing link: {e}")  # Not critical if update fails
 
         if not iracing_viz:
             # Fallback to simple embed if visualizer failed to load
@@ -4741,8 +4741,8 @@ async def iracing_meta(interaction: discord.Interaction, series: str, season: in
     except Exception as e:
         try:
             await interaction.edit_original_response(content=f"❌ Error getting meta data: {str(e)}")
-        except:
-            # If edit fails, try followup
+        except (discord.HTTPException, discord.NotFound):
+            # If edit fails (interaction expired or deleted), try followup
             await interaction.followup.send(f"❌ Error getting meta data: {str(e)}")
 
         print(f"❌ iRacing meta error: {e}")
