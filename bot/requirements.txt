@@ -1,19 +1,19 @@
-discord.py==2.3.2
+discord.py==2.6.4  # SECURITY: Updated from 2.3.2 for latest security patches
 psycopg2-binary==2.9.9
 python-dotenv==1.0.1
 python-dateutil==2.9.0  # Natural language date parsing for event scheduling
 dateparser==1.2.0  # Advanced date parsing for visualizations
-aiohttp==3.9.5  # SECURITY: Updated to fix CVE-2024-23334 (HTTP request smuggling)
+aiohttp==3.13.2  # SECURITY: Updated from 3.9.5 for CVE fixes (HTTP request smuggling, etc.)
 tavily-python==0.3.9  # Updated for latest features
-requests==2.32.3  # SECURITY: Updated to fix multiple CVEs
-httpx==0.24.1  # Pin for openai compatibility
-openai==1.12.0  # OpenAI API for embeddings (RAG system) - stable version
+requests==2.32.5  # SECURITY: Updated from 2.32.3 for latest CVE patches
+httpx==0.28.1  # SECURITY: Updated from 0.24.1 for security fixes
+openai==1.109.1  # OpenAI API for embeddings (RAG system) - latest v1.x stable (v2.x has breaking changes)
 pgvector==0.3.5  # PostgreSQL vector extension Python client
 scikit-learn==1.5.1  # Updated for performance and security
 networkx==3.3  # Updated for bug fixes
 pandas==2.2.2  # Updated for performance improvements
-numpy==1.26.4  # Updated for bug fixes
-cryptography==42.0.8  # SECURITY: Critical security fixes for OpenSSL bindings
-Pillow==10.3.0  # SECURITY: Updated to fix CVE-2024-28219 (buffer overflow)
+numpy==1.26.4  # Keep on 1.x branch (numpy 2.x has breaking changes)
+cryptography==46.0.3  # SECURITY: Critical update from 42.0.8 for OpenSSL bindings and CVE fixes
+Pillow==11.0.0  # SECURITY: Updated from 10.3.0, staying on 11.x for compatibility (12.x may have breaking changes)
 matplotlib==3.9.0  # Updated for compatibility
 seaborn==0.13.2  # Updated for matplotlib compatibility
