@@ -655,19 +655,9 @@ def register_tasks(bot, db, llm, rag, chat_stats, iracing, iracing_popularity_ca
         if rag.enabled:
             print("🧠 Message embedding task started (runs every 5 min)")
 
-    # Start all tasks
-    update_iracing_popularity.start()
-    snapshot_participation_data.start()
-    precompute_stats.start()
-    check_reminders.start()
-    check_event_reminders.start()
-    gdpr_cleanup.start()
-    analyze_user_behavior.start()
-    process_embeddings.start()
+    print("✅ Background tasks registered (will start in on_ready)")
 
-    print("✅ All background tasks registered and started")
-
-    # Return task references for potential management
+    # Return task references - they will be started in on_ready event handler
     return {
         'update_iracing_popularity': update_iracing_popularity,
         'snapshot_participation_data': snapshot_participation_data,
