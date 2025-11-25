@@ -15,5 +15,5 @@ pandas==2.2.2  # Updated for performance improvements
 numpy==1.26.4  # Keep on 1.x branch (numpy 2.x has breaking changes)
 cryptography==46.0.3  # SECURITY: Critical update from 42.0.8 for OpenSSL bindings and CVE fixes
 Pillow==11.0.0  # SECURITY: Updated from 10.3.0, staying on 11.x for compatibility (12.x may have breaking changes)
-matplotlib==3.9.0  # Updated for compatibility
-seaborn==0.13.2  # Updated for matplotlib compatibility
+plotly==5.24.1  # Interactive visualizations
+kaleido==0.2.1  # Static image export for plotly
