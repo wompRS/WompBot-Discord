@@ -8,6 +8,8 @@ matplotlib.use('Agg')  # Non-interactive backend for server
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import seaborn as sns
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 import numpy as np
 import pandas as pd
 from PIL import Image
@@ -1958,6 +1960,186 @@ class iRacingVisualizer:
         plt.savefig(buffer, format='png', dpi=160, facecolor=self.COLORS['bg_dark'], bbox_inches='tight', pad_inches=0.3)
         plt.close()
         buffer.seek(0)
+
+        return buffer
+
+    def create_rating_history_chart_plotly(self, driver_name: str, history_data: List[Dict], category: str = "sports_car_road") -> BytesIO:
+        """
+        Create iRating and Safety Rating history chart using Plotly (modern version).
+
+        Args:
+            driver_name: Driver's display name
+            history_data: List of rating snapshots with {date, irating, safety_rating}
+            category: License category name
+
+        Returns:
+            BytesIO buffer containing the chart image
+        """
+        if not history_data or len(history_data) == 0:
+            # Return error image using matplotlib fallback
+            fig, ax = plt.subplots(figsize=(10, 6), facecolor=self.COLORS['bg_dark'])
+            ax.text(0.5, 0.5, "No rating history data available",
+                   ha='center', va='center', fontsize=16, color=self.COLORS['text_white'])
+            ax.axis('off')
+            buffer = BytesIO()
+            plt.savefig(buffer, format='png', dpi=150, facecolor=self.COLORS['bg_dark'])
+            plt.close()
+            buffer.seek(0)
+            return buffer
+
+        # Sort by date
+        history_data = sorted(history_data, key=lambda x: x['date'])
+
+        dates = [h['date'] for h in history_data]
+        iratings = [h['irating'] for h in history_data]
+        safety_ratings = [h['safety_rating'] for h in history_data]
+
+        # Calculate changes for subtitle
+        ir_change = iratings[-1] - iratings[0] if len(iratings) > 1 else 0
+        ir_change_str = f"+{ir_change}" if ir_change >= 0 else f"{ir_change}"
+        ir_change_color = self.COLORS['accent_green'] if ir_change >= 0 else self.COLORS['accent_red']
+
+        sr_change = safety_ratings[-1] - safety_ratings[0] if len(safety_ratings) > 1 else 0
+        sr_change_str = f"+{sr_change:.2f}" if sr_change >= 0 else f"{sr_change:.2f}"
+        sr_change_color = self.COLORS['accent_green'] if sr_change >= 0 else self.COLORS['accent_red']
+
+        # Create figure with secondary y-axis
+        fig = go.Figure()
+
+        # iRating trace (primary y-axis)
+        fig.add_trace(go.Scatter(
+            x=dates,
+            y=iratings,
+            name='iRating',
+            mode='lines+markers',
+            line=dict(color=self.COLORS['accent_blue'], width=4, shape='spline'),
+            marker=dict(
+                size=10,
+                color=self.COLORS['accent_blue'],
+                line=dict(color='white', width=2),
+                symbol='circle'
+            ),
+            fill='tozeroy',
+            fillcolor=f"rgba(100, 181, 246, 0.15)",
+            hovertemplate='<b>iRating</b><br>%{y}<br>%{x}<extra></extra>',
+            connectgaps=True
+        ))
+
+        # Safety Rating trace (secondary y-axis)
+        fig.add_trace(go.Scatter(
+            x=dates,
+            y=safety_ratings,
+            name='Safety Rating',
+            mode='lines+markers',
+            line=dict(color=self.COLORS['accent_green'], width=4, dash='dash', shape='spline'),
+            marker=dict(
+                size=9,
+                color=self.COLORS['accent_green'],
+                symbol='diamond',
+                line=dict(color='white', width=2)
+            ),
+            fill='tozeroy',
+            fillcolor=f"rgba(129, 199, 132, 0.15)",
+            yaxis='y2',
+            hovertemplate='<b>Safety Rating</b><br>%{y:.2f}<br>%{x}<extra></extra>',
+            connectgaps=True
+        ))
+
+        # Category display name
+        category_display = category.replace('_', ' ').title()
+
+        # Update layout with modern styling
+        fig.update_layout(
+            title=dict(
+                text=f"<b style='font-size:24px'>{driver_name}</b> • {category_display} Rating History<br>"
+                     f"<sub style='color:{self.COLORS['accent_gold']}; font-size:14px'>Period Change: "
+                     f"<span style='color:{ir_change_color}'>iRating {ir_change_str}</span> • "
+                     f"<span style='color:{sr_change_color}'>Safety Rating {sr_change_str}</span></sub>",
+                font=dict(color=self.COLORS['text_white']),
+                x=0.5,
+                xanchor='center',
+                y=0.97,
+                yanchor='top'
+            ),
+
+            # Dual y-axes
+            yaxis=dict(
+                title='<b>iRating</b>',
+                titlefont=dict(color=self.COLORS['accent_blue'], size=16),
+                tickfont=dict(color=self.COLORS['accent_blue'], size=12),
+                gridcolor='rgba(136, 146, 176, 0.15)',
+                showgrid=True,
+                zeroline=False
+            ),
+            yaxis2=dict(
+                title='<b>Safety Rating</b>',
+                titlefont=dict(color=self.COLORS['accent_green'], size=16),
+                tickfont=dict(color=self.COLORS['accent_green'], size=12),
+                overlaying='y',
+                side='right',
+                showgrid=False,
+                zeroline=False
+            ),
+
+            xaxis=dict(
+                title='<b>Race Date</b>',
+                titlefont=dict(color=self.COLORS['text_white'], size=14),
+                tickfont=dict(color=self.COLORS['text_gray'], size=11),
+                tickangle=-45,
+                showgrid=True,
+                gridcolor='rgba(136, 146, 176, 0.1)',
+                zeroline=False
+            ),
+
+            # Modern dark theme
+            plot_bgcolor=self.COLORS['bg_card'],
+            paper_bgcolor=self.COLORS['bg_dark'],
+            font=dict(
+                family='Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+                color=self.COLORS['text_white']
+            ),
+
+            # Legend styling
+            legend=dict(
+                orientation='h',
+                yanchor='bottom',
+                y=1.02,
+                xanchor='right',
+                x=1,
+                bgcolor='rgba(15, 23, 36, 0.9)',
+                bordercolor=self.COLORS['accent_gold'],
+                borderwidth=2,
+                font=dict(color=self.COLORS['text_white'], size=12)
+            ),
+
+            # Responsive sizing
+            width=1600,
+            height=800,
+            margin=dict(l=80, r=80, t=140, b=80),
+
+            # Hover styling
+            hovermode='x unified',
+            hoverlabel=dict(
+                bgcolor='#0f1724',
+                font_size=13,
+                font_family='Inter, sans-serif',
+                bordercolor=self.COLORS['accent_gold']
+            ),
+
+            # Smooth transitions
+            transition=dict(duration=500, easing='cubic-in-out')
+        )
+
+        # Export to image buffer
+        buffer = BytesIO()
+        try:
+            fig.write_image(buffer, format='png', engine='kaleido', scale=2)
+            buffer.seek(0)
+        except Exception as e:
+            print(f"⚠️ Plotly export failed: {e}")
+            print("   Falling back to matplotlib version...")
+            # Fallback to matplotlib version on error
+            return self.create_rating_history_chart(driver_name, history_data, category)
 
         return buffer
 
