@@ -70,7 +70,8 @@ class iRacingVisualizer:
         if cache_path.exists():
             try:
                 return Image.open(cache_path)
-            except:
+            except Exception:
+                # Cache corrupted, will re-download
                 pass
 
         try:
@@ -2606,7 +2607,8 @@ class iRacingVisualizer:
                            fontsize=10, color=self.COLORS['text_white'])
                     ax.text(8, y_pos, relative_str, ha='left', va='center', fontsize=10,
                            color=color, fontweight='bold')
-                except:
+                except Exception:
+                    # Skip sessions with invalid timestamp
                     pass
 
             y_pos -= row_height
@@ -2699,7 +2701,8 @@ class iRacingVisualizer:
                         else:
                             days = minutes // 1440
                             relative_str = f"{days}d"
-                except:
+                except Exception:
+                    # Skip races with invalid timestamp
                     pass
 
             # Display
