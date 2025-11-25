@@ -1872,9 +1872,11 @@ class iRacingVisualizer:
         buffer.seek(0)
         return buffer
 
-    def create_rating_history_chart(self, driver_name: str, history_data: List[Dict], category: str = "sports_car_road") -> BytesIO:
+    def create_rating_history_chart_matplotlib(self, driver_name: str, history_data: List[Dict], category: str = "sports_car_road") -> BytesIO:
         """
-        Create iRating and Safety Rating history chart.
+        Create iRating and Safety Rating history chart using Matplotlib (LEGACY).
+
+        DEPRECATED: Use create_rating_history_chart() which uses Plotly for better visuals.
 
         Args:
             driver_name: Driver's display name
@@ -1963,9 +1965,12 @@ class iRacingVisualizer:
 
         return buffer
 
-    def create_rating_history_chart_plotly(self, driver_name: str, history_data: List[Dict], category: str = "sports_car_road") -> BytesIO:
+    def create_rating_history_chart(self, driver_name: str, history_data: List[Dict], category: str = "sports_car_road") -> BytesIO:
         """
-        Create iRating and Safety Rating history chart using Plotly (modern version).
+        Create iRating and Safety Rating history chart using Plotly.
+
+        Modern implementation with smooth curves, better typography, and professional appearance.
+        Replaces the old matplotlib version for significantly improved visuals.
 
         Args:
             driver_name: Driver's display name
@@ -2139,7 +2144,7 @@ class iRacingVisualizer:
             print(f"⚠️ Plotly export failed: {e}")
             print("   Falling back to matplotlib version...")
             # Fallback to matplotlib version on error
-            return self.create_rating_history_chart(driver_name, history_data, category)
+            return self.create_rating_history_chart_matplotlib(driver_name, history_data, category)
 
         return buffer
 
