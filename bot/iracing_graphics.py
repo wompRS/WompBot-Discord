@@ -52,8 +52,9 @@ class iRacingGraphics:
             self.font_large = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 24)
             self.font_medium = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 18)
             self.font_small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 14)
-        except:
+        except Exception as e:
             # Fallback to default font
+            print(f"⚠️ Could not load custom fonts: {e}")
             self.font_title = ImageFont.load_default()
             self.font_large = ImageFont.load_default()
             self.font_medium = ImageFont.load_default()
