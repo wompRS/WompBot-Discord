@@ -8,6 +8,7 @@ import os
 import asyncio
 import discord
 from datetime import timedelta
+from cost_tracker import CostTracker
 
 
 def register_events(bot, db, privacy_manager, claims_tracker, debate_scorekeeper,
@@ -60,8 +61,8 @@ def register_events(bot, db, privacy_manager, claims_tracker, debate_scorekeeper
                     break
 
         # Initialize cost tracker with bot instance
-        cost_tracker.bot = bot
-        llm.cost_tracker = cost_tracker
+        cost_tracker_instance = CostTracker(db, bot)
+        llm.cost_tracker = cost_tracker_instance
         print("💸 Cost tracking enabled - alerts every $1")
 
         # Setup GDPR privacy commands BEFORE syncing
