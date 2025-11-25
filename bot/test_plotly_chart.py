@@ -55,9 +55,9 @@ if __name__ == "__main__":
     print()
 
     # Generate Matplotlib version
-    print("🖼️  Generating Matplotlib (old) version...")
+    print("🖼️  Generating Matplotlib (legacy) version...")
     try:
-        matplotlib_buffer = viz.create_rating_history_chart(driver_name, history_data, category)
+        matplotlib_buffer = viz.create_rating_history_chart_matplotlib(driver_name, history_data, category)
         with open('/tmp/rating_history_matplotlib.png', 'wb') as f:
             f.write(matplotlib_buffer.getvalue())
         print("   ✅ Saved to /tmp/rating_history_matplotlib.png")
@@ -66,10 +66,10 @@ if __name__ == "__main__":
 
     print()
 
-    # Generate Plotly version
-    print("✨ Generating Plotly (new) version...")
+    # Generate Plotly version (now the default)
+    print("✨ Generating Plotly (default) version...")
     try:
-        plotly_buffer = viz.create_rating_history_chart_plotly(driver_name, history_data, category)
+        plotly_buffer = viz.create_rating_history_chart(driver_name, history_data, category)
         with open('/tmp/rating_history_plotly.png', 'wb') as f:
             f.write(plotly_buffer.getvalue())
         print("   ✅ Saved to /tmp/rating_history_plotly.png")
