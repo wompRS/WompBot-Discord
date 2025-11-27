@@ -773,7 +773,7 @@ logging.basicConfig(level=logging.WARNING)
 ```bash
 # .env
 CONTEXT_WINDOW_MESSAGES=6
-MODEL_NAME=nousresearch/hermes-3-llama-3.1-70b
+MODEL_NAME=anthropic/claude-3.7-sonnet
 
 # main.py:36
 @tasks.loop(hours=1)  # Hourly stats updates
