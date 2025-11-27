@@ -1,30 +1,14 @@
 """
 Professional Statistics Visualizations
-Creates clean, modern charts and graphs for Discord bot statistics
+Creates clean, modern charts and graphs for Discord bot statistics using Plotly
 """
 
-import matplotlib
-matplotlib.use('Agg')  # Non-interactive backend for server
-import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
-import seaborn as sns
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 import numpy as np
-from PIL import Image
 from io import BytesIO
 from typing import Dict, List, Optional, Tuple
 from datetime import datetime
-
-# Set modern clean style
-sns.set_theme(style="whitegrid")
-plt.rcParams['figure.facecolor'] = '#ffffff'
-plt.rcParams['axes.facecolor'] = '#f8f9fa'
-plt.rcParams['text.color'] = '#212529'
-plt.rcParams['axes.labelcolor'] = '#495057'
-plt.rcParams['xtick.color'] = '#495057'
-plt.rcParams['ytick.color'] = '#495057'
-plt.rcParams['grid.color'] = '#dee2e6'
-plt.rcParams['font.family'] = 'sans-serif'
-plt.rcParams['font.size'] = 10
 
 
 class StatsVisualizer:
@@ -66,78 +50,65 @@ class StatsVisualizer:
         Returns:
             BytesIO containing the PNG image
         """
-        fig = plt.figure(figsize=(12, max(8, len(top_users) * 0.5 + 3)), facecolor=self.COLORS['bg_white'])
-        ax = fig.add_subplot(111)
-        ax.axis('off')
-        ax.set_xlim(0, 10)
-        ax.set_ylim(0, 10)
-
-        # Title
-        ax.text(5, 9.5, '📊 Server Network Statistics', ha='center', va='top',
-                fontsize=20, fontweight='bold', color=self.COLORS['text_dark'])
         date_range = f"{start_date.strftime('%m/%d/%Y')} - {end_date.strftime('%m/%d/%Y')}"
-        ax.text(5, 9.0, date_range, ha='center', va='top',
-                fontsize=12, color=self.COLORS['text_muted'])
 
-        # Table header
-        y_pos = 8.3
-        ax.text(1.5, y_pos, 'User', ha='left', va='center', fontsize=11,
-                fontweight='bold', color=self.COLORS['text_dark'])
-        ax.text(6, y_pos, 'Messages', ha='center', va='center', fontsize=11,
-                fontweight='bold', color=self.COLORS['text_dark'])
-        ax.text(8, y_pos, 'Connections', ha='center', va='center', fontsize=11,
-                fontweight='bold', color=self.COLORS['text_dark'])
+        # Prepare table data
+        headers = ['Rank', 'User', 'Messages', 'Connections']
 
-        # Header line
-        ax.plot([0.5, 9.5], [y_pos - 0.15, y_pos - 0.15], color=self.COLORS['primary'], linewidth=2)
+        ranks = []
+        usernames = []
+        messages = []
+        connections = []
 
-        # Table rows
-        y_pos -= 0.4
-        row_height = 0.35
-
-        for i, (user_id, data) in enumerate(top_users[:20]):
-            # Alternate row background
-            if i % 2 == 0:
-                rect = plt.Rectangle((0.5, y_pos - row_height/2), 9, row_height,
-                                     facecolor=self.COLORS['bg_light'], edgecolor='none', zorder=0)
-                ax.add_patch(rect)
-
-            # Rank badge
-            rank = i + 1
-            if rank <= 3:
-                colors = {1: self.COLORS['warning'], 2: self.COLORS['light_gray'], 3: self.COLORS['orange']}
-                circle = plt.Circle((0.9, y_pos), 0.15, color=colors[rank], zorder=2)
-                ax.add_patch(circle)
-                ax.text(0.9, y_pos, str(rank), ha='center', va='center',
-                       fontsize=9, fontweight='bold', color='white', zorder=3)
-            else:
-                ax.text(0.9, y_pos, f"{rank}.", ha='center', va='center',
-                       fontsize=9, color=self.COLORS['text_muted'])
-
-            # Username
+        for i, (user_id, data) in enumerate(top_users[:20], 1):
+            medal = {1: '🥇', 2: '🥈', 3: '🥉'}.get(i, f"{i}.")
+            ranks.append(medal)
             username = data.get('username', f'User {user_id}')
-            ax.text(1.5, y_pos, username[:25], ha='left', va='center',
-                   fontsize=10, color=self.COLORS['text_dark'])
+            usernames.append(username[:25])
+            messages.append(str(data.get('messages', 0)))
+            connections.append(str(data.get('degree', 0)))
 
-            # Messages
-            ax.text(6, y_pos, str(data.get('messages', 0)), ha='center', va='center',
-                   fontsize=10, color=self.COLORS['primary'], fontweight='bold')
+        # Create table
+        fig = go.Figure(data=[go.Table(
+            header=dict(
+                values=[f'<b>{h}</b>' for h in headers],
+                fill_color=self.COLORS['primary'],
+                font=dict(color='white', size=12),
+                align='center',
+                height=40
+            ),
+            cells=dict(
+                values=[ranks, usernames, messages, connections],
+                fill_color=[['white', self.COLORS['bg_light']] * 10],
+                font=dict(color=self.COLORS['text_dark'], size=11),
+                align=['center', 'left', 'center', 'center'],
+                height=30
+            )
+        )])
 
-            # Connections
-            ax.text(8, y_pos, str(data.get('degree', 0)), ha='center', va='center',
-                   fontsize=10, color=self.COLORS['success'], fontweight='bold')
+        fig.update_layout(
+            title=dict(
+                text=f'📊 Server Network Statistics<br><sub>{date_range}</sub>',
+                font=dict(size=20, color=self.COLORS['text_dark']),
+                x=0.5,
+                xanchor='center'
+            ),
+            paper_bgcolor='white',
+            height=max(600, len(top_users[:20]) * 35 + 200),
+            margin=dict(l=20, r=20, t=100, b=80)
+        )
 
-            y_pos -= row_height
+        # Add footer annotation
+        fig.add_annotation(
+            text=f"Total users analyzed: {total_users}",
+            xref="paper", yref="paper",
+            x=0.5, y=-0.05,
+            showarrow=False,
+            font=dict(size=10, color=self.COLORS['text_muted'])
+        )
 
-        # Footer
-        ax.text(5, 0.5, f"Total users analyzed: {total_users}", ha='center', va='center',
-               fontsize=10, color=self.COLORS['text_muted'])
-
-        # Save
-        buffer = BytesIO()
-        plt.savefig(buffer, format='png', dpi=150, facecolor=self.COLORS['bg_white'], bbox_inches='tight')
-        plt.close()
-        buffer.seek(0)
+        # Export to PNG
+        buffer = BytesIO(fig.to_image(format='png', width=1200, height=max(600, len(top_users[:20]) * 35 + 200)))
         return buffer
 
     def create_topics_barchart(self, topics: List[Dict], start_date: datetime, end_date: datetime) -> BytesIO:
@@ -152,38 +123,51 @@ class StatsVisualizer:
         Returns:
             BytesIO containing the PNG image
         """
-        fig, ax = plt.subplots(figsize=(12, max(8, len(topics[:15]) * 0.4 + 2)), facecolor=self.COLORS['bg_white'])
+        date_range = f"{start_date.strftime('%m/%d/%Y')} - {end_date.strftime('%m/%d/%Y')}"
 
-        # Prepare data
-        keywords = [t['keyword'][:25] for t in topics[:15]]
-        scores = [t['score'] for t in topics[:15]]
-        counts = [t['count'] for t in topics[:15]]
+        # Prepare data (reverse for top-to-bottom display)
+        keywords = [t['keyword'][:25] for t in topics[:15]][::-1]
+        scores = [t['score'] for t in topics[:15]][::-1]
+        counts = [t['count'] for t in topics[:15]][::-1]
 
-        # Create horizontal bars
-        y_pos = np.arange(len(keywords))
-        bars = ax.barh(y_pos, scores, color=self.COLORS['primary'], alpha=0.8)
+        # Create horizontal bar chart
+        fig = go.Figure()
 
-        # Add count labels on bars
-        for i, (bar, count) in enumerate(zip(bars, counts)):
-            width = bar.get_width()
-            ax.text(width + 0.01, bar.get_y() + bar.get_height()/2,
-                   f'{count}', ha='left', va='center', fontsize=9, color=self.COLORS['text_muted'])
+        fig.add_trace(go.Bar(
+            y=keywords,
+            x=scores,
+            orientation='h',
+            marker=dict(color=self.COLORS['primary'], opacity=0.8),
+            text=[f'{c}' for c in counts],
+            textposition='outside',
+            textfont=dict(size=10, color=self.COLORS['text_muted']),
+            hovertemplate='<b>%{y}</b><br>Score: %{x:.4f}<br>Count: %{text}<extra></extra>'
+        ))
 
-        # Styling
-        ax.set_yticks(y_pos)
-        ax.set_yticklabels(keywords)
-        ax.invert_yaxis()  # Highest score at top
-        ax.set_xlabel('Relevance Score (TF-IDF)', fontsize=11, fontweight='bold')
-        ax.set_title('🔥 Trending Topics\n' + f"{start_date.strftime('%m/%d/%Y')} - {end_date.strftime('%m/%d/%Y')}",
-                    fontsize=16, fontweight='bold', pad=20)
-        ax.grid(axis='x', alpha=0.3)
-        ax.set_facecolor(self.COLORS['bg_light'])
+        fig.update_layout(
+            title=dict(
+                text=f'🔥 Trending Topics<br><sub>{date_range}</sub>',
+                font=dict(size=18, color=self.COLORS['text_dark']),
+                x=0.5,
+                xanchor='center'
+            ),
+            xaxis=dict(
+                title='Relevance Score (TF-IDF)',
+                titlefont=dict(size=12, color=self.COLORS['text_dark']),
+                gridcolor=self.COLORS['bg_light'],
+                showgrid=True
+            ),
+            yaxis=dict(
+                titlefont=dict(size=12),
+                tickfont=dict(size=11)
+            ),
+            paper_bgcolor='white',
+            plot_bgcolor=self.COLORS['bg_light'],
+            height=max(600, len(topics[:15]) * 40 + 150),
+            margin=dict(l=150, r=80, t=100, b=60)
+        )
 
-        # Save
-        buffer = BytesIO()
-        plt.savefig(buffer, format='png', dpi=150, facecolor=self.COLORS['bg_white'], bbox_inches='tight')
-        plt.close()
-        buffer.seek(0)
+        buffer = BytesIO(fig.to_image(format='png', width=1200, height=max(600, len(topics[:15]) * 40 + 150)))
         return buffer
 
     def create_primetime_heatmap(self, hourly: Dict[int, int], daily: Dict[int, int],
@@ -201,60 +185,83 @@ class StatsVisualizer:
         Returns:
             BytesIO containing the PNG image
         """
-        fig = plt.figure(figsize=(14, 10), facecolor=self.COLORS['bg_white'])
-        gs = fig.add_gridspec(2, 1, height_ratios=[2, 1], hspace=0.3)
+        date_range = f"{start_date.strftime('%m/%d/%Y')} - {end_date.strftime('%m/%d/%Y')}"
 
-        # Title
-        fig.suptitle(f'⏰ Prime Time Analysis - {target_name}\n{start_date.strftime("%m/%d/%Y")} - {end_date.strftime("%m/%d/%Y")}',
-                    fontsize=16, fontweight='bold', y=0.98)
-
-        # Hourly activity heatmap
-        ax1 = fig.add_subplot(gs[0])
+        # Prepare hourly data
         hours = list(range(24))
-        counts = [hourly.get(h, 0) for h in hours]
-
-        # Create bar chart for hourly
-        bars = ax1.bar(hours, counts, color=self.COLORS['primary'], alpha=0.7)
+        hour_counts = [hourly.get(h, 0) for h in hours]
+        hour_labels = [f'{h:02d}:00' for h in hours]
 
         # Color bars by intensity
-        max_count = max(counts) if counts else 1
-        for bar, count in zip(bars, counts):
+        max_count = max(hour_counts) if hour_counts else 1
+        hour_colors = []
+        for count in hour_counts:
             intensity = count / max_count if max_count > 0 else 0
             if intensity > 0.7:
-                bar.set_color(self.COLORS['danger'])
+                hour_colors.append(self.COLORS['danger'])
             elif intensity > 0.4:
-                bar.set_color(self.COLORS['warning'])
+                hour_colors.append(self.COLORS['warning'])
             else:
-                bar.set_color(self.COLORS['primary'])
+                hour_colors.append(self.COLORS['primary'])
 
-        ax1.set_xlabel('Hour of Day', fontsize=11, fontweight='bold')
-        ax1.set_ylabel('Message Count', fontsize=11, fontweight='bold')
-        ax1.set_title('Hourly Activity Pattern', fontsize=13, fontweight='bold', pad=10)
-        ax1.set_xticks(hours)
-        ax1.set_xticklabels([f'{h:02d}:00' for h in hours], rotation=45, ha='right')
-        ax1.grid(axis='y', alpha=0.3)
-        ax1.set_facecolor(self.COLORS['bg_light'])
-
-        # Daily activity
-        ax2 = fig.add_subplot(gs[1])
+        # Prepare daily data
         day_names = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
         day_counts = [daily.get(d, 0) for d in range(7)]
 
-        bars2 = ax2.bar(range(7), day_counts, color=self.COLORS['success'], alpha=0.7)
+        # Create subplots
+        fig = make_subplots(
+            rows=2, cols=1,
+            subplot_titles=('Hourly Activity Pattern', 'Weekly Activity Pattern'),
+            vertical_spacing=0.15,
+            row_heights=[0.6, 0.4]
+        )
 
-        ax2.set_xlabel('Day of Week', fontsize=11, fontweight='bold')
-        ax2.set_ylabel('Message Count', fontsize=11, fontweight='bold')
-        ax2.set_title('Weekly Activity Pattern', fontsize=13, fontweight='bold', pad=10)
-        ax2.set_xticks(range(7))
-        ax2.set_xticklabels(day_names, rotation=45, ha='right')
-        ax2.grid(axis='y', alpha=0.3)
-        ax2.set_facecolor(self.COLORS['bg_light'])
+        # Hourly activity
+        fig.add_trace(
+            go.Bar(
+                x=hour_labels,
+                y=hour_counts,
+                marker=dict(color=hour_colors, opacity=0.7),
+                name='Hourly',
+                hovertemplate='<b>%{x}</b><br>Messages: %{y}<extra></extra>'
+            ),
+            row=1, col=1
+        )
 
-        # Save
-        buffer = BytesIO()
-        plt.savefig(buffer, format='png', dpi=150, facecolor=self.COLORS['bg_white'], bbox_inches='tight')
-        plt.close()
-        buffer.seek(0)
+        # Daily activity
+        fig.add_trace(
+            go.Bar(
+                x=day_names,
+                y=day_counts,
+                marker=dict(color=self.COLORS['success'], opacity=0.7),
+                name='Daily',
+                hovertemplate='<b>%{x}</b><br>Messages: %{y}<extra></extra>'
+            ),
+            row=2, col=1
+        )
+
+        # Update layout
+        fig.update_layout(
+            title=dict(
+                text=f'⏰ Prime Time Analysis - {target_name}<br><sub>{date_range}</sub>',
+                font=dict(size=18, color=self.COLORS['text_dark']),
+                x=0.5,
+                xanchor='center'
+            ),
+            showlegend=False,
+            paper_bgcolor='white',
+            plot_bgcolor=self.COLORS['bg_light'],
+            height=800,
+            margin=dict(l=60, r=40, t=120, b=60)
+        )
+
+        # Update axes
+        fig.update_xaxes(title_text="Hour of Day", row=1, col=1, tickangle=-45)
+        fig.update_xaxes(title_text="Day of Week", row=2, col=1, tickangle=-45)
+        fig.update_yaxes(title_text="Message Count", row=1, col=1, gridcolor=self.COLORS['bg_white'])
+        fig.update_yaxes(title_text="Message Count", row=2, col=1, gridcolor=self.COLORS['bg_white'])
+
+        buffer = BytesIO(fig.to_image(format='png', width=1400, height=800))
         return buffer
 
     def create_engagement_dashboard(self, stats: Dict, top_responders: List[Tuple[str, int]],
@@ -272,14 +279,9 @@ class StatsVisualizer:
         Returns:
             BytesIO containing the PNG image
         """
-        fig = plt.figure(figsize=(14, max(10, len(top_responders[:10]) * 0.4 + 5)), facecolor=self.COLORS['bg_white'])
-        gs = fig.add_gridspec(2, 2, height_ratios=[1, 2], width_ratios=[1, 1], hspace=0.4, wspace=0.3)
+        date_range = f"{start_date.strftime('%m/%d/%Y')} - {end_date.strftime('%m/%d/%Y')}"
 
-        # Title
-        fig.suptitle(f'📈 Engagement Metrics - {target_name}\n{start_date.strftime("%m/%d/%Y")} - {end_date.strftime("%m/%d/%Y")}',
-                    fontsize=16, fontweight='bold', y=0.98)
-
-        # Metric cards (top row)
+        # Prepare metrics
         metrics = [
             ('Total Messages', stats.get('total_messages', 0), self.COLORS['primary']),
             ('Unique Users', stats.get('unique_users', 0), self.COLORS['success']),
@@ -287,65 +289,75 @@ class StatsVisualizer:
             ('Avg Msgs/User', f"{stats.get('avg_messages_per_user', 0):.1f}", self.COLORS['purple'])
         ]
 
-        for i, (label, value, color) in enumerate(metrics[:2]):
-            ax = fig.add_subplot(gs[0, i])
-            ax.axis('off')
-            # Metric card
-            rect = mpatches.FancyBboxPatch((0.1, 0.2), 0.8, 0.6, boxstyle="round,pad=0.05",
-                                          facecolor=color, alpha=0.1, edgecolor=color, linewidth=2)
-            ax.add_patch(rect)
-            ax.text(0.5, 0.65, str(value), ha='center', va='center', fontsize=24,
-                   fontweight='bold', color=color, transform=ax.transAxes)
-            ax.text(0.5, 0.35, label, ha='center', va='center', fontsize=11,
-                   color=self.COLORS['text_dark'], transform=ax.transAxes)
-
-        # Top responders table (bottom, spanning both columns)
-        ax_table = fig.add_subplot(gs[1, :])
-        ax_table.axis('off')
-
+        # Prepare responders table
         if top_responders:
-            # Create table data
-            y_start = 0.95
-            y_step = 0.85 / min(len(top_responders), 10)
+            responder_ranks = [f"{i}." if i > 3 else {1: '🥇', 2: '🥈', 3: '🥉'}[i] for i in range(1, min(len(top_responders), 10) + 1)]
+            responder_names = [username[:30] for username, _ in top_responders[:10]]
+            responder_counts = [count for _, count in top_responders[:10]]
+        else:
+            responder_ranks = []
+            responder_names = []
+            responder_counts = []
 
-            # Header
-            ax_table.text(0.1, y_start, 'Rank', ha='left', va='top', fontsize=11,
-                         fontweight='bold', color=self.COLORS['text_dark'], transform=ax_table.transAxes)
-            ax_table.text(0.3, y_start, 'User', ha='left', va='top', fontsize=11,
-                         fontweight='bold', color=self.COLORS['text_dark'], transform=ax_table.transAxes)
-            ax_table.text(0.8, y_start, 'Responses', ha='center', va='top', fontsize=11,
-                         fontweight='bold', color=self.COLORS['text_dark'], transform=ax_table.transAxes)
+        # Create figure with subplots
+        fig = make_subplots(
+            rows=2, cols=2,
+            specs=[[{"type": "indicator"}, {"type": "indicator"}],
+                   [{"type": "table", "colspan": 2}, None]],
+            row_heights=[0.3, 0.7],
+            vertical_spacing=0.12
+        )
 
-            # Header line
-            ax_table.plot([0.05, 0.95], [y_start - 0.05, y_start - 0.05], color=self.COLORS['primary'],
-                         linewidth=2, transform=ax_table.transAxes)
+        # Add metric indicators
+        for i, (label, value, color) in enumerate(metrics[:2]):
+            row = 1
+            col = i + 1
+            fig.add_trace(
+                go.Indicator(
+                    mode="number",
+                    value=value if isinstance(value, (int, float)) else 0,
+                    title={'text': label, 'font': {'size': 14}},
+                    number={'font': {'size': 28, 'color': color}},
+                    domain={'x': [0, 1], 'y': [0, 1]}
+                ),
+                row=row, col=col
+            )
 
-            y_pos = y_start - 0.08
-            for i, (username, count) in enumerate(top_responders[:10], 1):
-                # Rank
-                if i <= 3:
-                    rank_colors = {1: self.COLORS['warning'], 2: self.COLORS['light_gray'], 3: self.COLORS['orange']}
-                    ax_table.text(0.1, y_pos, f"{i}", ha='left', va='center', fontsize=10,
-                                 fontweight='bold', color=rank_colors[i], transform=ax_table.transAxes)
-                else:
-                    ax_table.text(0.1, y_pos, f"{i}.", ha='left', va='center', fontsize=10,
-                                 color=self.COLORS['text_muted'], transform=ax_table.transAxes)
+        # Add responders table
+        if top_responders:
+            fig.add_trace(
+                go.Table(
+                    header=dict(
+                        values=['<b>Rank</b>', '<b>User</b>', '<b>Responses</b>'],
+                        fill_color=self.COLORS['primary'],
+                        font=dict(color='white', size=12),
+                        align=['center', 'left', 'center'],
+                        height=35
+                    ),
+                    cells=dict(
+                        values=[responder_ranks, responder_names, responder_counts],
+                        fill_color='white',
+                        font=dict(color=self.COLORS['text_dark'], size=11),
+                        align=['center', 'left', 'center'],
+                        height=28
+                    )
+                ),
+                row=2, col=1
+            )
 
-                # Username
-                ax_table.text(0.3, y_pos, username[:30], ha='left', va='center', fontsize=10,
-                             color=self.COLORS['text_dark'], transform=ax_table.transAxes)
+        fig.update_layout(
+            title=dict(
+                text=f'📈 Engagement Metrics - {target_name}<br><sub>{date_range}</sub>',
+                font=dict(size=18, color=self.COLORS['text_dark']),
+                x=0.5,
+                xanchor='center'
+            ),
+            paper_bgcolor='white',
+            height=max(800, len(top_responders[:10]) * 30 + 400),
+            margin=dict(l=40, r=40, t=120, b=40)
+        )
 
-                # Count
-                ax_table.text(0.8, y_pos, str(count), ha='center', va='center', fontsize=10,
-                             fontweight='bold', color=self.COLORS['primary'], transform=ax_table.transAxes)
-
-                y_pos -= y_step
-
-        # Save
-        buffer = BytesIO()
-        plt.savefig(buffer, format='png', dpi=150, facecolor=self.COLORS['bg_white'], bbox_inches='tight')
-        plt.close()
-        buffer.seek(0)
+        buffer = BytesIO(fig.to_image(format='png', width=1400, height=max(800, len(top_responders[:10]) * 30 + 400)))
         return buffer
 
     def create_leaderboard(self, entries: List[Dict], title: str, subtitle: str,
@@ -362,60 +374,55 @@ class StatsVisualizer:
         Returns:
             BytesIO containing the PNG image
         """
-        fig = plt.figure(figsize=(12, max(10, len(entries[:10]) * 0.7 + 3)), facecolor=self.COLORS['bg_white'])
-        ax = fig.add_subplot(111)
-        ax.axis('off')
-        ax.set_xlim(0, 10)
-        ax.set_ylim(0, 10)
-
-        # Title
-        ax.text(5, 9.5, title, ha='center', va='top',
-                fontsize=20, fontweight='bold', color=self.COLORS['text_dark'])
-        ax.text(5, 9.0, subtitle, ha='center', va='top',
-                fontsize=12, color=self.COLORS['text_muted'])
-
-        # Entries
-        y_pos = 8.2
-        entry_height = 0.7
+        # Prepare data
+        ranks = []
+        usernames = []
+        values = []
 
         for i, entry in enumerate(entries[:10], 1):
-            # Background card
-            card_color = self.COLORS['bg_light'] if i % 2 == 0 else self.COLORS['bg_white']
-            rect = plt.Rectangle((0.5, y_pos - entry_height + 0.1), 9, entry_height - 0.1,
-                                facecolor=card_color, edgecolor=self.COLORS['gray'],
-                                linewidth=0.5, alpha=0.5)
-            ax.add_patch(rect)
-
-            # Rank badge
-            if i <= 3:
-                medals = {1: '🥇', 2: '🥈', 3: '🥉'}
-                colors = {1: self.COLORS['warning'], 2: self.COLORS['light_gray'], 3: self.COLORS['orange']}
-                circle = plt.Circle((1, y_pos - entry_height/2), 0.25, color=colors[i], zorder=2)
-                ax.add_patch(circle)
-                ax.text(1, y_pos - entry_height/2, medals[i], ha='center', va='center',
-                       fontsize=16, zorder=3)
-            else:
-                ax.text(1, y_pos - entry_height/2, f"{i}.", ha='center', va='center',
-                       fontsize=12, fontweight='bold', color=self.COLORS['text_muted'])
-
-            # Username
+            medal = {1: '🥇', 2: '🥈', 3: '🥉'}.get(i, f"{i}.")
+            ranks.append(medal)
             username = entry.get('username', 'Unknown')[:30]
-            ax.text(1.8, y_pos - 0.25, username, ha='left', va='center',
-                   fontsize=13, fontweight='bold', color=self.COLORS['text_dark'])
-
-            # Value line (formatted by caller)
+            usernames.append(username)
             if value_formatter:
-                value_text = value_formatter(entry)
-                ax.text(1.8, y_pos - 0.5, value_text, ha='left', va='center',
-                       fontsize=10, color=self.COLORS['text_muted'])
+                values.append(value_formatter(entry))
+            else:
+                values.append('')
 
-            y_pos -= entry_height
+        # Create table
+        headers = ['Rank', 'User', 'Stats'] if value_formatter else ['Rank', 'User']
+        cell_values = [ranks, usernames, values] if value_formatter else [ranks, usernames]
 
-        # Save
-        buffer = BytesIO()
-        plt.savefig(buffer, format='png', dpi=150, facecolor=self.COLORS['bg_white'], bbox_inches='tight')
-        plt.close()
-        buffer.seek(0)
+        fig = go.Figure(data=[go.Table(
+            header=dict(
+                values=[f'<b>{h}</b>' for h in headers],
+                fill_color=self.COLORS['primary'],
+                font=dict(color='white', size=12),
+                align='center',
+                height=40
+            ),
+            cells=dict(
+                values=cell_values,
+                fill_color=[['white', self.COLORS['bg_light']] * 5],
+                font=dict(color=self.COLORS['text_dark'], size=11),
+                align=['center', 'left', 'left'],
+                height=50
+            )
+        )])
+
+        fig.update_layout(
+            title=dict(
+                text=f'{title}<br><sub>{subtitle}</sub>',
+                font=dict(size=20, color=self.COLORS['text_dark']),
+                x=0.5,
+                xanchor='center'
+            ),
+            paper_bgcolor='white',
+            height=max(800, len(entries[:10]) * 55 + 200),
+            margin=dict(l=40, r=40, t=120, b=40)
+        )
+
+        buffer = BytesIO(fig.to_image(format='png', width=1200, height=max(800, len(entries[:10]) * 55 + 200)))
         return buffer
 
     def create_personal_stats_dashboard(self, username: str, metrics: List[Tuple[str, str, str]]) -> BytesIO:
@@ -429,49 +436,56 @@ class StatsVisualizer:
         Returns:
             BytesIO containing the PNG image
         """
-        fig = plt.figure(figsize=(12, max(8, len(metrics) * 0.4 + 2)), facecolor=self.COLORS['bg_white'])
-        ax = fig.add_subplot(111)
-        ax.axis('off')
-        ax.set_xlim(0, 10)
-        ax.set_ylim(0, 10)
-
-        # Title
-        ax.text(5, 9.5, f"📊 {username}'s Statistics", ha='center', va='top',
-                fontsize=20, fontweight='bold', color=self.COLORS['text_dark'])
-
-        # Metrics grid
-        y_pos = 8.5
-        card_height = 0.7
+        # Calculate grid layout
         cols = 2
-        card_width = 4
+        rows = (len(metrics) + cols - 1) // cols
 
+        # Create subplots for indicators
+        fig = make_subplots(
+            rows=rows, cols=cols,
+            specs=[[{"type": "indicator"}] * cols for _ in range(rows)],
+            vertical_spacing=0.15,
+            horizontal_spacing=0.1
+        )
+
+        # Add metrics
         for i, (label, value, color_key) in enumerate(metrics):
+            row = i // cols + 1
+            col = i % cols + 1
             color = self.COLORS.get(color_key, self.COLORS['primary'])
-            col = i % cols
-            row = i // cols
 
-            x_pos = 1 + (col * 4.5)
-            y = y_pos - (row * (card_height + 0.2))
+            # Try to convert value to number if possible
+            try:
+                num_value = float(value.replace(',', ''))
+                mode = "number"
+            except (ValueError, AttributeError):
+                num_value = 0
+                mode = "number"
 
-            # Metric card
-            rect = mpatches.FancyBboxPatch((x_pos, y - card_height), card_width, card_height,
-                                          boxstyle="round,pad=0.05",
-                                          facecolor=color, alpha=0.1, edgecolor=color, linewidth=2)
-            ax.add_patch(rect)
+            fig.add_trace(
+                go.Indicator(
+                    mode=mode,
+                    value=num_value,
+                    title={'text': label, 'font': {'size': 12}},
+                    number={'font': {'size': 22, 'color': color}, 'valueformat': '.0f'},
+                    domain={'x': [0, 1], 'y': [0, 1]}
+                ),
+                row=row, col=col
+            )
 
-            # Value
-            ax.text(x_pos + card_width/2, y - 0.25, str(value), ha='center', va='center',
-                   fontsize=18, fontweight='bold', color=color)
+        fig.update_layout(
+            title=dict(
+                text=f"📊 {username}'s Statistics",
+                font=dict(size=20, color=self.COLORS['text_dark']),
+                x=0.5,
+                xanchor='center'
+            ),
+            paper_bgcolor='white',
+            height=max(600, rows * 200 + 100),
+            margin=dict(l=40, r=40, t=100, b=40)
+        )
 
-            # Label
-            ax.text(x_pos + card_width/2, y - 0.55, label, ha='center', va='center',
-                   fontsize=10, color=self.COLORS['text_dark'])
-
-        # Save
-        buffer = BytesIO()
-        plt.savefig(buffer, format='png', dpi=150, facecolor=self.COLORS['bg_white'], bbox_inches='tight')
-        plt.close()
-        buffer.seek(0)
+        buffer = BytesIO(fig.to_image(format='png', width=1200, height=max(600, rows * 200 + 100)))
         return buffer
 
     def create_wrapped_summary(self, username: str, year: int, sections: List[Dict]) -> BytesIO:
@@ -486,44 +500,54 @@ class StatsVisualizer:
         Returns:
             BytesIO containing the PNG image
         """
-        fig = plt.figure(figsize=(14, max(12, len(sections) * 3)), facecolor=self.COLORS['bg_white'])
-        gs = fig.add_gridspec(len(sections) + 1, 1, height_ratios=[1] + [2]*len(sections), hspace=0.3)
+        # Build text content
+        text_lines = [f'<b>📊 {year} Wrapped</b>']
+        text_lines.append(f"<i>{username}'s Year in Review</i>")
+        text_lines.append('')
 
-        # Header
-        ax_header = fig.add_subplot(gs[0])
-        ax_header.axis('off')
-        ax_header.text(0.5, 0.6, f'📊 {year} Wrapped', ha='center', va='center',
-                      fontsize=24, fontweight='bold', color=self.COLORS['text_dark'],
-                      transform=ax_header.transAxes)
-        ax_header.text(0.5, 0.3, f"{username}'s Year in Review", ha='center', va='center',
-                      fontsize=16, color=self.COLORS['text_muted'], transform=ax_header.transAxes)
+        for section in sections:
+            text_lines.append(f"<b>{section['title']}</b>")
+            for label, value in section.get('metrics', []):
+                text_lines.append(f"  • {label}: <b>{value}</b>")
+            text_lines.append('')
 
-        # Sections
-        for i, section in enumerate(sections):
-            ax = fig.add_subplot(gs[i + 1])
-            ax.axis('off')
+        # Create a simple layout with text annotations
+        fig = go.Figure()
 
-            # Section title
-            ax.text(0.5, 0.95, section['title'], ha='center', va='top',
-                   fontsize=16, fontweight='bold', color=self.COLORS['primary'],
-                   transform=ax.transAxes)
+        # Add invisible trace to set up the plot
+        fig.add_trace(go.Scatter(
+            x=[0], y=[0],
+            mode='markers',
+            marker=dict(size=0.1, color='white'),
+            showlegend=False
+        ))
 
-            # Section metrics (in a grid)
-            metrics = section.get('metrics', [])
-            y_start = 0.75
-            y_step = 0.7 / max(len(metrics), 1)
+        # Add text as annotation
+        y_position = 0.95
+        for i, line in enumerate(text_lines):
+            size = 24 if i == 0 else 16 if i == 1 else 14 if '<b>' in line and i > 2 and not line.startswith('  ') else 11
+            fig.add_annotation(
+                text=line,
+                xref="paper", yref="paper",
+                x=0.5 if i <= 1 else 0.1,
+                y=y_position,
+                xanchor="center" if i <= 1 else "left",
+                yanchor="top",
+                showarrow=False,
+                font=dict(size=size, color=self.COLORS['text_dark']),
+                align="left"
+            )
+            y_position -= 0.04 if '<b>' in line and i > 2 and not line.startswith('  ') else 0.025
 
-            for j, (label, value) in enumerate(metrics):
-                y_pos = y_start - (j * y_step)
-                ax.text(0.3, y_pos, label, ha='right', va='center',
-                       fontsize=12, color=self.COLORS['text_dark'], transform=ax.transAxes)
-                ax.text(0.35, y_pos, str(value), ha='left', va='center',
-                       fontsize=12, fontweight='bold', color=self.COLORS['primary'],
-                       transform=ax.transAxes)
+        fig.update_layout(
+            paper_bgcolor='white',
+            plot_bgcolor='white',
+            height=max(1000, len(sections) * 250),
+            width=1400,
+            margin=dict(l=80, r=80, t=60, b=60),
+            xaxis=dict(showgrid=False, showticklabels=False, zeroline=False),
+            yaxis=dict(showgrid=False, showticklabels=False, zeroline=False)
+        )
 
-        # Save
-        buffer = BytesIO()
-        plt.savefig(buffer, format='png', dpi=150, facecolor=self.COLORS['bg_white'], bbox_inches='tight')
-        plt.close()
-        buffer.seek(0)
+        buffer = BytesIO(fig.to_image(format='png', width=1400, height=max(1000, len(sections) * 250)))
         return buffer
