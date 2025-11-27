@@ -10,7 +10,10 @@ A Discord bot powered by OpenRouter LLMs (Claude Sonnet) with intelligent RAG me
   - **Fact-Checking**: Claude 3.5 Sonnet (slow, highly accurate, zero hallucination)
 - **Context-Aware Conversations**: Professional and helpful personality with conversation memory
 - **Smart Response Detection**: Only responds when "wompbot" mentioned or @tagged
+- **Discord Mention Support**: Proper @mentions work when bot talks to users (bidirectional conversion)
 - **Web Search Integration**: Automatic Tavily API search when facts are needed
+- **Automated Backups**: Daily, weekly, and monthly database backups with configurable retention
+- **Centralized Logging**: Structured logging system with file rotation and error tracking
 - **Comprehensive Rate Limiting**: Multi-layer abuse prevention with cost tracking
   - Token limits (1,000/request, 10,000/hour per user)
   - Feature-specific limits (fact-checks, searches, commands)
@@ -132,7 +135,8 @@ A Discord bot powered by OpenRouter LLMs (Claude Sonnet) with intelligent RAG me
 - **Schedule Visuals**: Highlight the current week, show UTC open times, and include season date ranges
 - **Smart Search**: Automatically finds drivers by name
 - **Category Autocomplete**: Easy selection of Oval, Sports Car, Formula Car, Dirt Oval, Dirt Road
-- **Professional Visualizations**: Charts matching iRacing Reports style
+- **Professional Visualizations**: Charts and tables using matplotlib with blue-tinted dark mode theme
+- **Dynamic Image Sizing**: Tables automatically fit content without extra whitespace
 - **Live Data + Background Caching**: Direct API integration with scheduled cache refreshes
 - **Optional Feature**: Only enabled if credentials are provided
 - **Zero Cost**: No LLM usage, pure API calls
@@ -220,7 +224,7 @@ docker-compose down
 ## Commands
 
 ### Conversation
-- **@WompBot** or **"wompbot"**: Chat with the bot (Feyd-Rautha persona)
+- **@WompBot** or **"wompbot"**: Chat with the bot (powered by Claude 3.7 Sonnet)
 - **!ping**: Check bot latency
 - **!wompbot help** or **/help**: Show all available commands
 
@@ -507,43 +511,55 @@ docker-compose up -d
 
 ## Model Configuration
 
-WompBot uses a **dual-model architecture** optimized for different tasks:
+WompBot uses **Claude 3.7 Sonnet** via OpenRouter for high-quality, conversational AI:
 
 ```env
-# General chat - Fast, conversational
-MODEL_NAME=nousresearch/hermes-3-llama-3.1-70b
+# General chat - Fast, high-quality responses
+MODEL_NAME=anthropic/claude-3.7-sonnet
 
 # Fact-checking - High accuracy, prevents hallucination
 FACT_CHECK_MODEL=anthropic/claude-3.5-sonnet
 ```
 
-### Why Two Models?
-- **General chat** needs speed and personality (Hermes-3 70B: ~$0.0005/response)
-- **Fact-checking** needs accuracy and zero hallucination (Claude 3.5 Sonnet: ~$0.018/check)
-- **Cost optimized**: Expensive model only used when ⚠️ emoji triggered
+### Why Claude?
+- **General chat** uses Claude 3.7 Sonnet for fast, accurate, conversational responses
+- **Fact-checking** uses Claude 3.5 Sonnet for maximum accuracy and zero hallucination
+- **Cost optimized**: Expensive fact-check model only used when ⚠️ emoji triggered
 
 ### Alternative Models
 
-**General Chat Models:**
-- `nousresearch/hermes-3-llama-3.1-70b` (Recommended - balanced)
-- `cognitivecomputations/dolphin-2.9.2-qwen-110b` (More capable, more expensive)
-- `cognitivecomputations/dolphin-mixtral-8x7b` (Cheaper, smaller)
-- `mistralai/mixtral-8x22b-instruct` (Alternative)
+**General Chat Models (via OpenRouter):**
+- `anthropic/claude-3.7-sonnet` (Default - excellent balance)
+- `anthropic/claude-3.5-sonnet` (More accurate, slightly slower)
+- `anthropic/claude-3-haiku` (Faster, more economical)
+- `google/gemini-2.0-flash-exp` (Fast alternative)
 
 **Fact-Check Models:**
-- `anthropic/claude-3.5-sonnet` (Recommended - minimal hallucination)
-- `meta-llama/llama-3.1-70b-instruct` (Cheaper, but less reliable)
-- `nousresearch/hermes-3-llama-3.1-70b` (Not recommended for fact-checking)
+- `anthropic/claude-3.5-sonnet` (Default - minimal hallucination)
+- `anthropic/claude-3-opus` (Maximum accuracy, expensive)
+- Other models not recommended for fact-checking
 
 ## Personality System
 
-WompBot embodies **Feyd-Rautha Harkonnen** from Dune:
+WompBot has multiple personality modes available via `/personality <mode>`:
+
+**Default (Professional):**
+- Helpful, professional assistant
+- Clear and informative responses
+- Balanced tone for general use
+
+**Feyd-Rautha (Optional):**
 - Cunning, calculating, and sharp-tongued
 - Dismissive of weakness and logical fallacies
 - Eloquent but menacing speech style
 - Enjoys intellectual dominance and verbal sparring
 - No customer service energy - direct and brutal
 - Occasional Dune references (spice, Houses, desert power)
+
+**Bogan (Optional):**
+- Australian slang and casual language
+- Laid-back, friendly tone
+- Colorful expressions
 
 ## Upcoming Features
 
@@ -601,18 +617,35 @@ discord-bot/
 │   └── init.sql             # Database schema
 │
 └── bot/
-    ├── main.py              # Main bot logic, event handlers, commands
-    ├── llm.py               # OpenRouter LLM client
-    ├── database.py          # PostgreSQL interface
-    ├── search.py            # Tavily web search
-    ├── requirements.txt     # Python dependencies
-    └── features/
-        ├── claims.py        # Claims tracking system
-        ├── fact_check.py    # Fact-check feature
-        ├── chat_stats.py    # Chat statistics
-        ├── hot_takes.py     # Hot takes leaderboard
-        ├── reminders.py     # Context-aware reminders
-        └── events.py        # Event scheduling (NEW!)
+    ├── main.py                  # Main bot logic, event handlers, commands
+    ├── llm.py                   # OpenRouter LLM client
+    ├── database.py              # PostgreSQL interface with connection pooling
+    ├── search.py                # Tavily web search
+    ├── rag.py                   # RAG (Retrieval Augmented Generation) system
+    ├── backup_manager.py        # Automated database backup system
+    ├── logging_config.py        # Centralized logging configuration
+    ├── iracing_client.py        # Official iRacing API client
+    ├── iracing_viz.py           # iRacing visualizations (matplotlib)
+    ├── requirements.txt         # Python dependencies
+    ├── handlers/
+    │   ├── conversations.py     # Message handling, LLM conversations
+    │   └── events.py            # Discord event handlers
+    ├── commands/
+    │   ├── prefix_commands.py   # Prefix commands (!ping, !stats)
+    │   └── slash_commands.py    # Slash commands (/help, /wrapped)
+    ├── features/
+    │   ├── claims.py            # Claims tracking system
+    │   ├── fact_check.py        # Fact-check feature
+    │   ├── chat_stats.py        # Chat statistics
+    │   ├── hot_takes.py         # Hot takes leaderboard
+    │   ├── reminders.py         # Context-aware reminders
+    │   ├── events.py            # Event scheduling
+    │   ├── gdpr_privacy.py      # GDPR compliance system
+    │   ├── iracing.py           # iRacing integration
+    │   ├── iracing_teams.py     # iRacing team management
+    │   └── yearly_wrapped.py    # Yearly summaries
+    └── tasks/
+        └── background_jobs.py   # Scheduled background tasks
 ```
 
 ## Support

@@ -41,12 +41,6 @@ class FactChecker:
             # Format search results for LLM
             search_context = self.search.format_results_for_llm(search_results)
 
-            # Debug: Log what we're sending to the LLM
-            print(f"🔍 FACT-CHECK DEBUG:")
-            print(f"   Claim: {content}")
-            print(f"   Search results count: {len(search_results)}")
-            print(f"   Search context preview: {search_context[:500]}...")
-
             # Create fact-check prompt with strict instructions
             fact_check_prompt = f"""You are fact-checking a claim. You MUST ONLY use information from the provided search results below. DO NOT use any other knowledge or make up information.
 
