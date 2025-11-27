@@ -5,8 +5,8 @@ Context-aware conversations with a helpful and professional personality.
 ## Overview
 
 WompBot uses a dual-model architecture:
-- **General Chat**: Hermes-3 70B (fast, conversational, cost-effective)
-- **Fact-Checking**: Claude 3.5 Sonnet (slow, highly accurate, prevents hallucination)
+- **General Chat**: Claude 3.7 Sonnet (high quality, accurate, conversational)
+- **Fact-Checking**: Claude 3.5 Sonnet (highly accurate, prevents hallucination)
 
 The bot engages in natural conversations with a professional, helpful, and friendly personality, automatically switching to the high-accuracy model when verifying factual claims.
 
@@ -16,6 +16,7 @@ The bot engages in natural conversations with a professional, helpful, and frien
 - 🔍 **Web Search Integration** - Auto-searches when facts needed
 - 🧠 **User Context** - Knows user's behavior patterns and history
 - 🎯 **Smart Triggers** - Responds to @mentions and "wompbot"
+- 💬 **Discord Mentions** - Proper @username mentions work when bot talks to users
 
 ---
 

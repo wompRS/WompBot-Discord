@@ -6,11 +6,16 @@ import os
 import time
 from difflib import SequenceMatcher
 from contextlib import contextmanager
+import logging
+
+# Get logger for this module
+logger = logging.getLogger(__name__)
 
 class Database:
     def __init__(self):
         self.pool = None
         self.connect()
+        self.current_guild_id = None  # Track current guild context
 
     def connect(self):
         """Create PostgreSQL connection pool with retry logic"""
@@ -33,13 +38,14 @@ class Database:
                     password=os.getenv('DB_PASSWORD'),
                     connect_timeout=10
                 )
-                print(f"✅ Database connection pool created ({min_connections}-{max_connections} connections)")
+                logger.info(f"✅ Database connection pool created ({min_connections}-{max_connections} connections)")
                 return
             except Exception as e:
-                print(f"⚠️  Database connection attempt {attempt + 1}/{max_retries} failed: {e}")
+                logger.warning(f"⚠️  Database connection attempt {attempt + 1}/{max_retries} failed: {e}")
                 if attempt < max_retries - 1:
                     time.sleep(retry_delay)
                 else:
+                    logger.error("✗ Failed to connect to database after all retries")
                     raise
 
     @contextmanager

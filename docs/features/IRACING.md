@@ -26,8 +26,9 @@ Complete integration with iRacing's official API for driver stats, race schedule
 - The batch job walks every series, stores season schedules in the in-memory cache, and persists meta analysis for each race week to `iracing_meta_cache`
 - Useful before league events or demos when you want `/iracing_meta`, `/iracing_win_rate`, and schedule commands to respond instantly
 ### 🎨 Professional Visualizations
-- Charts styled after iRacing Reports
-- Dark theme with gold accents
+- Charts and tables created with matplotlib
+- Blue-tinted dark mode theme (#60a5fa accents)
+- Dynamic image sizing - tables automatically fit content without extra whitespace
 - Category-specific color coding
 - License class badges (Rookie through Pro)
 - High-resolution PNG exports (150 DPI)
@@ -91,12 +92,12 @@ Generate side-by-side comparison chart for two drivers.
 - License ratings for all 5 categories
 - iRating, TT Rating, Safety Rating, License Class
 - Career statistics (starts, wins, podiums, poles, avg finish, avg incidents, win rate)
-- Professional visualization with column banding
+- Professional matplotlib visualization with clean design
 
 **Features:**
 - Compact layout (16x9.5)
-- Alternating row backgrounds with rounded corners
-- Consistent corner radius (0.08)
+- Blue-tinted dark theme
+- Clean table design without row banding
 - License classes color-coded by iRacing standard:
   - Rookie: Red
   - D-Class: Orange
@@ -405,12 +406,13 @@ Stores Discord → iRacing account mappings for linked users.
   - Meta Charts: Variable based on data
 
 ### Design Elements
-- Column banding with alternating row backgrounds
-- Rounded corners on row backgrounds (pad=0.04)
-- Gold-bordered section headers (linewidth=2.5)
-- Horizontal gold separator lines under driver names
+- Clean table design without row banding
+- Blue-tinted dark mode theme with #60a5fa accents
+- Category badges with colored backgrounds
+- License class badges with color-coded circles
+- Dynamic image sizing based on content
 - Professional spacing and alignment
-- No colored bullet points (removed for cleaner look)
+- High contrast text for readability
 
 ## Cost & Performance
 

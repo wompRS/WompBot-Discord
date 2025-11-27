@@ -14,18 +14,22 @@ from PIL import Image
 from io import BytesIO
 from typing import Dict, List, Optional, Tuple
 from datetime import datetime, timezone
+from collections import Counter
 import dateparser
 import aiohttp
 from pathlib import Path
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Set style
 sns.set_theme(style="darkgrid")
-plt.rcParams['figure.facecolor'] = '#0f172a'  # Dark background
+plt.rcParams['figure.facecolor'] = '#0f172a'
 plt.rcParams['axes.facecolor'] = '#1e293b'
-plt.rcParams['text.color'] = 'white'
-plt.rcParams['axes.labelcolor'] = 'white'
-plt.rcParams['xtick.color'] = 'white'
-plt.rcParams['ytick.color'] = 'white'
+plt.rcParams['text.color'] = '#e2e8f0'
+plt.rcParams['axes.labelcolor'] = '#cbd5e1'
+plt.rcParams['xtick.color'] = '#94a3b8'
+plt.rcParams['ytick.color'] = '#94a3b8'
 plt.rcParams['grid.color'] = '#334155'
 plt.rcParams['font.family'] = 'sans-serif'
 
@@ -37,9 +41,9 @@ class iRacingVisualizer:
     COLORS = {
         'bg_dark': '#0f172a',
         'bg_card': '#1e293b',
-        'text_white': '#ffffff',
-        'text_gray': '#94a3b8',
-        'accent_blue': '#3b82f6',
+        'text_white': '#f1f5f9',
+        'text_gray': '#cbd5e1',
+        'accent_blue': '#60a5fa',
         'accent_green': '#22c55e',
         'accent_red': '#ef4444',
         'accent_yellow': '#eab308',
@@ -53,6 +57,10 @@ class iRacingVisualizer:
         'Class B': '#22c55e',     # Green
         'Class A': '#0153db',     # Blue
         'Pro': '#3b82f6',         # Lighter Blue
+    }
+
+    TABLE_STYLE = {
+        'header_bg': '#1e293b',  # Dark background for table headers
     }
 
     def __init__(self):
@@ -70,7 +78,8 @@ class iRacingVisualizer:
         if cache_path.exists():
             try:
                 return Image.open(cache_path)
-            except:
+            except Exception:
+                # Cache corrupted, will re-download
                 pass
 
         try:
@@ -132,8 +141,7 @@ class iRacingVisualizer:
                color='#ffffff', fontweight='bold', transform=transform, zorder=12)
 
     def create_driver_license_overview(self, driver_name: str, licenses_data: Dict) -> BytesIO:
-        """
-        Create professional overview of all license categories
+        """Create professional overview of all license categories
 
         Args:
             driver_name: Driver's display name
@@ -142,26 +150,6 @@ class iRacingVisualizer:
         Returns:
             BytesIO containing the PNG image
         """
-        fig = plt.figure(figsize=(14, 10), facecolor=self.COLORS['bg_dark'])
-        gs = fig.add_gridspec(1, 1, hspace=0.3)
-        ax = fig.add_subplot(gs[0])
-
-        ax.axis('off')
-        ax.set_xlim(0, 10)
-        ax.set_ylim(0, 8)
-
-        # Title
-        ax.text(5, 7.5, f"{driver_name} - License Overview",
-               ha='center', fontsize=24, fontweight='bold', color=self.COLORS['text_white'])
-
-        # Headers
-        y_pos = 6.5
-        ax.text(0.7, y_pos, "Category", fontsize=11, color=self.COLORS['accent_blue'], fontweight='bold')
-        ax.text(2.7, y_pos, "License", fontsize=11, color=self.COLORS['accent_blue'], fontweight='bold')
-        ax.text(4.7, y_pos, "Safety Rating", fontsize=11, color=self.COLORS['accent_blue'], fontweight='bold')
-        ax.text(6.7, y_pos, "iRating", fontsize=11, color=self.COLORS['accent_blue'], fontweight='bold')
-        ax.text(8.5, y_pos, "ttRating", fontsize=11, color=self.COLORS['accent_blue'], fontweight='bold')
-
         # License categories in order with type badges
         license_categories = [
             ('oval', 'OVAL', 'O', '#3b82f6'),
@@ -171,18 +159,40 @@ class iRacingVisualizer:
             ('dirt_road', 'DIRT ROAD', 'DR', '#a855f7')
         ]
 
+        # Count valid licenses to calculate dynamic height
+        num_licenses = sum(1 for key, _, _, _ in license_categories if key in licenses_data)
+
+        # Calculate dynamic height: title (1.5) + headers (1) + rows (num * 1) + footer (0.8) + padding (0.5)
+        content_height = 1.5 + 1 + num_licenses + 0.8 + 0.5
+        fig_height = max(4, content_height * 1.4)  # Scale for proper aspect ratio
+
+        fig = plt.figure(figsize=(14, fig_height), facecolor=self.COLORS['bg_dark'])
+        gs = fig.add_gridspec(1, 1, hspace=0.3)
+        ax = fig.add_subplot(gs[0])
+
+        ax.axis('off')
+        ax.set_xlim(0, 10)
+        ax.set_ylim(0, content_height)
+
+        # Title
+        title_y = content_height - 0.5
+        ax.text(5, title_y, f"{driver_name} - License Overview",
+               ha='center', fontsize=24, fontweight='bold', color=self.COLORS['text_white'])
+
+        # Headers
+        y_pos = title_y - 1.5
+        ax.text(0.7, y_pos, "Category", fontsize=11, color=self.COLORS['accent_blue'], fontweight='bold')
+        ax.text(2.7, y_pos, "License", fontsize=11, color=self.COLORS['accent_blue'], fontweight='bold')
+        ax.text(4.7, y_pos, "Safety Rating", fontsize=11, color=self.COLORS['accent_blue'], fontweight='bold')
+        ax.text(6.7, y_pos, "iRating", fontsize=11, color=self.COLORS['accent_blue'], fontweight='bold')
+        ax.text(8.5, y_pos, "ttRating", fontsize=11, color=self.COLORS['accent_blue'], fontweight='bold')
+
         y_pos -= 1
         for idx, (key, name, badge, badge_color) in enumerate(license_categories):
             if key not in licenses_data:
                 continue
 
             lic = licenses_data[key]
-
-            # Alternate row backgrounds
-            if idx % 2 == 0:
-                rect = plt.Rectangle((0.2, y_pos - 0.35), 9.6, 0.7,
-                                    facecolor=self.COLORS['bg_card'], alpha=0.5)
-                ax.add_patch(rect)
 
             # Category badge (colored square with letter)
             ax.text(0.5, y_pos, badge,
@@ -226,8 +236,9 @@ class iRacingVisualizer:
 
             y_pos -= 1
 
-        # Footer
-        ax.text(5, 0.3, "Generated by WompBot • Data from iRacing",
+        # Footer - positioned dynamically based on last row
+        footer_y = max(0.3, y_pos + 0.3)
+        ax.text(5, footer_y, "Generated by WompBot • Data from iRacing",
                ha='center', fontsize=10, color=self.COLORS['text_gray'], style='italic')
 
         # No tight_layout - incompatible with add_axes
@@ -490,8 +501,7 @@ class iRacingVisualizer:
         return buffer
 
     def create_driver_stats_card(self, driver_data: Dict) -> BytesIO:
-        """
-        Create driver statistics card with bell curve and stats grid
+        """Create driver statistics card with bell curve and stats grid
 
         Args:
             driver_data: Dict with driver stats including irating, percentile, starts, wins, etc.
@@ -741,8 +751,7 @@ class iRacingVisualizer:
 
     def create_leaderboard(self, title: str, series_logo_url: Optional[str],
                           leaderboard_data: List[Dict]) -> BytesIO:
-        """
-        Create professional leaderboard with series logo and driver stats
+        """Create professional leaderboard with series logo and driver stats
 
         Args:
             title: Leaderboard title
@@ -752,20 +761,29 @@ class iRacingVisualizer:
         Returns:
             BytesIO containing the PNG image
         """
-        fig = plt.figure(figsize=(12, 10), facecolor=self.COLORS['bg_dark'])
+        # Count actual rows that will be displayed
+        num_rows = min(len(leaderboard_data), 10)  # Top 10
+        row_height = 0.8
+
+        # Calculate dynamic content height: title (1.5) + headers (1) + rows (num * row_height) + footer (0.8) + padding (0.5)
+        content_height = 1.5 + 1 + (num_rows * row_height) + 0.8 + 0.5
+        fig_height = max(6, content_height * 1.3)  # Scale for proper aspect ratio
+
+        fig = plt.figure(figsize=(12, fig_height), facecolor=self.COLORS['bg_dark'])
         gs = fig.add_gridspec(1, 1, hspace=0.3)
         ax = fig.add_subplot(gs[0])
 
         ax.axis('off')
         ax.set_xlim(0, 10)
-        ax.set_ylim(0, len(leaderboard_data) + 3)
+        ax.set_ylim(0, content_height)
 
-        # Title
-        ax.text(5, len(leaderboard_data) + 2.5, title,
+        # Title - positioned dynamically
+        title_y = content_height - 0.7
+        ax.text(5, title_y, title,
                ha='center', fontsize=20, fontweight='bold', color=self.COLORS['text_white'])
 
-        # Headers
-        y_pos = len(leaderboard_data) + 1
+        # Headers - positioned dynamically
+        y_pos = title_y - 1.3
         ax.text(0.5, y_pos, "Pos", fontsize=10, color=self.COLORS['accent_blue'], fontweight='bold')
         ax.text(1.5, y_pos, "License", fontsize=10, color=self.COLORS['accent_blue'], fontweight='bold')
         ax.text(3, y_pos, "Driver", fontsize=10, color=self.COLORS['accent_blue'], fontweight='bold')
@@ -810,11 +828,10 @@ class iRacingVisualizer:
 
             y_pos -= 0.8
 
-        # Footer
-        ax.text(5, -0.5, "Generated by WompBot • Data from iRacing", ha='center', fontsize=10,
+        # Footer - positioned dynamically
+        footer_y = max(0.3, y_pos + 0.3)
+        ax.text(5, footer_y, "Generated by WompBot • Data from iRacing", ha='center', fontsize=10,
                color=self.COLORS['text_gray'], style='italic')
-
-        plt.tight_layout()
 
         buffer = BytesIO()
         plt.savefig(buffer, format='png', dpi=150, facecolor=self.COLORS['bg_dark'], bbox_inches='tight')
@@ -1205,7 +1222,7 @@ class iRacingVisualizer:
 
         # Header background spanning full row width (matches cell backgrounds)
         header_bg = plt.Rectangle((0.4, headers_y - 0.3), 13.2, 0.5,
-                                 facecolor='#172033', edgecolor='#334155',
+                                 facecolor=self.TABLE_STYLE['header_bg'], edgecolor='#334155',
                                  linewidth=1, alpha=0.6)
         ax.add_patch(header_bg)
 
@@ -1311,38 +1328,31 @@ class iRacingVisualizer:
 
     def create_recent_results_table(self, driver_name: str, races: List[Dict]) -> BytesIO:
         """
-        Create a visual table of recent race results.
-
-        Args:
-            driver_name: Driver's display name
-            races: List of race result dicts
-
-        Returns:
-            BytesIO containing the PNG image
-        """
+        # Count actual rows
         num_races = len(races)
         row_height = 0.8
-        chart_height = max(8, 3 + (num_races * row_height))
+
+        # Calculate dynamic content height: title (1.5) + headers (1) + rows (num * row_height) + footer (0.8) + padding (0.5)
+        content_height = 1.5 + 1 + (num_races * row_height) + 0.8 + 0.5
+        chart_height = max(6, content_height * 1.2)
 
         fig = plt.figure(figsize=(14, chart_height), facecolor=self.COLORS['bg_dark'])
         ax = fig.add_subplot(111)
         ax.axis('off')
         ax.set_xlim(0, 14)
+        ax.set_ylim(0, content_height)
 
-        total_height = num_races + 3
-        ax.set_ylim(0, total_height)
-
-        # Title
-        title_y = total_height - 0.8
+        # Title - positioned dynamically
+        title_y = content_height - 0.7
         ax.text(7, title_y, f"{driver_name} - Recent Race Results",
                ha='center', fontsize=21, fontweight='bold', color='#ffffff')
 
-        # Column headers
-        headers_y = total_height - 2.5
+        # Column headers - positioned dynamically
+        headers_y = title_y - 1.3
 
         # Header background
         header_bg = plt.Rectangle((0.4, headers_y - 0.3), 13.2, 0.5,
-                                 facecolor='#172033', edgecolor='#334155',
+                                 facecolor=self.TABLE_STYLE['header_bg'], edgecolor='#334155',
                                  linewidth=1, alpha=0.6)
         ax.add_patch(header_bg)
 
@@ -1436,8 +1446,9 @@ class iRacingVisualizer:
 
             y_pos -= row_height
 
-        # Footer
-        ax.text(7, 0.3, "Generated by WompBot - Data from iRacing",
+        # Footer - positioned dynamically
+        footer_y = max(0.3, y_pos + 0.3)
+        ax.text(7, footer_y, "Generated by WompBot - Data from iRacing",
                ha='center', fontsize=10, color='#94a3b8', style='italic')
 
         # Save to buffer
@@ -1450,16 +1461,6 @@ class iRacingVisualizer:
         return buffer
 
     def create_schedule_table(self, series_name: str, schedule: List[Dict], week_filter: str = "full") -> BytesIO:
-        """
-        Create a visual table of series schedule.
-
-        Args:
-            series_name: Series name
-            schedule: List of schedule entries (one per week)
-            week_filter: "current", "previous", "upcoming", "full", or week number (1-12 or 0-11)
-
-        Returns:
-            BytesIO containing the PNG image
         """
         import datetime
 
@@ -1583,7 +1584,7 @@ class iRacingVisualizer:
         table_left = 0.6
         table_width = 10.8
         header_bg = plt.Rectangle((table_left, headers_y - 0.3), table_width, 0.5,
-                                 facecolor='#172033', edgecolor='#334155',
+                                 facecolor=self.TABLE_STYLE['header_bg'], edgecolor='#334155',
                                  linewidth=1, alpha=0.6)
         ax.add_patch(header_bg)
 
@@ -1760,8 +1761,7 @@ class iRacingVisualizer:
             return 0
 
     def create_category_schedule_table(self, category_name: str, series_tracks: List[Dict]) -> BytesIO:
-        """
-        Create a visual table of all series in a category showing current week tracks.
+        """Create a visual table of all series in a category showing current week tracks.
 
         Args:
             category_name: Category name (e.g., "Formula Car", "Oval")
@@ -1815,7 +1815,7 @@ class iRacingVisualizer:
 
         # Header background
         header_bg = plt.Rectangle((0.4, headers_y - 0.3), 13.2, 0.5,
-                                 facecolor='#172033', edgecolor='#334155',
+                                 facecolor=self.TABLE_STYLE['header_bg'], edgecolor='#334155',
                                  linewidth=1, alpha=0.6)
         ax.add_patch(header_bg)
 
@@ -1856,8 +1856,9 @@ class iRacingVisualizer:
 
             y_pos -= row_height
 
-        # Footer
-        ax.text(7, 0.3, "Generated by WompBot • Data from iRacing",
+        # Footer - positioned dynamically
+        footer_y = max(0.3, y_pos + 0.3)
+        ax.text(7, footer_y, "Generated by WompBot • Data from iRacing",
                ha='center', fontsize=10, color='#94a3b8', style='italic')
 
         # Save to buffer
@@ -1962,15 +1963,6 @@ class iRacingVisualizer:
 
     def create_recent_races_dashboard(self, driver_name: str, races: List[Dict]) -> BytesIO:
         """
-        Create a dashboard showing recent race performance.
-
-        Args:
-            driver_name: Driver's display name
-            races: List of recent race results
-
-        Returns:
-            BytesIO buffer containing the dashboard image
-        """
         if not races or len(races) == 0:
             fig, ax = plt.subplots(figsize=(10, 6), facecolor=self.COLORS['bg_dark'])
             ax.text(0.5, 0.5, "No recent races found",
@@ -2064,7 +2056,7 @@ class iRacingVisualizer:
         return buffer
 
     def create_driver_comparison(self, driver1_data: Dict, driver2_data: Dict, category: str = "sports_car_road") -> BytesIO:
-        """Create side-by-side driver comparison chart showing all license categories."""
+        """
         from matplotlib.patches import FancyBboxPatch, Rectangle
 
         # Tighter layout - reduced figure size and spacing
@@ -2139,7 +2131,7 @@ class iRacingVisualizer:
                 if idx % 2 == 0:
                     row_bg = FancyBboxPatch((0.6, y - 0.3), 8.8, 0.65,
                                            boxstyle=f"round,pad={corner_radius/2}",
-                                           facecolor='#1e293b', alpha=0.5, linewidth=0)
+                                           facecolor=self.COLORS['bg_card'], alpha=0.5, linewidth=0)
                     ax.add_patch(row_bg)
 
                 # Category name
@@ -2203,7 +2195,7 @@ class iRacingVisualizer:
                 if idx % 2 == 0:
                     row_bg = FancyBboxPatch((0.6, y - 0.25), 8.8, 0.55,
                                            boxstyle=f"round,pad={corner_radius/2}",
-                                           facecolor='#1e293b', alpha=0.5, linewidth=0)
+                                           facecolor=self.COLORS['bg_card'], alpha=0.5, linewidth=0)
                     ax.add_patch(row_bg)
 
                 # Left column
@@ -2226,8 +2218,9 @@ class iRacingVisualizer:
         buffer.seek(0)
         return buffer
 
+
     def create_win_rate_chart(self, series_name: str, car_data: List[Dict], track_name: str = None) -> BytesIO:
-        """Create win rate analysis chart for cars in a series."""
+        """
         if not car_data or len(car_data) == 0:
             fig, ax = plt.subplots(figsize=(10, 6), facecolor=self.COLORS['bg_dark'])
             ax.text(0.5, 0.5, "No win rate data available", ha='center', va='center',
@@ -2281,15 +2274,6 @@ class iRacingVisualizer:
         return buffer
 
     def create_popularity_chart(self, series_data: List[Tuple[str, int]], time_range: str) -> BytesIO:
-        """
-        Create a clean, professional data analytics style chart.
-
-        Args:
-            series_data: List of tuples (series_name, participant_count)
-            time_range: Time period description (e.g., "This Season", "This Year")
-
-        Returns:
-            BytesIO buffer containing the chart image
         """
         # Prepare data
         series_names = [name for name, _ in series_data]
@@ -2383,8 +2367,7 @@ class iRacingVisualizer:
         return buffer
 
     def create_server_leaderboard_table(self, guild_name: str, category_name: str, leaderboard_data: List[Dict]) -> BytesIO:
-        """
-        Create a visual table for server iRating leaderboard.
+        """Create a visual table for server iRating leaderboard.
 
         Args:
             guild_name: Discord server name
@@ -2493,9 +2476,10 @@ class iRacingVisualizer:
 
             y_pos -= row_height
 
-        # Footer
+        # Footer - positioned dynamically
+        footer_y = max(0.3, y_pos + 0.3)
         footer_text = f'{len(leaderboard_data)} linked drivers • Use /iracing_link to join the leaderboard'
-        ax.text(7, 0.3, footer_text,
+        ax.text(7, footer_y, footer_text,
                fontsize=9, ha='center', color=self.COLORS['text_gray'], style='italic')
 
         buffer = BytesIO()
@@ -2520,8 +2504,7 @@ class iRacingVisualizer:
             return '#9e9e9e'  # Gray - Below Average
 
     def create_timeslots_table(self, series_name: str, track_name: str, week_num: int, sessions: List[Dict]) -> BytesIO:
-        """
-        Create a visual table of race session times
+        """Create a visual table of race session times
 
         Args:
             series_name: Series name
@@ -2532,20 +2515,30 @@ class iRacingVisualizer:
         Returns:
             BytesIO containing the PNG image
         """
-        fig = plt.figure(figsize=(12, max(8, len(sessions) * 0.4 + 2)), facecolor=self.COLORS['bg_dark'])
+        # Count actual rows that will be displayed
+        num_sessions = min(len(sessions), 50)  # Limit to 50
+        row_height = 0.35
+
+        # Calculate dynamic content height: title (2.0) + headers (1) + rows (num * row_height) + footer (0.8) + padding (0.5)
+        content_height = 2.0 + 1 + (num_sessions * row_height) + 0.8 + 0.5
+        fig_height = max(6, content_height * 1.3)
+
+        fig = plt.figure(figsize=(12, fig_height), facecolor=self.COLORS['bg_dark'])
         ax = fig.add_subplot(111)
         ax.axis('off')
         ax.set_xlim(0, 10)
-        ax.set_ylim(0, 10)
+        ax.set_ylim(0, content_height)
 
-        # Title
-        ax.text(5, 9.5, series_name, ha='center', va='top', fontsize=20,
+        # Title - positioned dynamically
+        title_y = content_height - 0.5
+        ax.text(5, title_y, series_name, ha='center', va='top', fontsize=20,
                 fontweight='bold', color=self.COLORS['text_white'])
-        ax.text(5, 9.0, f"Week {week_num} • {track_name}", ha='center', va='top',
+        subtitle_y = title_y - 0.5
+        ax.text(5, subtitle_y, f"Week {week_num} • {track_name}", ha='center', va='top',
                 fontsize=14, color=self.COLORS['text_gray'])
 
-        # Table header
-        y_pos = 8.2
+        # Table header - positioned dynamically
+        y_pos = subtitle_y - 0.8
         ax.text(2, y_pos, "Date & Time", ha='left', va='center', fontsize=12,
                 fontweight='bold', color=self.COLORS['text_white'])
         ax.text(8, y_pos, "Starts In", ha='left', va='center', fontsize=12,
@@ -2556,7 +2549,6 @@ class iRacingVisualizer:
 
         # Session rows
         y_pos -= 0.5
-        row_height = 0.35
 
         now = datetime.now(timezone.utc)
 
@@ -2606,13 +2598,15 @@ class iRacingVisualizer:
                            fontsize=10, color=self.COLORS['text_white'])
                     ax.text(8, y_pos, relative_str, ha='left', va='center', fontsize=10,
                            color=color, fontweight='bold')
-                except:
+                except Exception:
+                    # Skip sessions with invalid timestamp
                     pass
 
             y_pos -= row_height
 
-        # Footer
-        ax.text(5, 0.5, f"{len(sessions)} race sessions", ha='center', va='center',
+        # Footer - positioned dynamically
+        footer_y = max(0.3, y_pos + 0.3)
+        ax.text(5, footer_y, f"{len(sessions)} race sessions", ha='center', va='center',
                fontsize=10, color=self.COLORS['text_gray'])
 
         # Save
@@ -2623,8 +2617,7 @@ class iRacingVisualizer:
         return buffer
 
     def create_upcoming_races_table(self, races: List[Dict], hours: int, series_filter: str = None) -> BytesIO:
-        """
-        Create a visual table of upcoming races
+        """Create a visual table of upcoming races
 
         Args:
             races: List of race dicts
@@ -2634,23 +2627,33 @@ class iRacingVisualizer:
         Returns:
             BytesIO containing the PNG image
         """
-        fig = plt.figure(figsize=(14, max(10, len(races) * 0.5 + 3)), facecolor=self.COLORS['bg_dark'])
+        # Count actual rows that will be displayed
+        num_races = min(len(races), 20)  # Limit to 20
+        row_height = 0.4
+
+        # Calculate dynamic content height: title (2.0) + headers (1) + rows (num * row_height) + footer (0.8) + padding (0.5)
+        content_height = 2.0 + 1 + (num_races * row_height) + 0.8 + 0.5
+        fig_height = max(6, content_height * 1.3)
+
+        fig = plt.figure(figsize=(14, fig_height), facecolor=self.COLORS['bg_dark'])
         ax = fig.add_subplot(111)
         ax.axis('off')
         ax.set_xlim(0, 10)
-        ax.set_ylim(0, 10)
+        ax.set_ylim(0, content_height)
 
-        # Title
+        # Title - positioned dynamically
         title = f"🏁 Upcoming iRacing Races"
         if series_filter:
             title += f" - {series_filter}"
-        ax.text(5, 9.5, title, ha='center', va='top', fontsize=20,
+        title_y = content_height - 0.5
+        ax.text(5, title_y, title, ha='center', va='top', fontsize=20,
                 fontweight='bold', color=self.COLORS['text_white'])
-        ax.text(5, 9.0, f"Next {len(races)} races in {hours} hours", ha='center', va='top',
+        subtitle_y = title_y - 0.5
+        ax.text(5, subtitle_y, f"Next {len(races)} races in {hours} hours", ha='center', va='top',
                 fontsize=14, color=self.COLORS['text_gray'])
 
-        # Table header
-        y_pos = 8.3
+        # Table header - positioned dynamically
+        y_pos = subtitle_y - 0.8
         ax.text(1, y_pos, "Series", ha='left', va='center', fontsize=11,
                 fontweight='bold', color=self.COLORS['text_white'])
         ax.text(5.5, y_pos, "Track", ha='left', va='center', fontsize=11,
@@ -2662,7 +2665,6 @@ class iRacingVisualizer:
 
         # Race rows
         y_pos -= 0.45
-        row_height = 0.4
 
         now = datetime.now(timezone.utc)
 
@@ -2699,7 +2701,8 @@ class iRacingVisualizer:
                         else:
                             days = minutes // 1440
                             relative_str = f"{days}d"
-                except:
+                except Exception:
+                    # Skip races with invalid timestamp
                     pass
 
             # Display
@@ -2712,9 +2715,10 @@ class iRacingVisualizer:
 
             y_pos -= row_height
 
-        # Footer
+        # Footer - positioned dynamically
+        footer_y = max(0.3, y_pos + 0.3)
         if len(races) > 20:
-            ax.text(5, 0.5, f"Showing first 20 of {len(races)} races", ha='center', va='center',
+            ax.text(5, footer_y, f"Showing first 20 of {len(races)} races", ha='center', va='center',
                    fontsize=10, color=self.COLORS['text_gray'])
 
         buffer = BytesIO()
@@ -2724,8 +2728,7 @@ class iRacingVisualizer:
         return buffer
 
     def create_event_roster_table(self, event_id: int, availability: List[Dict]) -> BytesIO:
-        """
-        Create a visual table of driver availability for an event
+        """Create a visual table of driver availability for an event
 
         Args:
             event_id: Event ID
@@ -2734,27 +2737,41 @@ class iRacingVisualizer:
         Returns:
             BytesIO containing the PNG image
         """
-        fig = plt.figure(figsize=(12, max(8, len(availability) * 0.35 + 3)), facecolor=self.COLORS['bg_dark'])
-        ax = fig.add_subplot(111)
-        ax.axis('off')
-        ax.set_xlim(0, 10)
-        ax.set_ylim(0, 10)
-
-        # Title
-        ax.text(5, 9.5, f"📊 Driver Roster - Event #{event_id}", ha='center', va='top',
-                fontsize=20, fontweight='bold', color=self.COLORS['text_white'])
-
         # Group by status
         confirmed = [a for a in availability if a['status'] == 'confirmed']
         available = [a for a in availability if a['status'] == 'available']
         maybe = [a for a in availability if a['status'] == 'maybe']
         unavailable = [a for a in availability if a['status'] == 'unavailable']
 
+        # Count rows for each section (header + min(10, drivers) per section)
+        num_rows = 0
+        for drivers in [confirmed, available, maybe, unavailable]:
+            if drivers:
+                num_rows += 1 + min(len(drivers), 10)  # header + drivers
+                if len(drivers) > 10:
+                    num_rows += 1  # "... and X more" line
+
+        # Calculate dynamic content height: title (2.0) + rows (num * 0.3) + footer (0.5) + padding (0.5)
+        content_height = 2.0 + (num_rows * 0.3) + 0.5 + 0.5
+        fig_height = max(6, content_height * 1.3)
+
+        fig = plt.figure(figsize=(12, fig_height), facecolor=self.COLORS['bg_dark'])
+        ax = fig.add_subplot(111)
+        ax.axis('off')
+        ax.set_xlim(0, 10)
+        ax.set_ylim(0, content_height)
+
+        # Title - positioned dynamically
+        title_y = content_height - 0.5
+        ax.text(5, title_y, f"📊 Driver Roster - Event #{event_id}", ha='center', va='top',
+                fontsize=20, fontweight='bold', color=self.COLORS['text_white'])
+
         total_ready = len(confirmed) + len(available)
-        ax.text(5, 9.0, f"{total_ready} drivers ready to race", ha='center', va='top',
+        subtitle_y = title_y - 0.5
+        ax.text(5, subtitle_y, f"{total_ready} drivers ready to race", ha='center', va='top',
                 fontsize=14, color=self.COLORS['accent_green'])
 
-        y_pos = 8.3
+        y_pos = subtitle_y - 0.7
 
         # Status sections
         status_groups = [
@@ -2807,8 +2824,7 @@ class iRacingVisualizer:
         return buffer
 
     def create_team_info_display(self, team_info: Dict, members: List[Dict]) -> BytesIO:
-        """
-        Create a visual display of team information
+        """Create a visual display of team information
 
         Args:
             team_info: Team info dict
@@ -2817,27 +2833,6 @@ class iRacingVisualizer:
         Returns:
             BytesIO containing the PNG image
         """
-        fig = plt.figure(figsize=(12, max(10, len(members) * 0.3 + 4)), facecolor=self.COLORS['bg_dark'])
-        ax = fig.add_subplot(111)
-        ax.axis('off')
-        ax.set_xlim(0, 10)
-        ax.set_ylim(0, 10)
-
-        # Team header
-        team_name = team_info.get('name', 'Unknown Team')
-        team_tag = team_info.get('tag', '')
-        description = team_info.get('description', 'No description')[:100]
-        created_date = team_info.get('created_at').strftime('%B %d, %Y') if team_info.get('created_at') else 'Unknown'
-
-        ax.text(5, 9.5, f"🏁 {team_name} [{team_tag}]", ha='center', va='top',
-                fontsize=22, fontweight='bold', color=self.COLORS['text_white'])
-        ax.text(5, 9.0, description, ha='center', va='top', fontsize=11,
-                color=self.COLORS['text_gray'])
-        ax.text(5, 8.5, f"Founded {created_date} • {len(members)} members", ha='center', va='top',
-                fontsize=10, color=self.COLORS['text_gray'])
-
-        y_pos = 7.9
-
         # Group members by role
         role_groups = [
             ("👑 Managers", [m for m in members if m['role'] == 'manager'], self.COLORS['accent_gold']),
@@ -2846,6 +2841,43 @@ class iRacingVisualizer:
             ("📻 Spotters", [m for m in members if m['role'] == 'spotter'], self.COLORS['accent_yellow'])
         ]
 
+        # Count rows for each role (header + min(15, members) per role)
+        num_rows = 0
+        for role_name, role_members, color in role_groups:
+            if role_members:
+                num_rows += 1 + min(len(role_members), 15)  # header + members
+                if len(role_members) > 15:
+                    num_rows += 1  # "... and X more" line
+
+        # Calculate dynamic content height: title (3.5) + rows (num * 0.25) + footer (0.5) + padding (0.5)
+        content_height = 3.5 + (num_rows * 0.25) + 0.5 + 0.5
+        fig_height = max(6, content_height * 1.3)
+
+        fig = plt.figure(figsize=(12, fig_height), facecolor=self.COLORS['bg_dark'])
+        ax = fig.add_subplot(111)
+        ax.axis('off')
+        ax.set_xlim(0, 10)
+        ax.set_ylim(0, content_height)
+
+        # Team header - positioned dynamically
+        team_name = team_info.get('name', 'Unknown Team')
+        team_tag = team_info.get('tag', '')
+        description = team_info.get('description', 'No description')[:100]
+        created_date = team_info.get('created_at').strftime('%B %d, %Y') if team_info.get('created_at') else 'Unknown'
+
+        title_y = content_height - 0.5
+        ax.text(5, title_y, f"🏁 {team_name} [{team_tag}]", ha='center', va='top',
+                fontsize=22, fontweight='bold', color=self.COLORS['text_white'])
+        subtitle1_y = title_y - 0.5
+        ax.text(5, subtitle1_y, description, ha='center', va='top', fontsize=11,
+                color=self.COLORS['text_gray'])
+        subtitle2_y = subtitle1_y - 0.5
+        ax.text(5, subtitle2_y, f"Founded {created_date} • {len(members)} members", ha='center', va='top',
+                fontsize=10, color=self.COLORS['text_gray'])
+
+        y_pos = subtitle2_y - 0.6
+
+        # Role sections
         for role_name, role_members, color in role_groups:
             if not role_members:
                 continue
@@ -2886,8 +2918,7 @@ class iRacingVisualizer:
         return buffer
 
     def create_team_list_table(self, guild_name: str, teams: List[Dict]) -> BytesIO:
-        """
-        Create a visual table of teams in a server
+        """Create a visual table of teams in a server
 
         Args:
             guild_name: Discord server name
@@ -2896,20 +2927,30 @@ class iRacingVisualizer:
         Returns:
             BytesIO containing the PNG image
         """
-        fig = plt.figure(figsize=(14, max(10, len(teams) * 0.45 + 3)), facecolor=self.COLORS['bg_dark'])
+        # Count actual rows that will be displayed
+        num_teams = min(len(teams), 25)  # Discord embed limit
+        row_height = 0.4
+
+        # Calculate dynamic content height: title (2.0) + headers (1) + rows (num * row_height) + footer (0.8) + padding (0.5)
+        content_height = 2.0 + 1 + (num_teams * row_height) + 0.8 + 0.5
+        fig_height = max(6, content_height * 1.3)
+
+        fig = plt.figure(figsize=(14, fig_height), facecolor=self.COLORS['bg_dark'])
         ax = fig.add_subplot(111)
         ax.axis('off')
         ax.set_xlim(0, 10)
-        ax.set_ylim(0, 10)
+        ax.set_ylim(0, content_height)
 
-        # Title
-        ax.text(5, 9.5, f"🏁 iRacing Teams - {guild_name}", ha='center', va='top',
+        # Title - positioned dynamically
+        title_y = content_height - 0.5
+        ax.text(5, title_y, f"🏁 iRacing Teams - {guild_name}", ha='center', va='top',
                 fontsize=20, fontweight='bold', color=self.COLORS['text_white'])
-        ax.text(5, 9.0, f"{len(teams)} teams", ha='center', va='top', fontsize=14,
+        subtitle_y = title_y - 0.5
+        ax.text(5, subtitle_y, f"{len(teams)} teams", ha='center', va='top', fontsize=14,
                 color=self.COLORS['text_gray'])
 
-        # Table header
-        y_pos = 8.3
+        # Table header - positioned dynamically
+        y_pos = subtitle_y - 0.8
         ax.text(1, y_pos, "Team", ha='left', va='center', fontsize=11,
                 fontweight='bold', color=self.COLORS['text_white'])
         ax.text(6, y_pos, "Description", ha='left', va='center', fontsize=11,
