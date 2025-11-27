@@ -10,7 +10,10 @@ A Discord bot powered by OpenRouter LLMs (Claude Sonnet) with intelligent RAG me
   - **Fact-Checking**: Claude 3.5 Sonnet (slow, highly accurate, zero hallucination)
 - **Context-Aware Conversations**: Professional and helpful personality with conversation memory
 - **Smart Response Detection**: Only responds when "wompbot" mentioned or @tagged
+- **Discord Mention Support**: Proper @mentions work when bot talks to users (bidirectional conversion)
 - **Web Search Integration**: Automatic Tavily API search when facts are needed
+- **Automated Backups**: Daily, weekly, and monthly database backups with configurable retention
+- **Centralized Logging**: Structured logging system with file rotation and error tracking
 - **Comprehensive Rate Limiting**: Multi-layer abuse prevention with cost tracking
   - Token limits (1,000/request, 10,000/hour per user)
   - Feature-specific limits (fact-checks, searches, commands)
@@ -132,7 +135,8 @@ A Discord bot powered by OpenRouter LLMs (Claude Sonnet) with intelligent RAG me
 - **Schedule Visuals**: Highlight the current week, show UTC open times, and include season date ranges
 - **Smart Search**: Automatically finds drivers by name
 - **Category Autocomplete**: Easy selection of Oval, Sports Car, Formula Car, Dirt Oval, Dirt Road
-- **Professional Visualizations**: Charts matching iRacing Reports style
+- **Professional Visualizations**: Charts and tables using matplotlib with blue-tinted dark mode theme
+- **Dynamic Image Sizing**: Tables automatically fit content without extra whitespace
 - **Live Data + Background Caching**: Direct API integration with scheduled cache refreshes
 - **Optional Feature**: Only enabled if credentials are provided
 - **Zero Cost**: No LLM usage, pure API calls
@@ -613,18 +617,35 @@ discord-bot/
 │   └── init.sql             # Database schema
 │
 └── bot/
-    ├── main.py              # Main bot logic, event handlers, commands
-    ├── llm.py               # OpenRouter LLM client
-    ├── database.py          # PostgreSQL interface
-    ├── search.py            # Tavily web search
-    ├── requirements.txt     # Python dependencies
-    └── features/
-        ├── claims.py        # Claims tracking system
-        ├── fact_check.py    # Fact-check feature
-        ├── chat_stats.py    # Chat statistics
-        ├── hot_takes.py     # Hot takes leaderboard
-        ├── reminders.py     # Context-aware reminders
-        └── events.py        # Event scheduling (NEW!)
+    ├── main.py                  # Main bot logic, event handlers, commands
+    ├── llm.py                   # OpenRouter LLM client
+    ├── database.py              # PostgreSQL interface with connection pooling
+    ├── search.py                # Tavily web search
+    ├── rag.py                   # RAG (Retrieval Augmented Generation) system
+    ├── backup_manager.py        # Automated database backup system
+    ├── logging_config.py        # Centralized logging configuration
+    ├── iracing_client.py        # Official iRacing API client
+    ├── iracing_viz.py           # iRacing visualizations (matplotlib)
+    ├── requirements.txt         # Python dependencies
+    ├── handlers/
+    │   ├── conversations.py     # Message handling, LLM conversations
+    │   └── events.py            # Discord event handlers
+    ├── commands/
+    │   ├── prefix_commands.py   # Prefix commands (!ping, !stats)
+    │   └── slash_commands.py    # Slash commands (/help, /wrapped)
+    ├── features/
+    │   ├── claims.py            # Claims tracking system
+    │   ├── fact_check.py        # Fact-check feature
+    │   ├── chat_stats.py        # Chat statistics
+    │   ├── hot_takes.py         # Hot takes leaderboard
+    │   ├── reminders.py         # Context-aware reminders
+    │   ├── events.py            # Event scheduling
+    │   ├── gdpr_privacy.py      # GDPR compliance system
+    │   ├── iracing.py           # iRacing integration
+    │   ├── iracing_teams.py     # iRacing team management
+    │   └── yearly_wrapped.py    # Yearly summaries
+    └── tasks/
+        └── background_jobs.py   # Scheduled background tasks
 ```
 
 ## Support
