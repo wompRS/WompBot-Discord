@@ -36,6 +36,32 @@ def clean_discord_mentions(content, message):
     return re.sub(mention_pattern, replace_mention, content)
 
 
+def restore_discord_mentions(content, message):
+    """Convert @username mentions back to Discord <@USER_ID> format"""
+    if not message.guild:
+        return content
+
+    # Find all @username patterns (but not @everyone or @here)
+    mention_pattern = r'@([a-zA-Z0-9_\.]{2,32})(?!\w)'
+
+    def replace_mention(match):
+        username = match.group(1).lower()
+
+        # Skip special mentions
+        if username in ['everyone', 'here']:
+            return match.group(0)
+
+        # Try to find member by name (case-insensitive)
+        for member in message.guild.members:
+            if member.name.lower() == username or member.display_name.lower() == username:
+                return f"<@{member.id}>"
+
+        # If not found, return original text
+        return match.group(0)
+
+    return re.sub(mention_pattern, replace_mention, content)
+
+
 async def generate_leaderboard_response(channel, stat_type, days, db, llm):
     """Generate and send leaderboard embed"""
     try:
@@ -451,6 +477,9 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
             # Final check for empty response
             if not response or len(response.strip()) == 0:
                 response = "Error: Got an empty response. Try rephrasing?"
+
+            # Restore Discord mentions before sending
+            response = restore_discord_mentions(response, message)
 
             # Send or edit response
             if search_msg:

@@ -8,8 +8,13 @@ import os
 import asyncio
 import discord
 from discord import app_commands
-from datetime import datetime, timedelta
-from typing import Optional
+from datetime import datetime, timedelta, timezone
+from typing import Optional, Dict
+from collections import Counter
+
+# Module-level cache for series autocomplete
+_series_autocomplete_cache = None
+_series_cache_time = None
 
 
 def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
@@ -2100,10 +2105,6 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
             print(f"❌ iRacing profile error: {e}")
             import traceback
             traceback.print_exc()
-    
-    # Cache for series autocomplete to prevent repeated API calls
-    _series_autocomplete_cache = None
-    _series_cache_time = None
     
     async def series_autocomplete(
         interaction: discord.Interaction,

@@ -36,6 +36,8 @@ backups/
 
 # Logs
 *.log
+logs/
+bot/logs/
 
 # AI Session Manual (internal use only)
 docs/guides/AI_SESSION_MANUAL.md

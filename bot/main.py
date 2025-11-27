@@ -9,6 +9,15 @@ from datetime import datetime, timedelta, timezone
 from typing import List, Tuple, Optional, Dict
 from collections import Counter
 import pytz
+
+# Initialize logging FIRST before any other imports
+from logging_config import setup_logging, get_logger
+setup_logging(
+    log_level=os.getenv('LOG_LEVEL', 'INFO'),
+    log_dir=os.getenv('LOG_DIR', '/app/logs')
+)
+logger = get_logger(__name__)
+
 from database import Database
 from llm import LLMClient
 from local_llm import LocalLLMClient
@@ -30,6 +39,7 @@ from credential_manager import CredentialManager
 from iracing_graphics import iRacingGraphics
 from self_knowledge import SelfKnowledge
 from features.help_system import HelpSystem
+from backup_manager import BackupManager
 
 # Import registration functions
 from tasks.background_jobs import register_tasks
@@ -37,6 +47,10 @@ from handlers.events import register_events
 from handlers.conversations import handle_bot_mention
 from commands.prefix_commands import register_prefix_commands
 from commands.slash_commands import register_slash_commands
+
+logger.info("=" * 60)
+logger.info("WompBot Starting Up")
+logger.info("=" * 60)
 
 # Bot setup
 intents = discord.Intents.default()
