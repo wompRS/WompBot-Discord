@@ -1,0 +1,318 @@
+"""
+LLM Tool Definitions and Data Retrieval
+Defines tools the LLM can call and provides data access
+"""
+
+from typing import Dict, List, Any, Optional
+from datetime import datetime, timedelta
+import json
+
+# Tool definitions for LLM function calling
+VISUALIZATION_TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "create_bar_chart",
+            "description": "Create a bar chart to visualize data. Use this when users ask to see, show, visualize, or chart data in bar format.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "data_query": {
+                        "type": "string",
+                        "description": "What data to visualize (e.g., 'top 10 users by message count last 7 days', 'message distribution by hour')",
+                    },
+                    "title": {
+                        "type": "string",
+                        "description": "Chart title"
+                    },
+                    "xlabel": {
+                        "type": "string",
+                        "description": "X-axis label"
+                    },
+                    "ylabel": {
+                        "type": "string",
+                        "description": "Y-axis label"
+                    },
+                    "horizontal": {
+                        "type": "boolean",
+                        "description": "Create horizontal bar chart (good for long labels)",
+                        "default": False
+                    }
+                },
+                "required": ["data_query", "title"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "create_line_chart",
+            "description": "Create a line chart to show trends over time. Use this for time series data or trends.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "data_query": {
+                        "type": "string",
+                        "description": "What data to visualize (e.g., 'messages per day last 30 days', 'user activity trend')",
+                    },
+                    "title": {
+                        "type": "string",
+                        "description": "Chart title"
+                    },
+                    "xlabel": {
+                        "type": "string",
+                        "description": "X-axis label"
+                    },
+                    "ylabel": {
+                        "type": "string",
+                        "description": "Y-axis label"
+                    }
+                },
+                "required": ["data_query", "title"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "create_pie_chart",
+            "description": "Create a pie chart to show proportions or distributions. Use this for percentage breakdowns.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "data_query": {
+                        "type": "string",
+                        "description": "What data to visualize (e.g., 'message distribution by user', 'personality breakdown')",
+                    },
+                    "title": {
+                        "type": "string",
+                        "description": "Chart title"
+                    },
+                    "show_percentages": {
+                        "type": "boolean",
+                        "description": "Show percentage labels on pie slices",
+                        "default": True
+                    }
+                },
+                "required": ["data_query", "title"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "create_table",
+            "description": "Create a formatted table to display structured data. Use this for detailed comparisons or lists.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "data_query": {
+                        "type": "string",
+                        "description": "What data to display (e.g., 'top 20 users with message count and rank', 'user stats comparison')",
+                    },
+                    "title": {
+                        "type": "string",
+                        "description": "Table title"
+                    },
+                    "max_rows": {
+                        "type": "integer",
+                        "description": "Maximum number of rows to display",
+                        "default": 20
+                    }
+                },
+                "required": ["data_query", "title"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "create_comparison_chart",
+            "description": "Create a grouped bar chart to compare multiple datasets side by side.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "data_query": {
+                        "type": "string",
+                        "description": "What data to compare (e.g., 'compare message counts between users over time', 'compare activity by day of week')",
+                    },
+                    "title": {
+                        "type": "string",
+                        "description": "Chart title"
+                    },
+                    "ylabel": {
+                        "type": "string",
+                        "description": "Y-axis label"
+                    }
+                },
+                "required": ["data_query", "title"]
+            }
+        }
+    }
+]
+
+
+class DataRetriever:
+    """Retrieve data from database based on natural language queries"""
+
+    def __init__(self, db):
+        self.db = db
+
+    def retrieve_data(self, query: str, channel_id: Optional[int] = None) -> Dict[str, Any]:
+        """
+        Retrieve data based on natural language query
+
+        Args:
+            query: Natural language description of data needed
+            channel_id: Discord channel ID for context
+
+        Returns:
+            Dictionary with data structure suitable for visualization
+        """
+        query_lower = query.lower()
+
+        # Parse time range from query
+        days = self._extract_time_range(query_lower)
+
+        # Determine query type and fetch data
+        if 'top' in query_lower and 'user' in query_lower and 'message' in query_lower:
+            return self._get_top_users_by_messages(days, limit=self._extract_limit(query_lower))
+
+        elif 'message' in query_lower and 'hour' in query_lower:
+            return self._get_messages_by_hour(days, channel_id)
+
+        elif 'message' in query_lower and 'day' in query_lower:
+            return self._get_messages_by_day(days, channel_id)
+
+        elif 'activity' in query_lower and 'trend' in query_lower:
+            return self._get_activity_trend(days, channel_id)
+
+        elif 'personality' in query_lower or 'distribution' in query_lower:
+            return self._get_personality_distribution()
+
+        else:
+            # Default: top users
+            return self._get_top_users_by_messages(days, limit=10)
+
+    def _extract_time_range(self, query: str) -> int:
+        """Extract time range in days from query"""
+        if 'today' in query or '24 hour' in query:
+            return 1
+        elif 'week' in query or '7 day' in query:
+            return 7
+        elif 'month' in query or '30 day' in query:
+            return 30
+        elif 'year' in query or '365 day' in query:
+            return 365
+        else:
+            # Default to 7 days
+            return 7
+
+    def _extract_limit(self, query: str) -> int:
+        """Extract limit/top N from query"""
+        import re
+        match = re.search(r'top (\d+)', query)
+        if match:
+            return int(match.group(1))
+        match = re.search(r'(\d+) (user|people)', query)
+        if match:
+            return int(match.group(1))
+        return 10  # Default
+
+    def _get_top_users_by_messages(self, days: int, limit: int = 10) -> Dict[str, Any]:
+        """Get top users by message count"""
+        results = self.db.get_message_stats(days=days, limit=limit)
+
+        data = {}
+        for user in results:
+            username = user['username'][:20]  # Truncate long names
+            data[username] = user['message_count']
+
+        return {
+            'type': 'bar',
+            'data': data,
+            'metadata': {'time_range_days': days, 'limit': limit}
+        }
+
+    def _get_messages_by_hour(self, days: int, channel_id: Optional[int]) -> Dict[str, Any]:
+        """Get message distribution by hour of day"""
+        query = """
+            SELECT EXTRACT(HOUR FROM timestamp) as hour, COUNT(*) as count
+            FROM messages
+            WHERE timestamp > NOW() - INTERVAL '%s days'
+            """ + (" AND channel_id = %s" if channel_id else "") + """
+            GROUP BY hour
+            ORDER BY hour
+        """
+
+        params = [days]
+        if channel_id:
+            params.append(channel_id)
+
+        with self.db.get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(query, params)
+                results = cur.fetchall()
+
+        data = {f"{int(row[0])}:00": row[1] for row in results}
+
+        return {
+            'type': 'bar',
+            'data': data,
+            'metadata': {'time_range_days': days}
+        }
+
+    def _get_messages_by_day(self, days: int, channel_id: Optional[int]) -> Dict[str, Any]:
+        """Get messages per day over time"""
+        query = """
+            SELECT DATE(timestamp) as day, COUNT(*) as count
+            FROM messages
+            WHERE timestamp > NOW() - INTERVAL '%s days'
+            """ + (" AND channel_id = %s" if channel_id else "") + """
+            GROUP BY day
+            ORDER BY day
+        """
+
+        params = [days]
+        if channel_id:
+            params.append(channel_id)
+
+        with self.db.get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(query, params)
+                results = cur.fetchall()
+
+        data = {'Messages': [row[1] for row in results]}
+        x_labels = [row[0].strftime('%m/%d') for row in results]
+
+        return {
+            'type': 'line',
+            'data': data,
+            'x_labels': x_labels,
+            'metadata': {'time_range_days': days}
+        }
+
+    def _get_activity_trend(self, days: int, channel_id: Optional[int]) -> Dict[str, Any]:
+        """Get activity trend"""
+        return self._get_messages_by_day(days, channel_id)
+
+    def _get_personality_distribution(self) -> Dict[str, Any]:
+        """Get server personality distribution"""
+        query = """
+            SELECT personality, COUNT(*) as count
+            FROM server_settings
+            GROUP BY personality
+        """
+
+        with self.db.get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(query)
+                results = cur.fetchall()
+
+        data = {row[0] if row[0] else 'default': row[1] for row in results}
+
+        return {
+            'type': 'pie',
+            'data': data,
+            'metadata': {}
+        }
