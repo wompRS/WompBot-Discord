@@ -14,7 +14,7 @@ from cost_tracker import CostTracker
 def register_events(bot, db, privacy_manager, claims_tracker, debate_scorekeeper,
                     llm, cost_tracker, iracing, iracing_team_manager, rag,
                     hot_takes_tracker, fact_checker, wompie_user_id, wompie_username,
-                    tasks_dict):
+                    tasks_dict, search, self_knowledge):
     """
     Register all Discord event handlers with the bot.
 
@@ -34,6 +34,8 @@ def register_events(bot, db, privacy_manager, claims_tracker, debate_scorekeeper
         wompie_user_id: Wompie's Discord user ID (mutable ref)
         wompie_username: Wompie's Discord username
         tasks_dict: Dictionary of background task references from register_tasks()
+        search: Web search engine for fact-checking
+        self_knowledge: Bot documentation system
     """
 
     # Import handle_bot_mention from conversations module
@@ -258,7 +260,8 @@ def register_events(bot, db, privacy_manager, claims_tracker, debate_scorekeeper
         if should_respond:
             # Import here to avoid circular dependency
             from handlers.conversations import handle_bot_mention
-            await handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker)
+            await handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker,
+                                    search=search, self_knowledge=self_knowledge, rag=rag)
 
         # Process commands
         await bot.process_commands(message)

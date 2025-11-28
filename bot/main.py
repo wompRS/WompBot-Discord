@@ -170,7 +170,9 @@ register_events(
     fact_checker=fact_checker,
     wompie_user_id=WOMPIE_USER_ID,
     wompie_username=WOMPIE_USERNAME,
-    tasks_dict=tasks_dict
+    tasks_dict=tasks_dict,
+    search=search,
+    self_knowledge=self_knowledge
 )
 
 # Register prefix commands
