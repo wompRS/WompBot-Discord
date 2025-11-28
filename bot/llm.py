@@ -160,6 +160,7 @@ Be useful and real. That's the balance."""
         username=None,
         max_tokens=None,
         personality='default',
+        tools=None,
     ):
         """Generate response using OpenRouter with automatic retry on empty responses
 
@@ -167,6 +168,7 @@ Be useful and real. That's the balance."""
             max_tokens: Optional override for max tokens (defaults to MAX_TOKENS_PER_REQUEST env var or 1000)
             rag_context: RAG-retrieved context (semantic matches, facts, summaries)
             personality: 'default', 'feyd', or 'bogan' - determines system prompt personality
+            tools: List of tool definitions for function calling (enables LLM to call tools)
         """
         import time
 
@@ -317,6 +319,11 @@ SEARCH RESULTS:
                 "temperature": 0.7,
             }
 
+            # Add tools if provided (for function calling)
+            if tools:
+                payload["tools"] = tools
+                payload["tool_choice"] = "auto"  # Let LLM decide when to use tools
+
             response = requests.post(self.base_url, headers=headers, json=payload, timeout=60)
             try:
                 response.raise_for_status()
@@ -326,7 +333,19 @@ SEARCH RESULTS:
                 raise http_err
 
             result = response.json()
-            response_text = result["choices"][0]["message"]["content"]
+            message = result["choices"][0]["message"]
+            response_text = message.get("content", "")
+
+            # Check if LLM wants to call a tool
+            tool_calls = message.get("tool_calls")
+            if tool_calls:
+                print(f"🛠️  LLM requested {len(tool_calls)} tool call(s)")
+                # Return tool calls for execution
+                return {
+                    "type": "tool_calls",
+                    "tool_calls": tool_calls,
+                    "response_text": response_text  # May be empty if only tool calls
+                }
 
             # Extract token usage for cost tracking
             usage = result.get("usage", {})

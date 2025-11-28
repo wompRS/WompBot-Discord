@@ -12,10 +12,35 @@ import asyncio
 import discord
 from datetime import datetime, timezone
 
+# Tool system imports
+from viz_tools import GeneralVisualizer
+from llm_tools import VISUALIZATION_TOOLS, DataRetriever
+from tool_executor import ToolExecutor
+
 
 # Rate limiting state for mention handling
 MENTION_RATE_STATE = {}
 USER_CONCURRENT_REQUESTS = {}
+
+# Initialize visualization tools (module-level, reused across calls)
+_visualizer = None
+_tool_executor = None
+
+def get_visualizer():
+    """Get or create visualizer instance"""
+    global _visualizer
+    if _visualizer is None:
+        _visualizer = GeneralVisualizer()
+    return _visualizer
+
+def get_tool_executor(db):
+    """Get or create tool executor instance"""
+    global _tool_executor
+    if _tool_executor is None:
+        visualizer = get_visualizer()
+        data_retriever = DataRetriever(db)
+        _tool_executor = ToolExecutor(db, visualizer, data_retriever)
+    return _tool_executor
 
 
 def clean_discord_mentions(content, message):
@@ -410,6 +435,9 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
             # Use bot docs if available, otherwise use search results
             context_for_llm = bot_docs or search_results
 
+            # Get tool executor for visualization
+            tool_executor = get_tool_executor(db)
+
             response = await asyncio.to_thread(
                 llm.generate_response,
                 content,
@@ -423,11 +451,45 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                 str(message.author) if is_text_mention else None,
                 None,  # max_tokens (use default)
                 personality,  # personality setting
+                VISUALIZATION_TOOLS,  # Enable visualization tools
             )
 
+            # Check if LLM wants to use tools
+            if isinstance(response, dict) and response.get("type") == "tool_calls":
+                # Send "creating visualization" message
+                viz_msg = await message.channel.send("📊 Creating visualization...")
+
+                # Execute all tool calls
+                images_to_send = []
+
+                for tool_call in response["tool_calls"]:
+                    result = await tool_executor.execute_tool(
+                        tool_call,
+                        channel_id=message.channel.id
+                    )
+
+                    if result.get("success") and result.get("type") == "image":
+                        images_to_send.append(result["image"])
+
+                # Send images to Discord
+                if images_to_send:
+                    files = []
+                    for i, img_buffer in enumerate(images_to_send):
+                        files.append(discord.File(img_buffer, filename=f"chart_{i}.png"))
+
+                    await message.channel.send(files=files)
+                    await viz_msg.delete()  # Remove "creating" message
+
+                # Get response text from initial tool call response
+                response = response.get("response_text", "Here's your visualization!")
+
             # Check if response is empty
-            if not response or len(response.strip()) == 0:
+            if not response or (isinstance(response, str) and len(response.strip()) == 0):
                 response = "I got nothing. Try asking something else?"
+
+            # Ensure response is a string
+            if isinstance(response, dict):
+                response = response.get("response_text", "Done!")
 
             # Check if LLM says it needs more info (skip if we used bot docs)
             if search and not bot_docs and not search_results and llm.detect_needs_search_from_response(response):
@@ -471,11 +533,40 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                     str(message.author) if is_text_mention else None,
                     None,  # max_tokens (use default)
                     personality,  # personality setting
+                    VISUALIZATION_TOOLS,  # Enable visualization tools on retry
                 )
 
+                # Check for tool calls on retry
+                if isinstance(response, dict) and response.get("type") == "tool_calls":
+                    viz_msg = await message.channel.send("📊 Creating visualization...")
+                    images_to_send = []
+
+                    for tool_call in response["tool_calls"]:
+                        result = await tool_executor.execute_tool(
+                            tool_call,
+                            channel_id=message.channel.id
+                        )
+
+                        if result.get("success") and result.get("type") == "image":
+                            images_to_send.append(result["image"])
+
+                    if images_to_send:
+                        files = []
+                        for i, img_buffer in enumerate(images_to_send):
+                            files.append(discord.File(img_buffer, filename=f"chart_{i}.png"))
+
+                        await message.channel.send(files=files)
+                        await viz_msg.delete()
+
+                    response = response.get("response_text", "Here's your visualization!")
+
             # Final check for empty response
-            if not response or len(response.strip()) == 0:
+            if not response or (isinstance(response, str) and len(response.strip()) == 0):
                 response = "Error: Got an empty response. Try rephrasing?"
+
+            # Ensure response is string before restoring mentions
+            if isinstance(response, dict):
+                response = response.get("response_text", "Done!")
 
             # Restore Discord mentions before sending
             response = restore_discord_mentions(response, message)
