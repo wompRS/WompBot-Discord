@@ -325,13 +325,12 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
 
         # Start typing indicator
         async with message.channel.typing():
-            # Get conversation context - last 10 messages from ALL users in channel
+            # Get conversation context - last 10 messages from ALL users in channel (including bot)
             conversation_history = db.get_recent_messages(
                 message.channel.id,
                 limit=10,  # Last 10 messages total (all users)
-                exclude_opted_out=True,
-                exclude_bot_id=bot.user.id
-                # No user_id filter - get messages from all users
+                exclude_opted_out=True
+                # Include bot messages so it can remember what it said
             )
 
             # Clean Discord mentions from conversation history
