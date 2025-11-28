@@ -102,12 +102,13 @@ Be useful and real. That's the balance."""
         """Determine if web search is needed - only for genuine factual queries"""
         # Only trigger on explicit factual question patterns
         search_triggers = [
-            'what is', 'who is', 'when did', 'when was', 'how many', 'how much',
-            'current price', 'latest news', 'recent data', 'today\'s',
+            'what is', 'what are', 'who is', 'who are', 'when did', 'when was', 'how many', 'how much',
+            'current', 'latest', 'recent', 'today\'s', 'this week', 'this month', 'this year',
+            'current price', 'latest news', 'recent data',
             'price of', 'cost of', 'statistics on', 'data on', 'study on',
-            'fact check', 'is it true that', 'verify that',
+            'fact check', 'is it true that', 'verify that', 'look up', 'search for',
             'who won', 'who is the president', 'who is the ceo',
-            'what happened', 'score of', 'result of',
+            'what happened', 'score of', 'result of', 'standings', 'leaderboard', 'rankings',
             'tell me about', 'talk about', 'explain', 'how good is', 'how great',
             'review of', 'reviews of', 'comparison', 'compare', 'vs',
             'specs on', 'specifications'
@@ -123,9 +124,9 @@ Be useful and real. That's the balance."""
         # Avoid casual conversation like "did you see", "if you think", etc.
         import re
         specific_factual_patterns = [
-            r'\bwho (is|was|won|became|got|became)\s+\w+',  # "who is X", "who won X"
-            r'\bwhat (is|was|happened|caused)\s+(the|a)\s+\w+',  # "what is the X", "what happened"
-            r'\bwhen (did|was|will)\s+\w+\s+(happen|win|die|born)',  # "when did X happen"
+            r'\bwho (is|was|won|became|got|are)\s+\w+',  # "who is X", "who won X", "who are X"
+            r'\bwhat (is|was|are|happened|caused)\s+(the|a)\s+\w+',  # "what is/are the X", "what happened"
+            r'\bwhen (did|was|will|is)\s+\w+\s+(happen|win|die|born|start)',  # "when did X happen"
         ]
         for pattern in specific_factual_patterns:
             if re.search(pattern, message_lower):
