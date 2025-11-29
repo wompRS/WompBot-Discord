@@ -444,8 +444,8 @@ class GeneralVisualizer:
                 fontsize=16, fontweight='300', color='white',
                 va='top', ha='left', alpha=0.85, zorder=10)
 
-        # Giant temperature display - LEFT ALIGNED
-        ax.text(30, 50, f"{int(temp_c)}°",
+        # Giant temperature display - LEFT ALIGNED with UNIT LABEL
+        ax.text(30, 50, f"{int(temp_c)}°C",
                 fontsize=110, fontweight='200', color='white',
                 ha='center', va='center', alpha=1.0, zorder=10,
                 family='sans-serif')
@@ -458,22 +458,22 @@ class GeneralVisualizer:
         # Right side info panel - detailed weather data
         right_x = 70
 
-        # Feels like section
+        # Feels like section with UNIT LABEL
         ax.text(right_x, 70, "FEELS LIKE",
                 fontsize=11, fontweight='300', color='white',
                 ha='center', va='top', alpha=0.7, zorder=10)
-        ax.text(right_x, 63, f"{int(feels_c)}°",
+        ax.text(right_x, 63, f"{int(feels_c)}°C",
                 fontsize=32, fontweight='600', color='white',
                 ha='center', va='top', alpha=1.0, zorder=10)
         ax.text(right_x, 56, f"({int(feels_f)}°F)",
                 fontsize=14, fontweight='300', color='white',
                 ha='center', va='top', alpha=0.85, zorder=10)
 
-        # High/Low on right panel
+        # High/Low on right panel with UNIT LABELS
         ax.text(right_x, 48, "HIGH / LOW",
                 fontsize=11, fontweight='300', color='white',
                 ha='center', va='top', alpha=0.7, zorder=10)
-        ax.text(right_x, 41, f"{int(high_c)}° / {int(low_c)}°",
+        ax.text(right_x, 41, f"{int(high_c)}°C / {int(low_c)}°C",
                 fontsize=24, fontweight='600', color='white',
                 ha='center', va='top', alpha=1.0, zorder=10)
         ax.text(right_x, 35, f"({int(high_f)}°F / {int(low_f)}°F)",
