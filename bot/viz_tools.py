@@ -346,7 +346,7 @@ class GeneralVisualizer:
         clouds: int
     ) -> BytesIO:
         """
-        Create a weather card visualization.
+        Create a modern weather card visualization with gradient background.
 
         Args:
             location: City name
@@ -363,74 +363,123 @@ class GeneralVisualizer:
         Returns:
             BytesIO buffer containing the image
         """
-        fig, ax = plt.subplots(figsize=(10, 6))
+        from matplotlib.patches import FancyBboxPatch, Circle
+        from matplotlib import patheffects
+
+        fig = plt.figure(figsize=(12, 6))
+        ax = fig.add_subplot(111)
+        ax.set_xlim(0, 10)
+        ax.set_ylim(0, 6)
         ax.axis('off')
 
-        # Title
-        title_y = 0.85
-        ax.text(0.5, title_y, f"{location}, {country}",
-                fontsize=24, fontweight='bold', ha='center',
-                color=self.COLORS['text_white'])
+        # Determine weather icon and gradient colors based on conditions
+        desc_lower = description.lower()
+        if 'clear' in desc_lower or 'sunny' in desc_lower:
+            icon = '☀️'
+            gradient_top = '#4facfe'
+            gradient_bottom = '#00f2fe'
+        elif 'cloud' in desc_lower and 'rain' not in desc_lower:
+            icon = '☁️'
+            gradient_top = '#667eea'
+            gradient_bottom = '#764ba2'
+        elif 'rain' in desc_lower or 'drizzle' in desc_lower:
+            icon = '🌧️'
+            gradient_top = '#536976'
+            gradient_bottom = '#292e49'
+        elif 'snow' in desc_lower:
+            icon = '❄️'
+            gradient_top = '#e0e0e0'
+            gradient_bottom = '#b3cde0'
+        elif 'thunder' in desc_lower or 'storm' in desc_lower:
+            icon = '⛈️'
+            gradient_top = '#2c3e50'
+            gradient_bottom = '#4ca1af'
+        else:
+            icon = '🌤️'
+            gradient_top = '#4facfe'
+            gradient_bottom = '#00f2fe'
 
-        ax.text(0.5, title_y - 0.12, description.capitalize(),
-                fontsize=16, ha='center', style='italic',
-                color=self.COLORS['text_gray'])
+        # Create gradient background
+        gradient = np.linspace(0, 1, 256).reshape(256, 1)
+        gradient = np.hstack((gradient, gradient))
 
-        # Main temperature - large and centered
-        temp_y = 0.55
-        ax.text(0.5, temp_y, f"{temp_c}°C",
-                fontsize=72, fontweight='bold', ha='center',
-                color=self.COLORS['accent_blue'])
+        # Create custom colormap for gradient
+        from matplotlib.colors import LinearSegmentedColormap
+        colors_grad = [gradient_bottom, gradient_top]
+        n_bins = 256
+        cmap = LinearSegmentedColormap.from_list('weather_gradient', colors_grad, N=n_bins)
 
-        ax.text(0.5, temp_y - 0.15, f"({temp_f}°F)",
-                fontsize=24, ha='center',
-                color=self.COLORS['text_gray'])
+        ax.imshow(gradient.T, extent=[0, 10, 0, 6], aspect='auto', cmap=cmap, alpha=0.95)
 
-        # Feels like
-        ax.text(0.5, temp_y - 0.24, f"Feels like {feels_c}°C ({feels_f}°F)",
-                fontsize=14, ha='center',
-                color=self.COLORS['text_gray'])
+        # Add rounded rectangle overlay for card effect
+        card = FancyBboxPatch((0.3, 0.3), 9.4, 5.4,
+                              boxstyle="round,pad=0.1",
+                              facecolor='none',
+                              edgecolor='white',
+                              linewidth=2,
+                              alpha=0.3)
+        ax.add_patch(card)
 
-        # Details section - two columns
-        details_y = 0.15
-        left_x = 0.15
-        right_x = 0.65
-        line_height = 0.08
+        # Location at top left
+        location_text = ax.text(0.8, 5.2, f"📍 {location}",
+                fontsize=18, fontweight='bold', color='white', va='top')
+        location_text.set_path_effects([patheffects.withStroke(linewidth=3, foreground='black', alpha=0.3)])
 
-        # Left column
-        ax.text(left_x, details_y, f"📊 High/Low:",
-                fontsize=12, fontweight='bold', color=self.COLORS['text_white'])
-        ax.text(left_x, details_y - line_height,
-                f"    {high_c}°C / {low_c}°C",
-                fontsize=11, color=self.COLORS['text_gray'])
-        ax.text(left_x, details_y - line_height * 1.5,
-                f"    ({high_f}°F / {low_f}°F)",
-                fontsize=10, color=self.COLORS['text_gray'])
+        # Weather icon - large on left side
+        icon_text = ax.text(2, 3, icon,
+                fontsize=120, ha='center', va='center')
 
-        ax.text(left_x, details_y - line_height * 3, f"💧 Humidity:",
-                fontsize=12, fontweight='bold', color=self.COLORS['text_white'])
-        ax.text(left_x, details_y - line_height * 4, f"    {humidity}%",
-                fontsize=11, color=self.COLORS['text_gray'])
+        # Main temperature - large on right side
+        temp_text = ax.text(6.5, 3.8, f"{int(temp_c)}°",
+                fontsize=90, fontweight='bold', color='white', ha='center')
+        temp_text.set_path_effects([patheffects.withStroke(linewidth=4, foreground='black', alpha=0.4)])
 
-        # Right column
-        ax.text(right_x, details_y, f"💨 Wind:",
-                fontsize=12, fontweight='bold', color=self.COLORS['text_white'])
-        ax.text(right_x, details_y - line_height, f"    {wind_ms} m/s",
-                fontsize=11, color=self.COLORS['text_gray'])
-        ax.text(right_x, details_y - line_height * 1.5, f"    ({wind_mph} mph)",
-                fontsize=10, color=self.COLORS['text_gray'])
+        # Temperature in Fahrenheit (smaller)
+        ax.text(6.5, 2.8, f"{int(temp_f)}°F",
+                fontsize=24, color='white', ha='center', alpha=0.9)
 
-        ax.text(right_x, details_y - line_height * 3, f"☁️ Cloud Cover:",
-                fontsize=12, fontweight='bold', color=self.COLORS['text_white'])
-        ax.text(right_x, details_y - line_height * 4, f"    {clouds}%",
-                fontsize=11, color=self.COLORS['text_gray'])
+        # Weather description
+        desc_text = ax.text(6.5, 2.3, description.capitalize(),
+                fontsize=16, color='white', ha='center', style='italic', alpha=0.9)
 
-        plt.tight_layout()
+        # Bottom info bar - semi-transparent background
+        info_bar = FancyBboxPatch((0.5, 0.4), 9, 1.2,
+                                  boxstyle="round,pad=0.05",
+                                  facecolor='black',
+                                  alpha=0.25)
+        ax.add_patch(info_bar)
+
+        # Bottom details in a row
+        detail_y = 1
+
+        # High/Low
+        ax.text(1.5, detail_y, f"↑{int(high_c)}° ↓{int(low_c)}°",
+                fontsize=14, color='white', fontweight='bold', va='center')
+        ax.text(1.5, detail_y - 0.35, f"({int(high_f)}°F / {int(low_f)}°F)",
+                fontsize=10, color='white', alpha=0.8, va='center')
+
+        # Humidity
+        ax.text(4, detail_y, f"💧 {humidity}%",
+                fontsize=14, color='white', fontweight='bold', va='center')
+        ax.text(4, detail_y - 0.35, "Humidity",
+                fontsize=10, color='white', alpha=0.8, va='center')
+
+        # Wind
+        ax.text(6.2, detail_y, f"💨 {wind_mph} mph",
+                fontsize=14, color='white', fontweight='bold', va='center')
+        ax.text(6.2, detail_y - 0.35, f"{wind_ms} m/s",
+                fontsize=10, color='white', alpha=0.8, va='center')
+
+        # Cloud cover
+        ax.text(8.5, detail_y, f"☁️ {clouds}%",
+                fontsize=14, color='white', fontweight='bold', va='center')
+        ax.text(8.5, detail_y - 0.35, "Clouds",
+                fontsize=10, color='white', alpha=0.8, va='center')
 
         # Save to buffer
         buf = BytesIO()
-        plt.savefig(buf, format='png', dpi=150, facecolor=self.COLORS['bg_dark'],
-                   bbox_inches='tight')
+        plt.savefig(buf, format='png', dpi=150, bbox_inches='tight',
+                   facecolor='none', edgecolor='none')
         buf.seek(0)
         plt.close()
 
