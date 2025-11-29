@@ -195,19 +195,28 @@ class ToolExecutor:
     # ========== Computational Tools ==========
 
     async def _wolfram_query(self, args: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute Wolfram Alpha query"""
+        """Execute Wolfram Alpha query with both metric and imperial units"""
         if not self.wolfram:
             return {"success": False, "error": "Wolfram Alpha not configured"}
 
         query = args["query"]
-        units = args.get("units", "metric")
 
-        result = self.wolfram.query(query, units=units)
+        # Query with both metric and imperial units
+        metric_result = self.wolfram.query(query, units="metric")
+        imperial_result = self.wolfram.query(query, units="imperial")
 
-        if result["success"]:
-            return {"success": True, "type": "text", "text": result["answer"], "description": f"Wolfram Alpha: {query}"}
+        # If metric query failed, just return the error
+        if not metric_result["success"]:
+            return {"success": False, "error": metric_result.get("error", "Query failed")}
+
+        # If both succeeded and answers are different, show both
+        if imperial_result["success"] and metric_result["answer"] != imperial_result["answer"]:
+            # Answers differ, likely unit-dependent - show both
+            combined_answer = f"**Metric:** {metric_result['answer']}\n**Imperial:** {imperial_result['answer']}"
+            return {"success": True, "type": "text", "text": combined_answer, "description": f"Wolfram Alpha: {query}"}
         else:
-            return {"success": False, "error": result.get("error", "Query failed")}
+            # Answers are the same or imperial failed - just show metric
+            return {"success": True, "type": "text", "text": metric_result["answer"], "description": f"Wolfram Alpha: {query}"}
 
     async def _get_weather(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Get current weather"""

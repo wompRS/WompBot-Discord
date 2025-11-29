@@ -99,18 +99,45 @@ class Weather:
             if 'snow' in data:
                 weather_info['snow_1h'] = data['snow'].get('1h', 0)
 
-            # Format a nice summary
-            summary = (
-                f"**{weather_info['location']}, {weather_info['country']}**\n"
-                f"{weather_info['description']}\n"
-                f"🌡️ Temperature: {weather_info['temperature']}{temp_unit} "
-                f"(feels like {weather_info['feels_like']}{temp_unit})\n"
-                f"📊 High: {weather_info['temp_max']}{temp_unit} | "
-                f"Low: {weather_info['temp_min']}{temp_unit}\n"
-                f"💧 Humidity: {weather_info['humidity']}%\n"
-                f"💨 Wind: {weather_info['wind_speed']} {speed_unit}\n"
-                f"☁️ Cloud cover: {weather_info['clouds']}%"
-            )
+            # Format a nice summary with both metric and imperial
+            if units == 'metric':
+                # Convert to imperial for dual display
+                temp_f = round(weather_info['temperature'] * 9/5 + 32, 1)
+                feels_f = round(weather_info['feels_like'] * 9/5 + 32, 1)
+                high_f = round(weather_info['temp_max'] * 9/5 + 32, 1)
+                low_f = round(weather_info['temp_min'] * 9/5 + 32, 1)
+                wind_mph = round(weather_info['wind_speed'] * 2.237, 1)
+
+                summary = (
+                    f"**{weather_info['location']}, {weather_info['country']}**\n"
+                    f"{weather_info['description']}\n"
+                    f"🌡️ Temperature: {weather_info['temperature']}°C ({temp_f}°F) "
+                    f"• Feels like {weather_info['feels_like']}°C ({feels_f}°F)\n"
+                    f"📊 High: {weather_info['temp_max']}°C ({high_f}°F) | "
+                    f"Low: {weather_info['temp_min']}°C ({low_f}°F)\n"
+                    f"💧 Humidity: {weather_info['humidity']}%\n"
+                    f"💨 Wind: {weather_info['wind_speed']} m/s ({wind_mph} mph)\n"
+                    f"☁️ Cloud cover: {weather_info['clouds']}%"
+                )
+            else:
+                # Already imperial, convert to metric
+                temp_c = round((weather_info['temperature'] - 32) * 5/9, 1)
+                feels_c = round((weather_info['feels_like'] - 32) * 5/9, 1)
+                high_c = round((weather_info['temp_max'] - 32) * 5/9, 1)
+                low_c = round((weather_info['temp_min'] - 32) * 5/9, 1)
+                wind_ms = round(weather_info['wind_speed'] / 2.237, 1)
+
+                summary = (
+                    f"**{weather_info['location']}, {weather_info['country']}**\n"
+                    f"{weather_info['description']}\n"
+                    f"🌡️ Temperature: {weather_info['temperature']}°F ({temp_c}°C) "
+                    f"• Feels like {weather_info['feels_like']}°F ({feels_c}°C)\n"
+                    f"📊 High: {weather_info['temp_max']}°F ({high_c}°C) | "
+                    f"Low: {weather_info['temp_min']}°F ({low_c}°C)\n"
+                    f"💧 Humidity: {weather_info['humidity']}%\n"
+                    f"💨 Wind: {weather_info['wind_speed']} mph ({wind_ms} m/s)\n"
+                    f"☁️ Cloud cover: {weather_info['clouds']}%"
+                )
 
             if 'rain_1h' in weather_info and weather_info['rain_1h'] > 0:
                 summary += f"\n🌧️ Rain (1h): {weather_info['rain_1h']}mm"
@@ -180,7 +207,7 @@ class Weather:
                     daily_forecasts[date] = []
                 daily_forecasts[date].append(item)
 
-            # Format summary
+            # Format summary with both metric and imperial
             summary = f"**{data['city']['name']}, {data['city']['country']} - {days}-Day Forecast**\n\n"
 
             for date, forecasts in list(daily_forecasts.items())[:days]:
@@ -188,12 +215,25 @@ class Weather:
                 conditions = [f['weather'][0]['description'] for f in forecasts]
                 most_common_condition = max(set(conditions), key=conditions.count)
 
-                summary += (
-                    f"**{date}**\n"
-                    f"{most_common_condition.capitalize()}\n"
-                    f"High: {round(max(temps), 1)}{temp_unit} | "
-                    f"Low: {round(min(temps), 1)}{temp_unit}\n\n"
-                )
+                high = round(max(temps), 1)
+                low = round(min(temps), 1)
+
+                if units == 'metric':
+                    high_f = round(high * 9/5 + 32, 1)
+                    low_f = round(low * 9/5 + 32, 1)
+                    summary += (
+                        f"**{date}**\n"
+                        f"{most_common_condition.capitalize()}\n"
+                        f"High: {high}°C ({high_f}°F) | Low: {low}°C ({low_f}°F)\n\n"
+                    )
+                else:
+                    high_c = round((high - 32) * 5/9, 1)
+                    low_c = round((low - 32) * 5/9, 1)
+                    summary += (
+                        f"**{date}**\n"
+                        f"{most_common_condition.capitalize()}\n"
+                        f"High: {high}°F ({high_c}°C) | Low: {low}°F ({low_c}°C)\n\n"
+                    )
 
             return {
                 'success': True,
