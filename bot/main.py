@@ -24,6 +24,8 @@ from local_llm import LocalLLMClient
 from cost_tracker import CostTracker
 from search import SearchEngine
 from rag import RAGSystem
+from wolfram import WolframAlpha
+from weather import Weather
 from features.claims import ClaimsTracker
 from features.fact_check import FactChecker
 from features.chat_stats import ChatStatistics
@@ -68,6 +70,21 @@ cost_tracker = None  # Will be initialized in on_ready when bot is available
 llm = LLMClient(cost_tracker=None)  # Cost tracker will be set in on_ready
 local_llm = LocalLLMClient()  # Local uncensored LLM (optional)
 search = SearchEngine()
+
+# Initialize Wolfram Alpha and Weather APIs (optional)
+try:
+    wolfram = WolframAlpha()
+    logger.info("✓ Wolfram Alpha initialized")
+except Exception as e:
+    wolfram = None
+    logger.warning(f"Wolfram Alpha not configured: {e}")
+
+try:
+    weather = Weather()
+    logger.info("✓ Weather API initialized")
+except Exception as e:
+    weather = None
+    logger.warning(f"Weather API not configured: {e}")
 rag = RAGSystem(db, llm)  # RAG system for semantic search and intelligent context
 
 # Setup feature modules
@@ -172,7 +189,9 @@ register_events(
     wompie_username=WOMPIE_USERNAME,
     tasks_dict=tasks_dict,
     search=search,
-    self_knowledge=self_knowledge
+    self_knowledge=self_knowledge,
+    wolfram=wolfram,
+    weather=weather
 )
 
 # Register prefix commands
