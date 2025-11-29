@@ -219,7 +219,7 @@ class ToolExecutor:
             return {"success": True, "type": "text", "text": metric_result["answer"], "description": f"Wolfram Alpha: {query}"}
 
     async def _get_weather(self, args: Dict[str, Any]) -> Dict[str, Any]:
-        """Get current weather"""
+        """Get current weather as a visual card"""
         if not self.weather:
             return {"success": False, "error": "Weather API not configured"}
 
@@ -229,7 +229,45 @@ class ToolExecutor:
         result = self.weather.get_current_weather(location, units=units)
 
         if result["success"]:
-            return {"success": True, "type": "text", "text": result["summary"], "description": f"Weather for {location}"}
+            # Extract temperatures and convert for dual unit display
+            temp = result["temperature"]
+            feels = result["feels_like"]
+            high = result["temp_max"]
+            low = result["temp_min"]
+
+            if units == "metric":
+                temp_c, temp_f = temp, round(temp * 9/5 + 32, 1)
+                feels_c, feels_f = feels, round(feels * 9/5 + 32, 1)
+                high_c, high_f = high, round(high * 9/5 + 32, 1)
+                low_c, low_f = low, round(low * 9/5 + 32, 1)
+                wind_ms, wind_mph = result["wind_speed"], round(result["wind_speed"] * 2.237, 1)
+            else:
+                temp_c, temp_f = round((temp - 32) * 5/9, 1), temp
+                feels_c, feels_f = round((feels - 32) * 5/9, 1), feels
+                high_c, high_f = round((high - 32) * 5/9, 1), high
+                low_c, low_f = round((low - 32) * 5/9, 1), low
+                wind_ms, wind_mph = round(result["wind_speed"] / 2.237, 1), result["wind_speed"]
+
+            # Create weather card visualization
+            image_buffer = self.viz.create_weather_card(
+                location=result["location"],
+                country=result["country"],
+                description=result["description"],
+                temp_c=temp_c,
+                temp_f=temp_f,
+                feels_c=feels_c,
+                feels_f=feels_f,
+                high_c=high_c,
+                high_f=high_f,
+                low_c=low_c,
+                low_f=low_f,
+                humidity=result["humidity"],
+                wind_ms=wind_ms,
+                wind_mph=wind_mph,
+                clouds=result["clouds"]
+            )
+
+            return {"success": True, "type": "image", "image": image_buffer, "description": f"Weather for {location}"}
         else:
             return {"success": False, "error": result.get("error", "Weather query failed")}
 

@@ -326,3 +326,112 @@ class GeneralVisualizer:
         plt.close()
 
         return buf
+
+    def create_weather_card(
+        self,
+        location: str,
+        country: str,
+        description: str,
+        temp_c: float,
+        temp_f: float,
+        feels_c: float,
+        feels_f: float,
+        high_c: float,
+        high_f: float,
+        low_c: float,
+        low_f: float,
+        humidity: int,
+        wind_ms: float,
+        wind_mph: float,
+        clouds: int
+    ) -> BytesIO:
+        """
+        Create a weather card visualization.
+
+        Args:
+            location: City name
+            country: Country code
+            description: Weather description
+            temp_c/temp_f: Current temperature in C and F
+            feels_c/feels_f: Feels like temperature in C and F
+            high_c/high_f: High temperature in C and F
+            low_c/low_f: Low temperature in C and F
+            humidity: Humidity percentage
+            wind_ms/wind_mph: Wind speed in m/s and mph
+            clouds: Cloud cover percentage
+
+        Returns:
+            BytesIO buffer containing the image
+        """
+        fig, ax = plt.subplots(figsize=(10, 6))
+        ax.axis('off')
+
+        # Title
+        title_y = 0.85
+        ax.text(0.5, title_y, f"{location}, {country}",
+                fontsize=24, fontweight='bold', ha='center',
+                color=self.COLORS['text_white'])
+
+        ax.text(0.5, title_y - 0.12, description.capitalize(),
+                fontsize=16, ha='center', style='italic',
+                color=self.COLORS['text_gray'])
+
+        # Main temperature - large and centered
+        temp_y = 0.55
+        ax.text(0.5, temp_y, f"{temp_c}°C",
+                fontsize=72, fontweight='bold', ha='center',
+                color=self.COLORS['accent_blue'])
+
+        ax.text(0.5, temp_y - 0.15, f"({temp_f}°F)",
+                fontsize=24, ha='center',
+                color=self.COLORS['text_gray'])
+
+        # Feels like
+        ax.text(0.5, temp_y - 0.24, f"Feels like {feels_c}°C ({feels_f}°F)",
+                fontsize=14, ha='center',
+                color=self.COLORS['text_gray'])
+
+        # Details section - two columns
+        details_y = 0.15
+        left_x = 0.15
+        right_x = 0.65
+        line_height = 0.08
+
+        # Left column
+        ax.text(left_x, details_y, f"📊 High/Low:",
+                fontsize=12, fontweight='bold', color=self.COLORS['text_white'])
+        ax.text(left_x, details_y - line_height,
+                f"    {high_c}°C / {low_c}°C",
+                fontsize=11, color=self.COLORS['text_gray'])
+        ax.text(left_x, details_y - line_height * 1.5,
+                f"    ({high_f}°F / {low_f}°F)",
+                fontsize=10, color=self.COLORS['text_gray'])
+
+        ax.text(left_x, details_y - line_height * 3, f"💧 Humidity:",
+                fontsize=12, fontweight='bold', color=self.COLORS['text_white'])
+        ax.text(left_x, details_y - line_height * 4, f"    {humidity}%",
+                fontsize=11, color=self.COLORS['text_gray'])
+
+        # Right column
+        ax.text(right_x, details_y, f"💨 Wind:",
+                fontsize=12, fontweight='bold', color=self.COLORS['text_white'])
+        ax.text(right_x, details_y - line_height, f"    {wind_ms} m/s",
+                fontsize=11, color=self.COLORS['text_gray'])
+        ax.text(right_x, details_y - line_height * 1.5, f"    ({wind_mph} mph)",
+                fontsize=10, color=self.COLORS['text_gray'])
+
+        ax.text(right_x, details_y - line_height * 3, f"☁️ Cloud Cover:",
+                fontsize=12, fontweight='bold', color=self.COLORS['text_white'])
+        ax.text(right_x, details_y - line_height * 4, f"    {clouds}%",
+                fontsize=11, color=self.COLORS['text_gray'])
+
+        plt.tight_layout()
+
+        # Save to buffer
+        buf = BytesIO()
+        plt.savefig(buf, format='png', dpi=150, facecolor=self.COLORS['bg_dark'],
+                   bbox_inches='tight')
+        buf.seek(0)
+        plt.close()
+
+        return buf
