@@ -167,7 +167,6 @@ async def generate_leaderboard_response(channel, stat_type, days, db, llm):
 
 async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, search=None,
                              self_knowledge=None, rag=None, wolfram=None, weather=None):
-                             self_knowledge=None, rag=None):
     """Handle when bot is mentioned/tagged"""
     try:
         # Check if this is a text mention ("wompbot") vs @mention only
