@@ -461,6 +461,7 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
 
                 # Execute all tool calls
                 images_to_send = []
+                text_responses = []
 
                 for tool_call in response["tool_calls"]:
                     result = await tool_executor.execute_tool(
@@ -468,20 +469,27 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                         channel_id=message.channel.id
                     )
 
-                    if result.get("success") and result.get("type") == "image":
-                        images_to_send.append(result["image"])
+                    if result.get("success"):
+                        if result.get("type") == "image":
+                            images_to_send.append(result["image"])
+                        elif result.get("type") == "text":
+                            text_responses.append(result.get("text", ""))
 
                 # Send images to Discord
                 if images_to_send:
                     files = []
                     for i, img_buffer in enumerate(images_to_send):
                         files.append(discord.File(img_buffer, filename=f"chart_{i}.png"))
-
                     await message.channel.send(files=files)
-                    await viz_msg.delete()  # Remove "creating" message
+
+                # Send text responses
+                if text_responses:
+                    await message.channel.send("\n\n".join(text_responses))
+
+                await viz_msg.delete()  # Remove "creating" message
 
                 # Get response text from initial tool call response
-                response = response.get("response_text", "Here's your visualization!")
+                response = response.get("response_text", "Done!")
 
             # Check if response is empty
             if not response or (isinstance(response, str) and len(response.strip()) == 0):
@@ -540,6 +548,7 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                 if isinstance(response, dict) and response.get("type") == "tool_calls":
                     viz_msg = await message.channel.send("📊 Creating visualization...")
                     images_to_send = []
+                    text_responses = []
 
                     for tool_call in response["tool_calls"]:
                         result = await tool_executor.execute_tool(
@@ -547,18 +556,24 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                             channel_id=message.channel.id
                         )
 
-                        if result.get("success") and result.get("type") == "image":
-                            images_to_send.append(result["image"])
+                        if result.get("success"):
+                            if result.get("type") == "image":
+                                images_to_send.append(result["image"])
+                            elif result.get("type") == "text":
+                                text_responses.append(result.get("text", ""))
 
                     if images_to_send:
                         files = []
                         for i, img_buffer in enumerate(images_to_send):
                             files.append(discord.File(img_buffer, filename=f"chart_{i}.png"))
-
                         await message.channel.send(files=files)
-                        await viz_msg.delete()
 
-                    response = response.get("response_text", "Here's your visualization!")
+                    if text_responses:
+                        await message.channel.send("\n\n".join(text_responses))
+
+                    await viz_msg.delete()
+
+                    response = response.get("response_text", "Done!")
 
             # Final check for empty response
             if not response or (isinstance(response, str) and len(response.strip()) == 0):
