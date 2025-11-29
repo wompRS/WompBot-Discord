@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 
 # Tool system imports
 from viz_tools import GeneralVisualizer
-from llm_tools import VISUALIZATION_TOOLS, DataRetriever
+from llm_tools import VISUALIZATION_TOOLS, ALL_TOOLS, DataRetriever
 from tool_executor import ToolExecutor
 
 
@@ -33,13 +33,13 @@ def get_visualizer():
         _visualizer = GeneralVisualizer()
     return _visualizer
 
-def get_tool_executor(db):
+def get_tool_executor(db, wolfram=None, weather=None):
     """Get or create tool executor instance"""
     global _tool_executor
     if _tool_executor is None:
         visualizer = get_visualizer()
         data_retriever = DataRetriever(db)
-        _tool_executor = ToolExecutor(db, visualizer, data_retriever)
+        _tool_executor = ToolExecutor(db, visualizer, data_retriever, wolfram, weather)
     return _tool_executor
 
 
@@ -166,6 +166,7 @@ async def generate_leaderboard_response(channel, stat_type, days, db, llm):
 
 
 async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, search=None,
+                             self_knowledge=None, rag=None, wolfram=None, weather=None):
                              self_knowledge=None, rag=None):
     """Handle when bot is mentioned/tagged"""
     try:
@@ -436,7 +437,7 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
             context_for_llm = bot_docs or search_results
 
             # Get tool executor for visualization
-            tool_executor = get_tool_executor(db)
+            tool_executor = get_tool_executor(db, wolfram, weather)
 
             response = await asyncio.to_thread(
                 llm.generate_response,
@@ -451,7 +452,7 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                 str(message.author) if is_text_mention else None,
                 None,  # max_tokens (use default)
                 personality,  # personality setting
-                VISUALIZATION_TOOLS,  # Enable visualization tools
+                ALL_TOOLS,  # Enable all tools (visualization + computational)
             )
 
             # Check if LLM wants to use tools
@@ -533,7 +534,7 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                     str(message.author) if is_text_mention else None,
                     None,  # max_tokens (use default)
                     personality,  # personality setting
-                    VISUALIZATION_TOOLS,  # Enable visualization tools on retry
+                    ALL_TOOLS,  # Enable all tools (visualization + computational) on retry
                 )
 
                 # Check for tool calls on retry

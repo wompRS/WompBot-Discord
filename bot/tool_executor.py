@@ -11,16 +11,20 @@ import discord
 class ToolExecutor:
     """Execute tools requested by LLM"""
 
-    def __init__(self, db, visualizer, data_retriever):
+    def __init__(self, db, visualizer, data_retriever, wolfram=None, weather=None):
         """
         Args:
             db: Database instance
             visualizer: GeneralVisualizer instance
             data_retriever: DataRetriever instance
+            wolfram: WolframAlpha instance (optional)
+            weather: Weather instance (optional)
         """
         self.db = db
         self.viz = visualizer
         self.data = data_retriever
+        self.wolfram = wolfram
+        self.weather = weather
 
     async def execute_tool(
         self,
@@ -54,6 +58,14 @@ class ToolExecutor:
                 return await self._create_table(arguments, channel_id)
             elif function_name == "create_comparison_chart":
                 return await self._create_comparison_chart(arguments, channel_id)
+
+            # Computational tools
+            elif function_name == "wolfram_query":
+                return await self._wolfram_query(arguments)
+            elif function_name == "get_weather":
+                return await self._get_weather(arguments)
+            elif function_name == "get_weather_forecast":
+                return await self._get_weather_forecast(arguments)
             else:
                 return {
                     "success": False,
@@ -179,3 +191,51 @@ class ToolExecutor:
             "image": image_buffer,
             "description": f"Created comparison chart: {args['title']}"
         }
+
+    # ========== Computational Tools ==========
+
+    async def _wolfram_query(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute Wolfram Alpha query"""
+        if not self.wolfram:
+            return {"success": False, "error": "Wolfram Alpha not configured"}
+
+        query = args["query"]
+        units = args.get("units", "metric")
+
+        result = self.wolfram.query(query, units=units)
+
+        if result["success"]:
+            return {"success": True, "type": "text", "text": result["answer"], "description": f"Wolfram Alpha: {query}"}
+        else:
+            return {"success": False, "error": result.get("error", "Query failed")}
+
+    async def _get_weather(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        """Get current weather"""
+        if not self.weather:
+            return {"success": False, "error": "Weather API not configured"}
+
+        location = args["location"]
+        units = args.get("units", "metric")
+
+        result = self.weather.get_current_weather(location, units=units)
+
+        if result["success"]:
+            return {"success": True, "type": "text", "text": result["summary"], "description": f"Weather for {location}"}
+        else:
+            return {"success": False, "error": result.get("error", "Weather query failed")}
+
+    async def _get_weather_forecast(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        """Get weather forecast"""
+        if not self.weather:
+            return {"success": False, "error": "Weather API not configured"}
+
+        location = args["location"]
+        days = args.get("days", 3)
+        units = args.get("units", "metric")
+
+        result = self.weather.get_forecast(location, units=units, days=days)
+
+        if result["success"]:
+            return {"success": True, "type": "text", "text": result["summary"], "description": f"{days}-day forecast for {location}"}
+        else:
+            return {"success": False, "error": result.get("error", "Forecast query failed")}

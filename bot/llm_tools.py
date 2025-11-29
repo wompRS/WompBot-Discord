@@ -151,6 +151,89 @@ VISUALIZATION_TOOLS = [
     }
 ]
 
+# Computational and data retrieval tools
+COMPUTATIONAL_TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "wolfram_query",
+            "description": "Query Wolfram Alpha for calculations, unit conversions, factual information, or computational knowledge. Use this for math problems, scientific questions, conversions, or any question requiring computational knowledge.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "The question or calculation to ask Wolfram Alpha (e.g., 'what is 2^100', 'convert 100 USD to EUR', 'population of Tokyo', 'solve x^2 + 5x + 6 = 0')"
+                    },
+                    "units": {
+                        "type": "string",
+                        "description": "Unit system to use: 'metric' or 'imperial'",
+                        "enum": ["metric", "imperial"],
+                        "default": "metric"
+                    }
+                },
+                "required": ["query"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_weather",
+            "description": "Get current weather conditions for a specific location. Use this when users ask about weather, temperature, conditions, etc.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "location": {
+                        "type": "string",
+                        "description": "City name, zip code, or 'city,country' (e.g., 'London', 'New York,US', '90210')"
+                    },
+                    "units": {
+                        "type": "string",
+                        "description": "Temperature units: 'metric' (Celsius), 'imperial' (Fahrenheit), or 'standard' (Kelvin)",
+                        "enum": ["metric", "imperial", "standard"],
+                        "default": "metric"
+                    }
+                },
+                "required": ["location"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_weather_forecast",
+            "description": "Get weather forecast for a specific location. Use this when users ask about future weather or multi-day forecasts.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "location": {
+                        "type": "string",
+                        "description": "City name, zip code, or 'city,country'"
+                    },
+                    "days": {
+                        "type": "integer",
+                        "description": "Number of days to forecast (1-5)",
+                        "minimum": 1,
+                        "maximum": 5,
+                        "default": 3
+                    },
+                    "units": {
+                        "type": "string",
+                        "description": "Temperature units",
+                        "enum": ["metric", "imperial", "standard"],
+                        "default": "metric"
+                    }
+                },
+                "required": ["location"]
+            }
+        }
+    }
+]
+
+# Combined list of all tools
+ALL_TOOLS = VISUALIZATION_TOOLS + COMPUTATIONAL_TOOLS
+
 
 class DataRetriever:
     """Retrieve data from database based on natural language queries"""
