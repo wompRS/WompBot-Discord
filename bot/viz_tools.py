@@ -432,8 +432,9 @@ class GeneralVisualizer:
                                 zorder=3)
         ax.add_patch(overlay)
 
-        # Location at top with clean typography
-        ax.text(15, 85, location.upper(),
+        # Location at top with clean typography - full details
+        location_full = f"{location}, {country}".upper()
+        ax.text(15, 85, location_full,
                 fontsize=22, fontweight='600', color='white',
                 va='top', ha='left', alpha=0.95, zorder=10,
                 family='sans-serif')
@@ -443,65 +444,62 @@ class GeneralVisualizer:
                 fontsize=16, fontweight='300', color='white',
                 va='top', ha='left', alpha=0.85, zorder=10)
 
-        # Giant temperature display - centerpiece
-        ax.text(50, 52, f"{int(temp_c)}°",
+        # Giant temperature display - LEFT ALIGNED
+        ax.text(30, 50, f"{int(temp_c)}°",
                 fontsize=110, fontweight='200', color='white',
                 ha='center', va='center', alpha=1.0, zorder=10,
                 family='sans-serif')
 
-        # Secondary temperature unit
-        ax.text(50, 35, f"{int(temp_f)}°F",
+        # Secondary temperature unit below main temp
+        ax.text(30, 33, f"{int(temp_f)}°F",
                 fontsize=28, fontweight='300', color='white',
                 ha='center', va='center', alpha=0.9, zorder=10)
 
-        # Feels like temperature
-        ax.text(50, 28, f"Feels like {int(feels_c)}° / {int(feels_f)}°F",
+        # Right side info panel - detailed weather data
+        right_x = 70
+
+        # Feels like section
+        ax.text(right_x, 70, "FEELS LIKE",
+                fontsize=11, fontweight='300', color='white',
+                ha='center', va='top', alpha=0.7, zorder=10)
+        ax.text(right_x, 63, f"{int(feels_c)}°",
+                fontsize=32, fontweight='600', color='white',
+                ha='center', va='top', alpha=1.0, zorder=10)
+        ax.text(right_x, 56, f"({int(feels_f)}°F)",
                 fontsize=14, fontweight='300', color='white',
-                ha='center', va='center', alpha=0.75, zorder=10)
+                ha='center', va='top', alpha=0.85, zorder=10)
 
-        # Bottom details section with frosted glass effect
-        detail_card = FancyBboxPatch((10, 8), 80, 14,
-                                    boxstyle="round,pad=0,rounding_size=3",
-                                    facecolor='white',
-                                    edgecolor='none',
-                                    alpha=0.15,
-                                    zorder=8)
-        ax.add_patch(detail_card)
-
-        # Details in clean grid layout
-        detail_y = 15
-
-        # High/Low
-        ax.text(20, detail_y + 3, f"{int(high_c)}° / {int(low_c)}°",
-                fontsize=16, fontweight='600', color='white',
-                va='center', ha='left', alpha=1.0, zorder=10)
-        ax.text(20, detail_y - 1, f"H/L  ({int(high_f)}° / {int(low_f)}°F)",
+        # High/Low on right panel
+        ax.text(right_x, 48, "HIGH / LOW",
                 fontsize=11, fontweight='300', color='white',
-                va='center', ha='left', alpha=0.8, zorder=10)
+                ha='center', va='top', alpha=0.7, zorder=10)
+        ax.text(right_x, 41, f"{int(high_c)}° / {int(low_c)}°",
+                fontsize=24, fontweight='600', color='white',
+                ha='center', va='top', alpha=1.0, zorder=10)
+        ax.text(right_x, 35, f"({int(high_f)}°F / {int(low_f)}°F)",
+                fontsize=13, fontweight='300', color='white',
+                ha='center', va='top', alpha=0.85, zorder=10)
 
-        # Humidity
-        ax.text(42, detail_y + 3, f"{humidity}%",
-                fontsize=16, fontweight='600', color='white',
-                va='center', ha='left', alpha=1.0, zorder=10)
-        ax.text(42, detail_y - 1, "Humidity",
-                fontsize=11, fontweight='300', color='white',
-                va='center', ha='left', alpha=0.8, zorder=10)
+        # Additional details
+        detail_start_y = 29
+        line_spacing = 5
 
-        # Wind
-        ax.text(60, detail_y + 3, f"{wind_mph}",
-                fontsize=16, fontweight='600', color='white',
-                va='center', ha='left', alpha=1.0, zorder=10)
-        ax.text(60, detail_y - 1, f"mph ({wind_ms} m/s)",
-                fontsize=11, fontweight='300', color='white',
-                va='center', ha='left', alpha=0.8, zorder=10)
+        ax.text(right_x, detail_start_y, f"Humidity: {humidity}%",
+                fontsize=13, fontweight='400', color='white',
+                ha='center', va='top', alpha=0.9, zorder=10)
 
-        # Cloud cover
-        ax.text(75, detail_y + 3, f"{clouds}%",
-                fontsize=16, fontweight='600', color='white',
-                va='center', ha='left', alpha=1.0, zorder=10)
-        ax.text(75, detail_y - 1, "Clouds",
+        ax.text(right_x, detail_start_y - line_spacing, f"Wind: {wind_mph} mph",
+                fontsize=13, fontweight='400', color='white',
+                ha='center', va='top', alpha=0.9, zorder=10)
+
+        ax.text(right_x, detail_start_y - line_spacing * 2, f"({wind_ms} m/s)",
                 fontsize=11, fontweight='300', color='white',
-                va='center', ha='left', alpha=0.8, zorder=10)
+                ha='center', va='top', alpha=0.75, zorder=10)
+
+        ax.text(right_x, detail_start_y - line_spacing * 3, f"Clouds: {clouds}%",
+                fontsize=13, fontweight='400', color='white',
+                ha='center', va='top', alpha=0.9, zorder=10)
+
 
         # Save with transparent background
         buf = BytesIO()
