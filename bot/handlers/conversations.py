@@ -505,8 +505,8 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
             if isinstance(response, dict):
                 response = response.get("response_text", "Done!")
 
-            # Check if LLM says it needs more info (skip if we used bot docs)
-            if search and not bot_docs and not search_results and llm.detect_needs_search_from_response(response):
+            # Check if LLM says it needs more info (skip if we used bot docs or response is None)
+            if response is not None and search and not bot_docs and not search_results and llm.detect_needs_search_from_response(response):
                 # Check search rate limits (second attempt)
                 search_hourly_limit = int(os.getenv('SEARCH_HOURLY_LIMIT', '5'))
                 search_daily_limit = int(os.getenv('SEARCH_DAILY_LIMIT', '20'))
