@@ -489,11 +489,9 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                 await viz_msg.delete()  # Remove "creating" message
 
                 # Get response text from initial tool call response
-                # Skip the LLM's response_text if we already sent text from tools
-                if text_responses:
-                    response = None  # Don't send extra message after text tool results
-                elif images_to_send:
-                    response = ""  # Don't send extra message after visualization
+                # Skip the LLM's response_text if we already sent output from tools
+                if text_responses or images_to_send:
+                    response = None  # Don't send extra message after tool results
                 else:
                     response = response.get("response_text", "Done!")
 
@@ -579,11 +577,9 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
 
                     await viz_msg.delete()
 
-                    # Skip the LLM's response_text if we already sent text from tools
-                    if text_responses:
-                        response = None  # Don't send extra message after text tool results
-                    elif images_to_send:
-                        response = ""  # Don't send extra message after visualization
+                    # Skip the LLM's response_text if we already sent output from tools
+                    if text_responses or images_to_send:
+                        response = None  # Don't send extra message after tool results
                     else:
                         response = response.get("response_text", "Done!")
 

@@ -421,13 +421,26 @@ class GeneralVisualizer:
         ax.add_patch(card)
 
         # Location at top left
-        location_text = ax.text(0.8, 5.2, f"📍 {location}",
+        location_text = ax.text(0.8, 5.2, location,
                 fontsize=18, fontweight='bold', color='white', va='top')
         location_text.set_path_effects([patheffects.withStroke(linewidth=3, foreground='black', alpha=0.3)])
 
-        # Weather icon - large on left side
-        icon_text = ax.text(2, 3, icon,
-                fontsize=120, ha='center', va='center')
+        # Weather icon text - large on left side (using text since matplotlib doesn't render emojis well)
+        # Map weather icons to text representations
+        icon_map = {
+            '☀️': 'SUNNY',
+            '☁️': 'CLOUDY',
+            '🌧️': 'RAINY',
+            '❄️': 'SNOWY',
+            '⛈️': 'STORMY',
+            '🌤️': 'PARTLY CLOUDY'
+        }
+        icon_label = icon_map.get(icon, 'WEATHER')
+
+        icon_text = ax.text(2, 3, icon_label,
+                fontsize=36, ha='center', va='center', fontweight='bold',
+                color='white', alpha=0.9)
+        icon_text.set_path_effects([patheffects.withStroke(linewidth=2, foreground='black', alpha=0.3)])
 
         # Main temperature - large on right side
         temp_text = ax.text(6.5, 3.8, f"{int(temp_c)}°",
@@ -453,27 +466,27 @@ class GeneralVisualizer:
         detail_y = 1
 
         # High/Low
-        ax.text(1.5, detail_y, f"↑{int(high_c)}° ↓{int(low_c)}°",
+        ax.text(1.5, detail_y, f"H: {int(high_c)}° L: {int(low_c)}°",
                 fontsize=14, color='white', fontweight='bold', va='center')
         ax.text(1.5, detail_y - 0.35, f"({int(high_f)}°F / {int(low_f)}°F)",
                 fontsize=10, color='white', alpha=0.8, va='center')
 
         # Humidity
-        ax.text(4, detail_y, f"💧 {humidity}%",
+        ax.text(4, detail_y, f"{humidity}%",
                 fontsize=14, color='white', fontweight='bold', va='center')
         ax.text(4, detail_y - 0.35, "Humidity",
                 fontsize=10, color='white', alpha=0.8, va='center')
 
         # Wind
-        ax.text(6.2, detail_y, f"💨 {wind_mph} mph",
+        ax.text(6.2, detail_y, f"{wind_mph} mph",
                 fontsize=14, color='white', fontweight='bold', va='center')
-        ax.text(6.2, detail_y - 0.35, f"{wind_ms} m/s",
+        ax.text(6.2, detail_y - 0.35, f"Wind ({wind_ms} m/s)",
                 fontsize=10, color='white', alpha=0.8, va='center')
 
         # Cloud cover
-        ax.text(8.5, detail_y, f"☁️ {clouds}%",
+        ax.text(8.5, detail_y, f"{clouds}%",
                 fontsize=14, color='white', fontweight='bold', va='center')
-        ax.text(8.5, detail_y - 0.35, "Clouds",
+        ax.text(8.5, detail_y - 0.35, "Cloud Cover",
                 fontsize=10, color='white', alpha=0.8, va='center')
 
         # Save to buffer
