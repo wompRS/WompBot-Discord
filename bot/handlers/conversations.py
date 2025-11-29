@@ -489,10 +489,16 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                 await viz_msg.delete()  # Remove "creating" message
 
                 # Get response text from initial tool call response
-                response = response.get("response_text", "Done!")
+                # Skip the LLM's response_text if we already sent text from tools
+                if text_responses:
+                    response = None  # Don't send extra message after text tool results
+                elif images_to_send:
+                    response = ""  # Don't send extra message after visualization
+                else:
+                    response = response.get("response_text", "Done!")
 
-            # Check if response is empty
-            if not response or (isinstance(response, str) and len(response.strip()) == 0):
+            # Check if response is empty (but allow None for tool-only responses)
+            if response is not None and (not response or (isinstance(response, str) and len(response.strip()) == 0)):
                 response = "I got nothing. Try asking something else?"
 
             # Ensure response is a string
@@ -573,21 +579,29 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
 
                     await viz_msg.delete()
 
-                    response = response.get("response_text", "Done!")
+                    # Skip the LLM's response_text if we already sent text from tools
+                    if text_responses:
+                        response = None  # Don't send extra message after text tool results
+                    elif images_to_send:
+                        response = ""  # Don't send extra message after visualization
+                    else:
+                        response = response.get("response_text", "Done!")
 
-            # Final check for empty response
-            if not response or (isinstance(response, str) and len(response.strip()) == 0):
+            # Final check for empty response (but allow None for tool-only responses)
+            if response is not None and (not response or (isinstance(response, str) and len(response.strip()) == 0)):
                 response = "Error: Got an empty response. Try rephrasing?"
 
             # Ensure response is string before restoring mentions
             if isinstance(response, dict):
                 response = response.get("response_text", "Done!")
 
-            # Restore Discord mentions before sending
-            response = restore_discord_mentions(response, message)
+            # Only send response if it's not None (None means tool already sent output)
+            if response is not None:
+                # Restore Discord mentions before sending
+                response = restore_discord_mentions(response, message)
 
             # Send or edit response
-            if search_msg:
+            if response is not None and search_msg:
                 # Edit the search message with the response
                 if len(response) > 2000:
                     await search_msg.edit(content=response[:2000])
@@ -599,7 +613,7 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                             await message.channel.send(chunk)
                 else:
                     await search_msg.edit(content=response)
-            else:
+            elif response is not None:
                 # No search, just send normally
                 if len(response) > 2000:
                     chunks = [response[i:i+2000] for i in range(0, len(response), 2000)]
@@ -612,7 +626,8 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
             # Record token usage for rate limiting
             # Estimate: ~4 characters per token (common approximation)
             # Include both input (content) and output (response) tokens
-            estimated_tokens = (len(content) + len(response)) // 4
+            response_length = len(response) if response is not None else 0
+            estimated_tokens = (len(content) + response_length) // 4
             db.record_token_usage(message.author.id, str(message.author), estimated_tokens)
 
     except Exception as e:
