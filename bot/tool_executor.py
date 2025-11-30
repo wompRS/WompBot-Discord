@@ -248,11 +248,12 @@ class ToolExecutor:
                 low_c, low_f = round((low - 32) * 5/9, 1), low
                 wind_ms, wind_mph = round(result["wind_speed"] / 2.237, 1), result["wind_speed"]
 
-            # Create weather card visualization
+            # Create weather card visualization with icon
             image_buffer = self.viz.create_weather_card(
                 location=result["location"],
                 country=result["country"],
                 description=result["description"],
+                icon_code=result["icon"],  # OpenWeatherMap icon code
                 temp_c=temp_c,
                 temp_f=temp_f,
                 feels_c=feels_c,

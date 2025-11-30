@@ -79,6 +79,7 @@ class Weather:
                 'pressure': data['main']['pressure'],
                 'description': data['weather'][0]['description'].capitalize(),
                 'conditions': data['weather'][0]['main'],
+                'icon': data['weather'][0]['icon'],  # OpenWeatherMap icon code
                 'wind_speed': round(data['wind']['speed'], 1),
                 'wind_deg': data['wind'].get('deg', 0),
                 'clouds': data['clouds']['all'],
