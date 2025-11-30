@@ -332,6 +332,7 @@ class GeneralVisualizer:
         location: str,
         country: str,
         description: str,
+        icon_code: str,
         temp_c: float,
         temp_f: float,
         feels_c: float,
@@ -346,7 +347,7 @@ class GeneralVisualizer:
         clouds: int
     ) -> BytesIO:
         """
-        Create a professional weather card with modern design.
+        Create a professional weather card with modern design and weather icon.
 
         Args:
             location: City name
@@ -366,6 +367,8 @@ class GeneralVisualizer:
         from matplotlib.patches import FancyBboxPatch, Rectangle, Circle
         from matplotlib import patheffects
         from matplotlib.colors import LinearSegmentedColormap
+        import requests
+        from PIL import Image
 
         # Set better fonts
         plt.rcParams['font.family'] = 'sans-serif'
@@ -405,6 +408,17 @@ class GeneralVisualizer:
             gradient_bottom = '#2F80ED'
             condition = 'Partly Cloudy'
 
+        # Download weather icon from OpenWeatherMap
+        weather_icon = None
+        try:
+            icon_url = f"https://openweathermap.org/img/wn/{icon_code}@4x.png"
+            response = requests.get(icon_url, timeout=5)
+            if response.status_code == 200:
+                weather_icon = Image.open(BytesIO(response.content))
+        except Exception as e:
+            # If icon download fails, continue without it
+            print(f"Failed to download weather icon: {e}")
+
         # Create smooth gradient background with rounded corners
         gradient = np.linspace(0, 1, 512).reshape(512, 1)
         gradient = np.hstack([gradient] * 512)
@@ -443,6 +457,12 @@ class GeneralVisualizer:
         ax.text(15, 78, condition,
                 fontsize=16, fontweight='300', color='white',
                 va='top', ha='left', alpha=0.85, zorder=10)
+
+        # Display weather icon if available
+        if weather_icon:
+            # Position icon on the left side above temperature
+            icon_box = [12, 38, 18, 18]  # [x, y, width, height]
+            ax.imshow(weather_icon, extent=icon_box, aspect='auto', zorder=11, interpolation='bilinear')
 
         # Giant temperature display - LEFT ALIGNED with UNIT LABEL
         ax.text(30, 50, f"{int(temp_c)}°C",
