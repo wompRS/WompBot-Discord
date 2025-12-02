@@ -2120,29 +2120,26 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
         try:
             import asyncio
             import time
-    
-            # Use cached data if less than 5 minutes old
-            current_time = time.time()
-            if _series_autocomplete_cache and _series_cache_time and (current_time - _series_cache_time) < 300:
+
+            # ALWAYS use cache if available to avoid Discord 3-second timeout
+            # Background tasks will keep cache fresh
+            if _series_autocomplete_cache:
                 all_series = _series_autocomplete_cache
                 print(f"✅ Series autocomplete: Using cached data ({len(all_series)} series)")
             else:
-                # Get all series with increased timeout (API can take 10+ seconds)
-                all_series = await asyncio.wait_for(iracing.get_current_series(), timeout=15.0)
-    
-                if not all_series:
-                    print(f"⚠️ Series autocomplete: No series data returned")
-                    # Use old cache if available
-                    if _series_autocomplete_cache:
-                        all_series = _series_autocomplete_cache
-                        print(f"⚠️ Using stale cache as fallback")
+                # Only fetch if no cache exists - with SHORT timeout for Discord
+                try:
+                    all_series = await asyncio.wait_for(iracing.get_current_series(), timeout=2.0)
+                    if all_series:
+                        _series_autocomplete_cache = all_series
+                        _series_cache_time = time.time()
+                        print(f"✅ Series autocomplete: Loaded {len(all_series)} series (cache created)")
                     else:
+                        print(f"⚠️ Series autocomplete: No series data returned")
                         return []
-                else:
-                    # Update cache
-                    _series_autocomplete_cache = all_series
-                    _series_cache_time = current_time
-                    print(f"✅ Series autocomplete: Loaded {len(all_series)} series (cache updated)")
+                except asyncio.TimeoutError:
+                    print(f"⚠️ Series autocomplete: Timeout - no cache available")
+                    return []
     
             # Filter by current input
             current_lower = current.lower()
@@ -2167,29 +2164,7 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
     
             print(f"✅ Series autocomplete: Returning {len(choices)} choices for '{current}'")
             return choices
-    
-        except asyncio.TimeoutError:
-            print(f"⚠️ Series autocomplete: Timeout fetching series data")
-            # Use cached data if available
-            if _series_autocomplete_cache:
-                print(f"⚠️ Using cached data as timeout fallback ({len(_series_autocomplete_cache)} series)")
-                all_series = _series_autocomplete_cache
-    
-                # Filter by current input
-                current_lower = current.lower()
-                if not current_lower:
-                    matches = all_series[:25]
-                else:
-                    matches = [s for s in all_series if current_lower in s.get('series_name', '').lower()]
-    
-                return [
-                    app_commands.Choice(
-                        name=s.get('series_name', 'Unknown')[:100],
-                        value=s.get('series_name', 'Unknown')[:100]
-                    )
-                    for s in matches[:25]
-                ]
-            return []
+
         except Exception as e:
             print(f"❌ Series autocomplete error: {type(e).__name__}: {e}")
             import traceback
