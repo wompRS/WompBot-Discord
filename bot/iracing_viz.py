@@ -1461,7 +1461,7 @@ class iRacingVisualizer:
         return buffer
 
     def create_schedule_table(self, series_name: str, schedule: List[Dict], week_filter: str = "full") -> BytesIO:
-        """
+        """Create a schedule table visualization for a series"""
         import datetime
 
         # Determine which weeks to show
