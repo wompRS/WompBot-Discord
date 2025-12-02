@@ -1327,7 +1327,7 @@ class iRacingVisualizer:
         return buffer
 
     def create_recent_results_table(self, driver_name: str, races: List[Dict]) -> BytesIO:
-        """
+        """Create a recent race results table for a driver"""
         # Count actual rows
         num_races = len(races)
         row_height = 0.8
