@@ -2121,25 +2121,30 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
             import asyncio
             import time
 
-            # ALWAYS use cache if available to avoid Discord 3-second timeout
-            # Background tasks will keep cache fresh
+            # Try to use cache first for performance
             if _series_autocomplete_cache:
                 all_series = _series_autocomplete_cache
                 print(f"✅ Series autocomplete: Using cached data ({len(all_series)} series)")
             else:
-                # Only fetch if no cache exists - with SHORT timeout for Discord
+                # No cache - fetch with timeout close to Discord's 3-second limit
                 try:
-                    all_series = await asyncio.wait_for(iracing.get_current_series(), timeout=2.0)
+                    all_series = await asyncio.wait_for(iracing.get_current_series(), timeout=2.8)
                     if all_series:
                         _series_autocomplete_cache = all_series
                         _series_cache_time = time.time()
                         print(f"✅ Series autocomplete: Loaded {len(all_series)} series (cache created)")
                     else:
                         print(f"⚠️ Series autocomplete: No series data returned")
-                        return []
+                        # Return helpful message instead of empty list
+                        return [app_commands.Choice(name="No series data available - try again in a moment", value="")]
                 except asyncio.TimeoutError:
-                    print(f"⚠️ Series autocomplete: Timeout - no cache available")
-                    return []
+                    print(f"⚠️ Series autocomplete: Timeout - fetching series data")
+                    # Return helpful message instead of empty list
+                    return [app_commands.Choice(name="Loading series data... please try again", value="")]
+                except Exception as e:
+                    print(f"⚠️ Series autocomplete fetch error: {e}")
+                    # Return helpful message instead of empty list
+                    return [app_commands.Choice(name="Error loading series - try again in a moment", value="")]
     
             # Filter by current input
             current_lower = current.lower()
@@ -2371,7 +2376,7 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
             if series_name:
                 # Try to get actual week schedules for the series
                 import asyncio
-                client = await asyncio.wait_for(iracing._get_client(), timeout=2.0)
+                client = await asyncio.wait_for(iracing._get_client(), timeout=2.8)
                 if client:
                     series_seasons = await client.get_series_seasons()
     
@@ -2531,9 +2536,9 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                 # Try to get seasons for the specific series
                 import asyncio
                 try:
-                    client = await asyncio.wait_for(iracing._get_client(), timeout=5.0)
+                    client = await asyncio.wait_for(iracing._get_client(), timeout=2.8)
                     if client:
-                        seasons_data = await asyncio.wait_for(client.get_series_seasons(), timeout=10.0)
+                        seasons_data = await asyncio.wait_for(client.get_series_seasons(), timeout=2.8)
     
                     # Find matching series and extract unique season info
                     seen_seasons = set()
@@ -2644,7 +2649,7 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
             if series_name:
                 # Get tracks used in this series
                 import asyncio
-                client = await asyncio.wait_for(iracing._get_client(), timeout=2.0)
+                client = await asyncio.wait_for(iracing._get_client(), timeout=2.8)
                 if client:
                     series_seasons = await client.get_series_seasons()
     
@@ -2700,11 +2705,16 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
     
                                 return track_choices[:25]
                             break
-    
+
+        except asyncio.TimeoutError:
+            print(f"⚠️ Track autocomplete: Timeout fetching track data")
+            return [app_commands.Choice(name="Loading track data... please try again", value="")]
         except Exception as e:
             print(f"⚠️ Track autocomplete error: {e}")
-    
-        return []
+            return [app_commands.Choice(name="Error loading tracks - try again in a moment", value="")]
+
+        # If no series selected or no tracks found, return helpful message
+        return [app_commands.Choice(name="Select a series first to see available tracks", value="")]
     
     async def category_autocomplete(
         interaction: discord.Interaction,
