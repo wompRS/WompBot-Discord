@@ -459,9 +459,10 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                 # Send "creating visualization" message
                 viz_msg = await message.channel.send("📊 Creating visualization...")
 
-                # Execute all tool calls
+                # Execute all tool calls and collect results
                 images_to_send = []
                 text_responses = []
+                tool_results = []  # For feeding back to LLM
 
                 for tool_call in response["tool_calls"]:
                     result = await tool_executor.execute_tool(
@@ -469,11 +470,19 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                         channel_id=message.channel.id
                     )
 
+                    # Collect tool results for LLM feedback
+                    tool_name = tool_call.get("function", {}).get("name", "unknown")
                     if result.get("success"):
                         if result.get("type") == "image":
                             images_to_send.append(result["image"])
+                            tool_results.append(f"Successfully created {tool_name} visualization")
                         elif result.get("type") == "text":
-                            text_responses.append(result.get("text", ""))
+                            text_response = result.get("text", "")
+                            text_responses.append(text_response)
+                            tool_results.append(f"{tool_name}: {text_response}")
+                    else:
+                        error_msg = result.get("error", "Unknown error")
+                        tool_results.append(f"Error in {tool_name}: {error_msg}")
 
                 # Send images to Discord
                 if images_to_send:
@@ -482,18 +491,44 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                         files.append(discord.File(img_buffer, filename=f"chart_{i}.png"))
                     await message.channel.send(files=files)
 
-                # Send text responses
+                # Send text responses (from tools like Wolfram/Weather)
                 if text_responses:
                     await message.channel.send("\n\n".join(text_responses))
 
                 await viz_msg.delete()  # Remove "creating" message
 
-                # Get response text from initial tool call response
-                # Skip the LLM's response_text if we already sent output from tools
-                if text_responses or images_to_send:
-                    response = None  # Don't send extra message after tool results
+                # If tools produced output AND there's no response_text from LLM,
+                # ask LLM to provide commentary on the tool results
+                initial_response_text = response.get("response_text", "").strip()
+
+                if (images_to_send or text_responses) and not initial_response_text:
+                    # Feed tool results back to LLM for commentary
+                    tool_results_summary = "\n".join(tool_results)
+
+                    # Create a follow-up message to get LLM commentary
+                    follow_up_prompt = f"Tool execution results:\n{tool_results_summary}\n\nProvide brief commentary or explanation for the user."
+
+                    response = await asyncio.to_thread(
+                        llm.generate_response,
+                        follow_up_prompt,
+                        conversation_history,
+                        user_context,
+                        context_for_llm,
+                        rag_context,
+                        0,
+                        bot.user.id,
+                        message.author.id if is_text_mention else None,
+                        str(message.author) if is_text_mention else None,
+                        None,  # max_tokens (use default)
+                        personality,  # personality setting
+                        None,  # No more tools on follow-up
+                    )
+                elif initial_response_text:
+                    # LLM provided commentary along with tool call
+                    response = initial_response_text
                 else:
-                    response = response.get("response_text", "Done!")
+                    # No output from tools, use default
+                    response = None
 
             # Check if response is empty (but allow None for tool-only responses)
             if response is not None and (not response or (isinstance(response, str) and len(response.strip()) == 0)):
@@ -553,6 +588,7 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                     viz_msg = await message.channel.send("📊 Creating visualization...")
                     images_to_send = []
                     text_responses = []
+                    tool_results = []
 
                     for tool_call in response["tool_calls"]:
                         result = await tool_executor.execute_tool(
@@ -560,11 +596,18 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                             channel_id=message.channel.id
                         )
 
+                        tool_name = tool_call.get("function", {}).get("name", "unknown")
                         if result.get("success"):
                             if result.get("type") == "image":
                                 images_to_send.append(result["image"])
+                                tool_results.append(f"Successfully created {tool_name} visualization")
                             elif result.get("type") == "text":
-                                text_responses.append(result.get("text", ""))
+                                text_response = result.get("text", "")
+                                text_responses.append(text_response)
+                                tool_results.append(f"{tool_name}: {text_response}")
+                        else:
+                            error_msg = result.get("error", "Unknown error")
+                            tool_results.append(f"Error in {tool_name}: {error_msg}")
 
                     if images_to_send:
                         files = []
@@ -577,11 +620,32 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
 
                     await viz_msg.delete()
 
-                    # Skip the LLM's response_text if we already sent output from tools
-                    if text_responses or images_to_send:
-                        response = None  # Don't send extra message after tool results
+                    # Get LLM commentary on tool results if needed
+                    initial_response_text = response.get("response_text", "").strip()
+
+                    if (images_to_send or text_responses) and not initial_response_text:
+                        tool_results_summary = "\n".join(tool_results)
+                        follow_up_prompt = f"Tool execution results:\n{tool_results_summary}\n\nProvide brief commentary or explanation for the user."
+
+                        response = await asyncio.to_thread(
+                            llm.generate_response,
+                            follow_up_prompt,
+                            conversation_history,
+                            user_context,
+                            context_for_llm,
+                            rag_context,
+                            0,
+                            bot.user.id,
+                            message.author.id if is_text_mention else None,
+                            str(message.author) if is_text_mention else None,
+                            None,
+                            personality,
+                            None,  # No more tools
+                        )
+                    elif initial_response_text:
+                        response = initial_response_text
                     else:
-                        response = response.get("response_text", "Done!")
+                        response = None
 
             # Final check for empty response (but allow None for tool-only responses)
             if response is not None and (not response or (isinstance(response, str) and len(response.strip()) == 0)):
