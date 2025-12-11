@@ -152,20 +152,93 @@ FACT_CHECK_MODEL=nousresearch/hermes-3-llama-3.1-70b
 **Controls how many recent messages the bot sees:**
 
 ```bash
-# Default: 6 messages
-CONTEXT_WINDOW_MESSAGES=6
+# Default: 50 messages (with compression)
+CONTEXT_WINDOW_MESSAGES=50
 
-# More context (better conversations, higher cost)
-CONTEXT_WINDOW_MESSAGES=10
+# More context (extended conversations with compression)
+CONTEXT_WINDOW_MESSAGES=100
 
-# Less context (cheaper, may miss context)
-CONTEXT_WINDOW_MESSAGES=3
+# Less context (for testing or minimal conversations)
+CONTEXT_WINDOW_MESSAGES=20
 ```
 
-**Trade-off:**
-- More messages = better understanding of conversation
-- More messages = more tokens = higher cost
-- Recommended: 5-10 messages
+**With LLMLingua Compression:**
+- Compression reduces token usage by 50-80% on conversation history
+- Allows 3-4x more messages than without compression
+- Default 50 messages = ~10-15 message equivalent in token cost
+- Older messages compressed, last 3 kept verbatim
+- Activates automatically when 8+ messages in history
+- Recommended: 50-100 messages (with compression enabled)
+
+---
+
+### Conversation Compression (LLMLingua)
+
+**Semantic compression for longer conversations:**
+
+```bash
+# Enable/disable compression
+ENABLE_COMPRESSION=true
+
+# Target compression rate (0.5 = 50% token reduction)
+COMPRESSION_RATE=0.5
+
+# Minimum messages before compression activates
+MIN_MESSAGES_TO_COMPRESS=8
+
+# Compression model (default: llmlingua-2-bert-base-multilingual-cased)
+COMPRESSION_MODEL=microsoft/llmlingua-2-bert-base-multilingual-cased
+```
+
+**How compression works:**
+- Uses LLMLingua to remove less important tokens while preserving meaning
+- Compresses older messages, keeps last 3 verbatim for context freshness
+- 50-80% token reduction on compressed messages
+- Model downloads once (~500MB) then caches locally
+- CPU-only operation (no GPU required)
+- Graceful fallback to uncompressed if model fails
+
+**Benefits:**
+- 3-4x longer conversation history within same token budget
+- Significant cost savings on conversations
+- No visible impact to users
+- Automatic activation (no user action needed)
+
+**Compression rate:**
+```bash
+# Aggressive compression (more savings, may lose nuance)
+COMPRESSION_RATE=0.3  # 70% reduction
+
+# Balanced (default)
+COMPRESSION_RATE=0.5  # 50% reduction
+
+# Conservative (less savings, preserves more detail)
+COMPRESSION_RATE=0.7  # 30% reduction
+```
+
+**Activation threshold:**
+```bash
+# Compress sooner (more savings)
+MIN_MESSAGES_TO_COMPRESS=5
+
+# Default (balanced)
+MIN_MESSAGES_TO_COMPRESS=8
+
+# Compress later (only very long conversations)
+MIN_MESSAGES_TO_COMPRESS=15
+```
+
+**Disabling compression:**
+```bash
+# Disable if having issues or prefer uncompressed
+ENABLE_COMPRESSION=false
+```
+
+**Console output:**
+```
+📦 Compression initialized (enabled: True, rate: 0.5)
+📦 Compressed 12 messages: 450 → 180 tokens (60% savings)
+```
 
 ---
 

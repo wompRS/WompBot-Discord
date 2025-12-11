@@ -9,6 +9,7 @@ A Discord bot powered by OpenRouter LLMs (Claude Sonnet) with intelligent RAG me
   - **General Chat**: Claude 3.7 Sonnet (high quality, accurate, conversational)
   - **Fact-Checking**: Claude 3.5 Sonnet (slow, highly accurate, zero hallucination)
 - **Context-Aware Conversations**: Professional and helpful personality with conversation memory
+- **LLMLingua Compression**: 50-80% token reduction on conversation history using semantic compression, allowing 3-4x longer conversations within API limits
 - **Smart Response Detection**: Only responds when "wompbot" mentioned or @tagged
 - **Discord Mention Support**: Proper @mentions work when bot talks to users (bidirectional conversion)
 - **Web Search Integration**: Automatic Tavily API search when facts are needed
