@@ -455,9 +455,19 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
             )
 
             # Check if LLM wants to use tools
-            if isinstance(response, dict) and response.get("type") == "tool_calls":
-                # Send "creating visualization" message
-                viz_msg = await message.channel.send("📊 Creating visualization...")
+            if isinstance(response, dict) and response.get("type") == "tool_calls"):
+                # Determine what kind of tools are being called
+                tool_names = [tc.get("function", {}).get("name", "") for tc in response["tool_calls"]]
+                has_search = "web_search" in tool_names
+                has_viz = any(name in ["create_bar_chart", "create_line_chart", "create_pie_chart", "create_table", "create_comparison_chart"] for name in tool_names)
+
+                # Show appropriate status message
+                if has_search:
+                    status_msg = await message.channel.send("🔍 Searching for information...")
+                elif has_viz:
+                    status_msg = await message.channel.send("📊 Creating visualization...")
+                else:
+                    status_msg = await message.channel.send("⚙️ Processing...")
 
                 # Execute all tool calls and collect results
                 images_to_send = []
@@ -506,13 +516,14 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                     else:
                         await message.channel.send(combined_text)
 
-                await viz_msg.delete()  # Remove "creating" message
-
                 # If tools were executed AND there's no response_text from LLM,
                 # ask LLM to provide commentary on the tool results
                 initial_response_text = response.get("response_text", "").strip()
 
                 if tool_results and not initial_response_text:
+                    # Update status to show we're analyzing
+                    await status_msg.edit(content="🤔 Analyzing results...")
+
                     # Feed tool results back to LLM for commentary
                     tool_results_summary = "\n".join(tool_results)
 
@@ -534,12 +545,17 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                         personality,  # personality setting
                         None,  # No more tools on follow-up
                     )
+
+                    # Delete status message after synthesis
+                    await status_msg.delete()
                 elif initial_response_text:
                     # LLM provided commentary along with tool call
                     response = initial_response_text
+                    await status_msg.delete()
                 else:
                     # No output from tools, use default
                     response = None
+                    await status_msg.delete()
 
             # Check if response is empty (but allow None for tool-only responses)
             if response is not None and (not response or (isinstance(response, str) and len(response.strip()) == 0)):
@@ -595,8 +611,20 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                 )
 
                 # Check for tool calls on retry
-                if isinstance(response, dict) and response.get("type") == "tool_calls":
-                    viz_msg = await message.channel.send("📊 Creating visualization...")
+                if isinstance(response, dict) and response.get("type") == "tool_calls"):
+                    # Determine what kind of tools are being called
+                    tool_names = [tc.get("function", {}).get("name", "") for tc in response["tool_calls"]]
+                    has_search = "web_search" in tool_names
+                    has_viz = any(name in ["create_bar_chart", "create_line_chart", "create_pie_chart", "create_table", "create_comparison_chart"] for name in tool_names)
+
+                    # Show appropriate status message
+                    if has_search:
+                        status_msg = await message.channel.send("🔍 Searching for information...")
+                    elif has_viz:
+                        status_msg = await message.channel.send("📊 Creating visualization...")
+                    else:
+                        status_msg = await message.channel.send("⚙️ Processing...")
+
                     images_to_send = []
                     text_responses = []
                     tool_results = []
@@ -640,12 +668,13 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                         else:
                             await message.channel.send(combined_text)
 
-                    await viz_msg.delete()
-
                     # Get LLM commentary on tool results if needed
                     initial_response_text = response.get("response_text", "").strip()
 
                     if tool_results and not initial_response_text:
+                        # Update status to show we're analyzing
+                        await status_msg.edit(content="🤔 Analyzing results...")
+
                         tool_results_summary = "\n".join(tool_results)
                         follow_up_prompt = f"The user asked: {content}\n\nTool execution results:\n{tool_results_summary}\n\nBased on the tool results above, provide a clear, concise answer to the user's question."
 
@@ -664,10 +693,15 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                             personality,
                             None,  # No more tools
                         )
+
+                        # Delete status message after synthesis
+                        await status_msg.delete()
                     elif initial_response_text:
                         response = initial_response_text
+                        await status_msg.delete()
                     else:
                         response = None
+                        await status_msg.delete()
 
             # Final check for empty response (but allow None for tool-only responses)
             if response is not None and (not response or (isinstance(response, str) and len(response.strip()) == 0)):
