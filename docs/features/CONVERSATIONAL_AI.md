@@ -111,7 +111,9 @@ You are NOT:
 When triggered, bot gathers:
 
 **A. Conversation History**
-- Last 6 messages from channel (configurable)
+- Last 50 messages from channel (configurable, with compression)
+- LLMLingua compression reduces token usage by 50-80%
+- Older messages compressed, last 3 kept verbatim
 - Excludes bot's own messages
 - Excludes opted-out users
 - Skips redacted rows with no content so sanitized messages never reach the LLM
@@ -167,20 +169,35 @@ When triggered, bot gathers:
 **File:** `.env`
 
 ```bash
-CONTEXT_WINDOW_MESSAGES=6
+# Default: 50 messages (with LLMLingua compression)
+CONTEXT_WINDOW_MESSAGES=50
 ```
 
-**Larger window:**
+**With LLMLingua Compression (Enabled by Default):**
+- Compresses conversation history by 50-80% tokens
+- Allows 3-4x more messages than without compression
+- Older messages compressed, last 3 kept verbatim
+- Activates automatically when 8+ messages in history
+- Model downloads once (~500MB) then caches locally
+
+**Configuration:**
 ```bash
-CONTEXT_WINDOW_MESSAGES=10  # More context, more tokens
+# Extended conversations
+CONTEXT_WINDOW_MESSAGES=100  # More context with compression
+
+# Minimal context
+CONTEXT_WINDOW_MESSAGES=20   # Shorter conversations
+
+# Compression settings
+ENABLE_COMPRESSION=true
+COMPRESSION_RATE=0.5  # 50% token reduction
+MIN_MESSAGES_TO_COMPRESS=8
 ```
 
-**Smaller window:**
-```bash
-CONTEXT_WINDOW_MESSAGES=3   # Less context, cheaper
-```
-
-**Trade-off:** More context = better understanding but higher cost
+**Benefits:**
+- 50 compressed messages ≈ 10-15 uncompressed in token cost
+- Longer conversation memory without proportional cost increase
+- Graceful fallback to uncompressed if model fails
 
 ---
 

@@ -251,7 +251,7 @@ Be useful and real. That's the balance."""
                 messages[0]["content"] += rag_note
 
             # Add conversation history with optional compression
-            history_window = int(os.getenv('CONTEXT_WINDOW_MESSAGES', '20'))  # Increased from 6 due to compression
+            history_window = int(os.getenv('CONTEXT_WINDOW_MESSAGES', '50'))  # Increased from 6 due to compression
             recent_messages = conversation_history[-history_window:]
 
             if self.compressor.is_enabled() and len(recent_messages) >= 8:
