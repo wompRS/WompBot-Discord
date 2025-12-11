@@ -1,5 +1,6 @@
 import os
 import requests
+from compression import ConversationCompressor
 
 class LLMClient:
     def __init__(self, cost_tracker=None):
@@ -7,6 +8,9 @@ class LLMClient:
         self.base_url = "https://openrouter.ai/api/v1/chat/completions"
         self.model = os.getenv('MODEL_NAME', 'cognitivecomputations/dolphin-2.9.2-qwen-110b')
         self.cost_tracker = cost_tracker
+
+        # Initialize conversation compressor for token reduction
+        self.compressor = ConversationCompressor()
 
         # Load system prompts from files (cache all personalities)
         self.system_prompt_default = self._load_system_prompt('default')
@@ -246,23 +250,35 @@ Be useful and real. That's the balance."""
 
                 messages[0]["content"] += rag_note
 
-            # Increased conversation history window for better context
-            history_window = int(os.getenv('CONTEXT_WINDOW_MESSAGES', '6'))
-            for msg in conversation_history[-history_window:]:
-                if not msg.get("content"):
-                    continue
+            # Add conversation history with optional compression
+            history_window = int(os.getenv('CONTEXT_WINDOW_MESSAGES', '20'))  # Increased from 6 due to compression
+            recent_messages = conversation_history[-history_window:]
 
-                role = "user"
-                msg_user_id = msg.get("user_id")
-                if bot_user_id is not None and msg_user_id == bot_user_id:
-                    role = "assistant"
+            if self.compressor.is_enabled() and len(recent_messages) >= 8:
+                # Use compression for longer conversations
+                compressed_history = self.compressor.compress_history(
+                    recent_messages,
+                    keep_recent=3  # Keep last 3 messages verbatim
+                )
+                # Add as a single user message block
+                messages.append({"role": "user", "content": f"[Conversation History]:\n{compressed_history}"})
+            else:
+                # Fallback to standard message-by-message format for short conversations
+                for msg in recent_messages:
+                    if not msg.get("content"):
+                        continue
 
-                if role == "assistant":
-                    content = msg["content"]
-                else:
-                    display_name = msg.get("username", "User")
-                    content = f"{display_name}: {msg['content']}"
-                messages.append({"role": role, "content": content})
+                    role = "user"
+                    msg_user_id = msg.get("user_id")
+                    if bot_user_id is not None and msg_user_id == bot_user_id:
+                        role = "assistant"
+
+                    if role == "assistant":
+                        content = msg["content"]
+                    else:
+                        display_name = msg.get("username", "User")
+                        content = f"{display_name}: {msg['content']}"
+                    messages.append({"role": role, "content": content})
 
             # Add search results to user message with conversational framing
             if search_results:

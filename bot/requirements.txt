@@ -17,3 +17,4 @@ cryptography==46.0.3  # SECURITY: Critical update from 42.0.8 for OpenSSL bindin
 Pillow==11.0.0  # SECURITY: Updated from 10.3.0, staying on 11.x for compatibility (12.x may have breaking changes)
 matplotlib==3.9.0  # Visualization library for charts and tables
 seaborn==0.13.2  # Statistical visualizations built on matplotlib
+llmlingua==0.2.2  # Prompt compression for reducing context token usage
