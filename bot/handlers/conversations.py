@@ -491,9 +491,17 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                         files.append(discord.File(img_buffer, filename=f"chart_{i}.png"))
                     await message.channel.send(files=files)
 
-                # Send text responses (from tools like Wolfram/Weather)
+                # Send text responses (from tools like Wolfram/Weather/Search)
                 if text_responses:
-                    await message.channel.send("\n\n".join(text_responses))
+                    combined_text = "\n\n".join(text_responses)
+                    # Chunk if longer than Discord's 2000 char limit
+                    if len(combined_text) > 2000:
+                        chunks = [combined_text[i:i+2000] for i in range(0, len(combined_text), 2000)]
+                        for chunk in chunks:
+                            if chunk.strip():
+                                await message.channel.send(chunk)
+                    else:
+                        await message.channel.send(combined_text)
 
                 await viz_msg.delete()  # Remove "creating" message
 
@@ -616,7 +624,15 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                         await message.channel.send(files=files)
 
                     if text_responses:
-                        await message.channel.send("\n\n".join(text_responses))
+                        combined_text = "\n\n".join(text_responses)
+                        # Chunk if longer than Discord's 2000 char limit
+                        if len(combined_text) > 2000:
+                            chunks = [combined_text[i:i+2000] for i in range(0, len(combined_text), 2000)]
+                            for chunk in chunks:
+                                if chunk.strip():
+                                    await message.channel.send(chunk)
+                        else:
+                            await message.channel.send(combined_text)
 
                     await viz_msg.delete()
 
