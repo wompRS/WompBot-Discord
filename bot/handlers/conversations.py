@@ -33,13 +33,13 @@ def get_visualizer():
         _visualizer = GeneralVisualizer()
     return _visualizer
 
-def get_tool_executor(db, wolfram=None, weather=None):
+def get_tool_executor(db, wolfram=None, weather=None, search=None):
     """Get or create tool executor instance"""
     global _tool_executor
     if _tool_executor is None:
         visualizer = get_visualizer()
         data_retriever = DataRetriever(db)
-        _tool_executor = ToolExecutor(db, visualizer, data_retriever, wolfram, weather)
+        _tool_executor = ToolExecutor(db, visualizer, data_retriever, wolfram, weather, search)
     return _tool_executor
 
 
@@ -435,8 +435,8 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
             # Use bot docs if available, otherwise use search results
             context_for_llm = bot_docs or search_results
 
-            # Get tool executor for visualization
-            tool_executor = get_tool_executor(db, wolfram, weather)
+            # Get tool executor for visualization and search
+            tool_executor = get_tool_executor(db, wolfram, weather, search)
 
             response = await asyncio.to_thread(
                 llm.generate_response,

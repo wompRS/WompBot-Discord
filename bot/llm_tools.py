@@ -228,6 +228,23 @@ COMPUTATIONAL_TOOLS = [
                 "required": ["location"]
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "web_search",
+            "description": "Search the web for current information, news, facts, or any information not in your knowledge base. Use this when you need up-to-date information about current events, recent data, sports results, or anything you're not certain about.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "The search query (e.g., 'closest F1 championship margins history', 'latest news about...', 'current standings for...')"
+                    }
+                },
+                "required": ["query"]
+            }
+        }
     }
 ]
 
