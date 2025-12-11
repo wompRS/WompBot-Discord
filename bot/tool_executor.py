@@ -11,7 +11,7 @@ import discord
 class ToolExecutor:
     """Execute tools requested by LLM"""
 
-    def __init__(self, db, visualizer, data_retriever, wolfram=None, weather=None):
+    def __init__(self, db, visualizer, data_retriever, wolfram=None, weather=None, search=None):
         """
         Args:
             db: Database instance
@@ -19,12 +19,14 @@ class ToolExecutor:
             data_retriever: DataRetriever instance
             wolfram: WolframAlpha instance (optional)
             weather: Weather instance (optional)
+            search: SearchClient instance (optional)
         """
         self.db = db
         self.viz = visualizer
         self.data = data_retriever
         self.wolfram = wolfram
         self.weather = weather
+        self.search = search
 
     async def execute_tool(
         self,
@@ -66,6 +68,8 @@ class ToolExecutor:
                 return await self._get_weather(arguments)
             elif function_name == "get_weather_forecast":
                 return await self._get_weather_forecast(arguments)
+            elif function_name == "web_search":
+                return await self._web_search(arguments)
             else:
                 return {
                     "success": False,
@@ -287,3 +291,31 @@ class ToolExecutor:
             return {"success": True, "type": "text", "text": result["summary"], "description": f"{days}-day forecast for {location}"}
         else:
             return {"success": False, "error": result.get("error", "Forecast query failed")}
+
+    async def _web_search(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        """Perform web search and return formatted results"""
+        import asyncio
+
+        if not self.search:
+            return {"success": False, "error": "Web search not configured"}
+
+        query = args["query"]
+
+        try:
+            # Run search in thread pool (search.search() is blocking)
+            search_results_raw = await asyncio.to_thread(self.search.search, query)
+
+            if not search_results_raw:
+                return {"success": False, "error": "No search results found"}
+
+            # Format results for display
+            search_results = self.search.format_results_for_llm(search_results_raw)
+
+            return {
+                "success": True,
+                "type": "text",
+                "text": search_results,
+                "description": f"Web search: {query}"
+            }
+        except Exception as e:
+            return {"success": False, "error": f"Search failed: {str(e)}"}
