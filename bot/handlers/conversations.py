@@ -520,7 +520,10 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                 # ask LLM to provide commentary on the tool results
                 initial_response_text = response.get("response_text", "").strip()
 
-                if tool_results and not initial_response_text:
+                # Check if web_search was used - always synthesize search results
+                has_search_results = any("web_search:" in tr for tr in tool_results)
+
+                if tool_results and (not initial_response_text or has_search_results):
                     # Update status to show we're analyzing
                     await status_msg.edit(content="🤔 Analyzing results...")
 
@@ -549,7 +552,7 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                     # Delete status message after synthesis
                     await status_msg.delete()
                 elif initial_response_text:
-                    # LLM provided commentary along with tool call
+                    # LLM provided commentary along with tool call (non-search tools only)
                     response = initial_response_text
                     await status_msg.delete()
                 else:
@@ -671,7 +674,10 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                     # Get LLM commentary on tool results if needed
                     initial_response_text = response.get("response_text", "").strip()
 
-                    if tool_results and not initial_response_text:
+                    # Check if web_search was used - always synthesize search results
+                    has_search_results = any("web_search:" in tr for tr in tool_results)
+
+                    if tool_results and (not initial_response_text or has_search_results):
                         # Update status to show we're analyzing
                         await status_msg.edit(content="🤔 Analyzing results...")
 
