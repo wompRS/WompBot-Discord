@@ -478,7 +478,10 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                             tool_results.append(f"Successfully created {tool_name} visualization")
                         elif result.get("type") == "text":
                             text_response = result.get("text", "")
-                            text_responses.append(text_response)
+                            # web_search results should only go to LLM for synthesis, not directly to user
+                            if tool_name != "web_search":
+                                text_responses.append(text_response)
+                            # Always include full results for LLM to analyze
                             tool_results.append(f"{tool_name}: {text_response}")
                     else:
                         error_msg = result.get("error", "Unknown error")
@@ -505,16 +508,16 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
 
                 await viz_msg.delete()  # Remove "creating" message
 
-                # If tools produced output AND there's no response_text from LLM,
+                # If tools were executed AND there's no response_text from LLM,
                 # ask LLM to provide commentary on the tool results
                 initial_response_text = response.get("response_text", "").strip()
 
-                if (images_to_send or text_responses) and not initial_response_text:
+                if tool_results and not initial_response_text:
                     # Feed tool results back to LLM for commentary
                     tool_results_summary = "\n".join(tool_results)
 
-                    # Create a follow-up message to get LLM commentary
-                    follow_up_prompt = f"Tool execution results:\n{tool_results_summary}\n\nProvide brief commentary or explanation for the user."
+                    # Create a follow-up message to get LLM to synthesize the results
+                    follow_up_prompt = f"The user asked: {content}\n\nTool execution results:\n{tool_results_summary}\n\nBased on the tool results above, provide a clear, concise answer to the user's question."
 
                     response = await asyncio.to_thread(
                         llm.generate_response,
@@ -611,7 +614,10 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                                 tool_results.append(f"Successfully created {tool_name} visualization")
                             elif result.get("type") == "text":
                                 text_response = result.get("text", "")
-                                text_responses.append(text_response)
+                                # web_search results should only go to LLM for synthesis, not directly to user
+                                if tool_name != "web_search":
+                                    text_responses.append(text_response)
+                                # Always include full results for LLM to analyze
                                 tool_results.append(f"{tool_name}: {text_response}")
                         else:
                             error_msg = result.get("error", "Unknown error")
@@ -639,9 +645,9 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                     # Get LLM commentary on tool results if needed
                     initial_response_text = response.get("response_text", "").strip()
 
-                    if (images_to_send or text_responses) and not initial_response_text:
+                    if tool_results and not initial_response_text:
                         tool_results_summary = "\n".join(tool_results)
-                        follow_up_prompt = f"Tool execution results:\n{tool_results_summary}\n\nProvide brief commentary or explanation for the user."
+                        follow_up_prompt = f"The user asked: {content}\n\nTool execution results:\n{tool_results_summary}\n\nBased on the tool results above, provide a clear, concise answer to the user's question."
 
                         response = await asyncio.to_thread(
                             llm.generate_response,
