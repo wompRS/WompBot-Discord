@@ -222,6 +222,23 @@ docker-compose logs -f bot
 docker-compose down
 ```
 
+### 6. Auto-Start on Boot (Optional)
+
+To automatically start the bot when Windows boots:
+
+```powershell
+# Run PowerShell as Administrator
+cd E:\discord-bot
+.\setup-autostart.ps1
+```
+
+This creates a Windows scheduled task that:
+- Starts WSL Debian on system boot
+- Launches Docker daemon
+- Starts bot containers automatically
+
+**See:** [AUTOSTART_QUICKSTART.md](AUTOSTART_QUICKSTART.md) for quick setup or [AUTOSTART_SETUP.md](AUTOSTART_SETUP.md) for detailed configuration.
+
 ## Commands
 
 ### Conversation

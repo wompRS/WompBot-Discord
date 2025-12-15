@@ -354,7 +354,8 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
             conversation_history = db.get_recent_messages(
                 message.channel.id,
                 limit=10,  # Last 10 messages total (all users)
-                exclude_opted_out=True
+                exclude_opted_out=True,
+                guild_id=message.guild.id if message.guild else None
                 # Include bot messages so it can remember what it said
             )
 
@@ -375,7 +376,8 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                     limit=3,  # Just need last few messages
                     exclude_opted_out=True,
                     exclude_bot_id=None,  # Don't exclude bot messages
-                    user_id=message.author.id
+                    user_id=message.author.id,
+                    guild_id=message.guild.id if message.guild else None
                 )
                 bot_docs = self_knowledge.format_for_llm(content, full_conversation_history, bot.user.id)
                 if bot_docs:
@@ -477,7 +479,8 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                 for tool_call in response["tool_calls"]:
                     result = await tool_executor.execute_tool(
                         tool_call,
-                        channel_id=message.channel.id
+                        channel_id=message.channel.id,
+                        user_id=message.author.id
                     )
 
                     # Collect tool results for LLM feedback
@@ -486,6 +489,7 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                         if result.get("type") == "image":
                             images_to_send.append(result["image"])
                             tool_results.append(f"Successfully created {tool_name} visualization")
+                            print(f"✅ Tool {tool_name} created image")
                         elif result.get("type") == "text":
                             text_response = result.get("text", "")
                             # web_search results should only go to LLM for synthesis, not directly to user
@@ -493,28 +497,37 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                                 text_responses.append(text_response)
                             # Always include full results for LLM to analyze
                             tool_results.append(f"{tool_name}: {text_response}")
+                            print(f"✅ Tool {tool_name} returned text: {text_response[:100]}...")
                     else:
                         error_msg = result.get("error", "Unknown error")
                         tool_results.append(f"Error in {tool_name}: {error_msg}")
+                        # Show errors to user immediately
+                        text_responses.append(f"❌ {error_msg}")
+                        print(f"❌ Tool {tool_name} failed: {error_msg}")
 
                 # Send images to Discord
                 if images_to_send:
+                    print(f"📤 Sending {len(images_to_send)} image(s) to user")
                     files = []
                     for i, img_buffer in enumerate(images_to_send):
                         files.append(discord.File(img_buffer, filename=f"chart_{i}.png"))
                     await message.channel.send(files=files)
+                    print(f"✅ Images sent successfully")
 
                 # Send text responses (from tools like Wolfram/Weather/Search)
                 if text_responses:
                     combined_text = "\n\n".join(text_responses)
+                    print(f"📤 Sending text response ({len(combined_text)} chars)")
                     # Chunk if longer than Discord's 2000 char limit
                     if len(combined_text) > 2000:
                         chunks = [combined_text[i:i+2000] for i in range(0, len(combined_text), 2000)]
                         for chunk in chunks:
                             if chunk.strip():
                                 await message.channel.send(chunk)
+                        print(f"✅ Sent {len(chunks)} text chunks")
                     else:
                         await message.channel.send(combined_text)
+                        print(f"✅ Text response sent")
 
                 # If tools were executed AND there's no response_text from LLM,
                 # ask LLM to provide commentary on the tool results
@@ -523,7 +536,22 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                 # Check if web_search was used - always synthesize search results
                 has_search_results = any("web_search:" in tr for tr in tool_results)
 
-                if tool_results and (not initial_response_text or has_search_results):
+                # Check if only visualization/self-explanatory tools were used
+                # These tools don't need LLM commentary (the image/output speaks for itself)
+                visualization_tools = ["get_weather", "get_weather_forecast", "create_bar_chart",
+                                      "create_line_chart", "create_pie_chart", "create_table",
+                                      "create_comparison_chart", "wolfram_query"]
+                only_viz_tools = all(any(vt in tn for vt in visualization_tools) for tn in tool_names)
+
+                # Only synthesize if:
+                # 1. Web search was used (always needs synthesis), OR
+                # 2. Non-visualization tools were used AND no initial response
+                needs_synthesis = has_search_results or (not only_viz_tools and not initial_response_text)
+
+                print(f"🤔 Synthesis decision: viz_tools={only_viz_tools}, has_search={has_search_results}, needs_synthesis={needs_synthesis}")
+
+                if tool_results and needs_synthesis:
+                    print(f"🧠 Synthesizing {len(tool_results)} tool results...")
                     # Update status to show we're analyzing
                     await status_msg.edit(content="🤔 Analyzing results...")
 
@@ -551,12 +579,16 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
 
                     # Delete status message after synthesis
                     await status_msg.delete()
-                elif initial_response_text:
-                    # LLM provided commentary along with tool call (non-search tools only)
+                    print(f"✅ Synthesis complete")
+                elif initial_response_text and not only_viz_tools:
+                    # LLM provided commentary along with tool call
+                    # But skip for visualization tools (weather, charts, etc.) - the output speaks for itself
+                    print(f"💬 Using initial LLM response (non-viz tools)")
                     response = initial_response_text
                     await status_msg.delete()
                 else:
-                    # No output from tools, use default
+                    # No output from tools, or visualization tools completed
+                    print(f"✅ Visualization tools complete, skipping synthesis")
                     response = None
                     await status_msg.delete()
 
@@ -635,7 +667,8 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                     for tool_call in response["tool_calls"]:
                         result = await tool_executor.execute_tool(
                             tool_call,
-                            channel_id=message.channel.id
+                            channel_id=message.channel.id,
+                            user_id=message.author.id
                         )
 
                         tool_name = tool_call.get("function", {}).get("name", "unknown")
@@ -643,6 +676,7 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                             if result.get("type") == "image":
                                 images_to_send.append(result["image"])
                                 tool_results.append(f"Successfully created {tool_name} visualization")
+                                print(f"✅ Tool {tool_name} created image")
                             elif result.get("type") == "text":
                                 text_response = result.get("text", "")
                                 # web_search results should only go to LLM for synthesis, not directly to user
@@ -650,26 +684,35 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                                     text_responses.append(text_response)
                                 # Always include full results for LLM to analyze
                                 tool_results.append(f"{tool_name}: {text_response}")
+                                print(f"✅ Tool {tool_name} returned text: {text_response[:100]}...")
                         else:
                             error_msg = result.get("error", "Unknown error")
                             tool_results.append(f"Error in {tool_name}: {error_msg}")
+                            # Show errors to user immediately
+                            text_responses.append(f"❌ {error_msg}")
+                            print(f"❌ Tool {tool_name} failed: {error_msg}")
 
                     if images_to_send:
+                        print(f"📤 Sending {len(images_to_send)} image(s) to user")
                         files = []
                         for i, img_buffer in enumerate(images_to_send):
                             files.append(discord.File(img_buffer, filename=f"chart_{i}.png"))
                         await message.channel.send(files=files)
+                        print(f"✅ Images sent successfully")
 
                     if text_responses:
                         combined_text = "\n\n".join(text_responses)
+                        print(f"📤 Sending text response ({len(combined_text)} chars)")
                         # Chunk if longer than Discord's 2000 char limit
                         if len(combined_text) > 2000:
                             chunks = [combined_text[i:i+2000] for i in range(0, len(combined_text), 2000)]
                             for chunk in chunks:
                                 if chunk.strip():
                                     await message.channel.send(chunk)
+                            print(f"✅ Sent {len(chunks)} text chunks")
                         else:
                             await message.channel.send(combined_text)
+                            print(f"✅ Text response sent")
 
                     # Get LLM commentary on tool results if needed
                     initial_response_text = response.get("response_text", "").strip()
@@ -721,9 +764,11 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
             if response is not None:
                 # Restore Discord mentions before sending
                 response = restore_discord_mentions(response, message)
+                print(f"📝 Final response prepared ({len(response)} chars)")
 
             # Send or edit response
             if response is not None and search_msg:
+                print(f"📤 Editing search message with final response")
                 # Edit the search message with the response
                 if len(response) > 2000:
                     await search_msg.edit(content=response[:2000])
@@ -733,17 +778,24 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                     for chunk in chunks:
                         if chunk.strip():
                             await message.channel.send(chunk)
+                    print(f"✅ Search message edited, sent {len(chunks)} additional chunks")
                 else:
                     await search_msg.edit(content=response)
+                    print(f"✅ Search message edited")
             elif response is not None:
+                print(f"📤 Sending final response as new message")
                 # No search, just send normally
                 if len(response) > 2000:
                     chunks = [response[i:i+2000] for i in range(0, len(response), 2000)]
                     for chunk in chunks:
                         if chunk.strip():
                             await message.channel.send(chunk)
+                    print(f"✅ Sent response in {len(chunks)} chunks")
                 else:
                     await message.channel.send(response)
+                    print(f"✅ Response sent")
+            else:
+                print(f"ℹ️ No final response to send (tools already sent output)")
 
             # Record token usage for rate limiting
             # Estimate: ~4 characters per token (common approximation)

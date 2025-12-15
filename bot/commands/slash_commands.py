@@ -9,7 +9,7 @@ import asyncio
 import discord
 from discord import app_commands
 from datetime import datetime, timedelta, timezone
-from typing import Optional, Dict
+from typing import Optional, Dict, Literal
 from collections import Counter
 
 # Module-level cache for series autocomplete
@@ -4231,7 +4231,84 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
             return
         
         await generate_leaderboard_response(ctx.channel, stat_type, days)
-    
+
+    # Weather preference commands
+    @bot.tree.command(name="weather_set", description="Set your default weather location")
+    @app_commands.describe(
+        location="City name or 'City, Country' (e.g., 'Tokyo' or 'London, UK')",
+        units="Temperature units (metric=Celsius, imperial=Fahrenheit)"
+    )
+    async def weather_set(
+        ctx: discord.Interaction,
+        location: str,
+        units: Literal['metric', 'imperial'] = 'metric'
+    ):
+        """
+        Set your default weather location for quick weather checks.
+
+        After setting, just say "wompbot, weather" to get your saved location's weather!
+
+        Examples:
+        /weather_set location:Tokyo units:metric
+        /weather_set location:New York, US units:imperial
+        /weather_set location:London, UK
+        """
+        user_id = ctx.user.id
+
+        success = db.set_weather_preference(user_id, location, units)
+
+        if success:
+            unit_name = "Celsius (°C)" if units == 'metric' else "Fahrenheit (°F)"
+            await ctx.response.send_message(
+                f"✅ Default weather location set to **{location}** with **{unit_name}**!\n\n"
+                f"Now you can say `wompbot, weather` to get weather for {location}.",
+                ephemeral=True
+            )
+        else:
+            await ctx.response.send_message(
+                "❌ Failed to save weather preference. Please try again.",
+                ephemeral=True
+            )
+
+    @bot.tree.command(name="weather_clear", description="Clear your saved weather location")
+    async def weather_clear(ctx: discord.Interaction):
+        """Remove your saved default weather location"""
+        user_id = ctx.user.id
+
+        success = db.delete_weather_preference(user_id)
+
+        if success:
+            await ctx.response.send_message(
+                "✅ Weather preference cleared!",
+                ephemeral=True
+            )
+        else:
+            await ctx.response.send_message(
+                "ℹ️ You don't have a saved weather location.",
+                ephemeral=True
+            )
+
+    @bot.tree.command(name="weather_info", description="View your saved weather location")
+    async def weather_info(ctx: discord.Interaction):
+        """View your current default weather location setting"""
+        user_id = ctx.user.id
+
+        pref = db.get_weather_preference(user_id)
+
+        if pref:
+            unit_name = "Celsius (°C)" if pref['units'] == 'metric' else "Fahrenheit (°F)"
+            await ctx.response.send_message(
+                f"📍 Your default weather location: **{pref['location']}**\n"
+                f"🌡️ Units: **{unit_name}**\n\n"
+                f"Say `wompbot, weather` to get weather for this location!",
+                ephemeral=True
+            )
+        else:
+            await ctx.response.send_message(
+                "ℹ️ You haven't set a default weather location yet.\n\n"
+                "Use `/weather_set` to set one!",
+                ephemeral=True
+            )
 
 
     print("✅ Slash commands registered")

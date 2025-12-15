@@ -331,20 +331,23 @@ class GeneralVisualizer:
         self,
         location: str,
         country: str,
-        description: str,
-        icon_code: str,
-        temp_c: float,
-        temp_f: float,
-        feels_c: float,
-        feels_f: float,
-        high_c: float,
-        high_f: float,
-        low_c: float,
-        low_f: float,
-        humidity: int,
-        wind_ms: float,
-        wind_mph: float,
-        clouds: int
+        latitude: float = None,
+        longitude: float = None,
+        station_id: int = None,
+        description: str = "",
+        icon_code: str = "",
+        temp_c: float = 0,
+        temp_f: float = 0,
+        feels_c: float = 0,
+        feels_f: float = 0,
+        high_c: float = 0,
+        high_f: float = 0,
+        low_c: float = 0,
+        low_f: float = 0,
+        humidity: int = 0,
+        wind_ms: float = 0,
+        wind_mph: float = 0,
+        clouds: int = 0
     ) -> BytesIO:
         """
         Create a professional weather card with modern design and weather icon.
@@ -433,9 +436,10 @@ class GeneralVisualizer:
                                    zorder=1)
         ax.add_patch(main_card)
 
-        # Gradient overlay on card
-        ax.imshow(gradient.T, extent=[5, 95, 5, 95], aspect='auto',
+        # Gradient overlay on card - clipped to rounded corners
+        gradient_img = ax.imshow(gradient.T, extent=[5, 95, 5, 95], aspect='auto',
                  cmap=cmap, alpha=1.0, zorder=2, interpolation='bicubic')
+        gradient_img.set_clip_path(main_card)
 
         # Subtle white overlay for depth
         overlay = FancyBboxPatch((5, 5), 90, 90,
@@ -520,6 +524,23 @@ class GeneralVisualizer:
                 fontsize=13, fontweight='400', color='white',
                 ha='center', va='top', alpha=0.9, zorder=10)
 
+        # Location details footer at bottom
+        if latitude is not None and longitude is not None:
+            footer_y = 12
+
+            # Coordinate text
+            coord_text = f"Coordinates: {latitude}°, {longitude}°"
+            ax.text(50, footer_y, coord_text,
+                    fontsize=10, fontweight='300', color='white',
+                    ha='center', va='center', alpha=0.7, zorder=10,
+                    family='monospace')
+
+            # Station ID if available
+            if station_id:
+                ax.text(50, footer_y - 3.5, f"Station ID: {station_id}",
+                        fontsize=9, fontweight='300', color='white',
+                        ha='center', va='center', alpha=0.6, zorder=10,
+                        family='monospace')
 
         # Save with transparent background
         buf = BytesIO()
