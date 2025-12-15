@@ -180,13 +180,13 @@ COMPUTATIONAL_TOOLS = [
         "type": "function",
         "function": {
             "name": "get_weather",
-            "description": "Get current weather conditions for a specific location. Use this when users ask about weather, temperature, conditions, etc.",
+            "description": "Get current weather conditions. If user specifies a location, use it. If user just says 'weather' without a location, omit the location parameter to use their saved preference.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "location": {
                         "type": "string",
-                        "description": "City name, zip code, or 'city,country' (e.g., 'London', 'New York,US', '90210')"
+                        "description": "City name, zip code, or 'city,country' (e.g., 'London', 'New York,US', '90210'). OPTIONAL - omit if user doesn't specify a location to use their saved preference."
                     },
                     "units": {
                         "type": "string",
@@ -195,7 +195,7 @@ COMPUTATIONAL_TOOLS = [
                         "default": "metric"
                     }
                 },
-                "required": ["location"]
+                "required": []
             }
         }
     },
@@ -203,13 +203,13 @@ COMPUTATIONAL_TOOLS = [
         "type": "function",
         "function": {
             "name": "get_weather_forecast",
-            "description": "Get weather forecast for a specific location. Use this when users ask about future weather or multi-day forecasts.",
+            "description": "Get weather forecast. If user specifies a location, use it. If not, omit the location parameter to use their saved preference.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "location": {
                         "type": "string",
-                        "description": "City name, zip code, or 'city,country'"
+                        "description": "City name, zip code, or 'city,country'. OPTIONAL - omit if user doesn't specify a location to use their saved preference."
                     },
                     "days": {
                         "type": "integer",
@@ -225,7 +225,7 @@ COMPUTATIONAL_TOOLS = [
                         "default": "metric"
                     }
                 },
-                "required": ["location"]
+                "required": []
             }
         }
     },

@@ -71,6 +71,10 @@ class Weather:
                 'success': True,
                 'location': data['name'],
                 'country': data['sys']['country'],
+                'latitude': round(data['coord']['lat'], 4),
+                'longitude': round(data['coord']['lon'], 4),
+                'timezone': data.get('timezone', 0),  # Timezone offset in seconds
+                'station_id': data.get('id'),  # Weather station ID
                 'temperature': round(data['main']['temp'], 1),
                 'feels_like': round(data['main']['feels_like'], 1),
                 'temp_min': round(data['main']['temp_min'], 1),

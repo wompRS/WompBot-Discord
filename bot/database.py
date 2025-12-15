@@ -115,6 +115,7 @@ class Database:
         try:
             profile_username = str(message.author) if not opted_out else "[redacted]"
             timestamp = message.created_at
+            guild_id = message.guild.id if message.guild else None
 
             with self.get_connection() as conn:
                 with conn.cursor() as cur:
@@ -122,8 +123,8 @@ class Database:
 
                     if not opted_out:
                         cur.execute("""
-                            INSERT INTO messages (message_id, user_id, username, channel_id, channel_name, content, timestamp, opted_out)
-                            VALUES (%s, %s, %s, %s, %s, %s, %s, FALSE)
+                            INSERT INTO messages (message_id, user_id, username, channel_id, channel_name, content, timestamp, opted_out, guild_id)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, FALSE, %s)
                             ON CONFLICT (message_id) DO NOTHING
                             RETURNING message_id
                         """, (
@@ -133,7 +134,8 @@ class Database:
                             message.channel.id,
                             message.channel.name,
                             message.content,
-                            timestamp
+                            timestamp,
+                            guild_id
                         ))
                         fetch = cur.fetchone()
                         stored_id = fetch[0] if fetch else None
@@ -169,7 +171,7 @@ class Database:
         except Exception as e:
             print(f"⚠️ Error storing message: {e}")
     
-    def get_recent_messages(self, channel_id, limit=10, exclude_opted_out=True, exclude_bot_id=None, user_id=None):
+    def get_recent_messages(self, channel_id, limit=10, exclude_opted_out=True, exclude_bot_id=None, user_id=None, guild_id=None):
         """Get recent messages from a channel for context
 
         Args:
@@ -178,6 +180,7 @@ class Database:
             exclude_opted_out: Exclude users who opted out
             exclude_bot_id: Exclude messages from this bot user ID
             user_id: If provided, only get messages from this user (and bot responses to them)
+            guild_id: Guild/server ID for data isolation (optional but recommended)
         """
         try:
             with self.get_connection() as conn:
@@ -190,6 +193,11 @@ class Database:
                         WHERE m.channel_id = %s
                     """
                     params = [channel_id]
+
+                    # Add guild_id filter for data isolation
+                    if guild_id is not None:
+                        query += " AND m.guild_id = %s"
+                        params.append(guild_id)
 
                     # Filter to specific user's conversation (their messages + bot responses)
                     if user_id is not None:
@@ -1191,6 +1199,65 @@ class Database:
         except Exception as e:
             print(f"Error setting server personality: {e}")
             return False
+
+    def get_weather_preference(self, user_id: int):
+        """Get user's saved weather location preference"""
+        conn = self.pool.getconn()
+        try:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute(
+                    "SELECT location, units FROM weather_preferences WHERE user_id = %s",
+                    (user_id,)
+                )
+                return cur.fetchone()
+        except Exception as e:
+            print(f"Error getting weather preference: {e}")
+            return None
+        finally:
+            self.pool.putconn(conn)
+
+    def set_weather_preference(self, user_id: int, location: str, units: str = 'metric'):
+        """Set user's default weather location"""
+        conn = self.pool.getconn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO weather_preferences (user_id, location, units)
+                    VALUES (%s, %s, %s)
+                    ON CONFLICT (user_id)
+                    DO UPDATE SET location = EXCLUDED.location,
+                                  units = EXCLUDED.units,
+                                  updated_at = CURRENT_TIMESTAMP
+                    """,
+                    (user_id, location, units)
+                )
+                conn.commit()
+                return True
+        except Exception as e:
+            print(f"Error setting weather preference: {e}")
+            conn.rollback()
+            return False
+        finally:
+            self.pool.putconn(conn)
+
+    def delete_weather_preference(self, user_id: int):
+        """Remove user's weather location preference"""
+        conn = self.pool.getconn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "DELETE FROM weather_preferences WHERE user_id = %s",
+                    (user_id,)
+                )
+                conn.commit()
+                return cur.rowcount > 0
+        except Exception as e:
+            print(f"Error deleting weather preference: {e}")
+            conn.rollback()
+            return False
+        finally:
+            self.pool.putconn(conn)
 
     def close(self):
         """Close database connection pool"""

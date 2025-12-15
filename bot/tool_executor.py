@@ -31,7 +31,8 @@ class ToolExecutor:
     async def execute_tool(
         self,
         tool_call: Dict[str, Any],
-        channel_id: Optional[int] = None
+        channel_id: Optional[int] = None,
+        user_id: Optional[int] = None
     ) -> Dict[str, Any]:
         """
         Execute a single tool call
@@ -39,15 +40,24 @@ class ToolExecutor:
         Args:
             tool_call: Tool call from LLM
             channel_id: Discord channel ID for context
+            user_id: Discord user ID for user-specific preferences
 
         Returns:
             Dictionary with execution result
         """
-        function_name = tool_call["function"]["name"]
-        arguments = json.loads(tool_call["function"]["arguments"])
+        try:
+            function_name = tool_call["function"]["name"]
+            arguments_str = tool_call["function"].get("arguments", "{}")
+            arguments = json.loads(arguments_str) if arguments_str else {}
 
-        print(f"🛠️  Executing tool: {function_name}")
-        print(f"   Arguments: {arguments}")
+            print(f"🛠️  Executing tool: {function_name}")
+            print(f"   Arguments: {arguments}")
+
+        except (KeyError, json.JSONDecodeError) as e:
+            return {
+                "success": False,
+                "error": "Invalid tool call format. Please try your request again."
+            }
 
         try:
             if function_name == "create_bar_chart":
@@ -65,9 +75,9 @@ class ToolExecutor:
             elif function_name == "wolfram_query":
                 return await self._wolfram_query(arguments)
             elif function_name == "get_weather":
-                return await self._get_weather(arguments)
+                return await self._get_weather(arguments, user_id)
             elif function_name == "get_weather_forecast":
-                return await self._get_weather_forecast(arguments)
+                return await self._get_weather_forecast(arguments, user_id)
             elif function_name == "web_search":
                 return await self._web_search(arguments)
             else:
@@ -222,13 +232,31 @@ class ToolExecutor:
             # Answers are the same or imperial failed - just show metric
             return {"success": True, "type": "text", "text": metric_result["answer"], "description": f"Wolfram Alpha: {query}"}
 
-    async def _get_weather(self, args: Dict[str, Any]) -> Dict[str, Any]:
+    async def _get_weather(self, args: Dict[str, Any], user_id: Optional[int] = None) -> Dict[str, Any]:
         """Get current weather as a visual card"""
         if not self.weather:
             return {"success": False, "error": "Weather API not configured"}
 
-        location = args["location"]
+        # Check if location was provided, otherwise use saved preference
+        location = args.get("location")
         units = args.get("units", "metric")
+
+        if not location and user_id:
+            # Try to get saved preference
+            pref = self.db.get_weather_preference(user_id)
+            if pref:
+                location = pref['location']
+                units = pref['units']  # Use saved unit preference
+            else:
+                return {
+                    "success": False,
+                    "error": "No location provided. Please specify a location (e.g., 'weather in Tokyo') or set a default location using `/weather_set`."
+                }
+        elif not location:
+            return {
+                "success": False,
+                "error": "No location provided. Please specify a location (e.g., 'weather in Tokyo')."
+            }
 
         result = self.weather.get_current_weather(location, units=units)
 
@@ -256,6 +284,9 @@ class ToolExecutor:
             image_buffer = self.viz.create_weather_card(
                 location=result["location"],
                 country=result["country"],
+                latitude=result.get("latitude"),
+                longitude=result.get("longitude"),
+                station_id=result.get("station_id"),
                 description=result["description"],
                 icon_code=result["icon"],  # OpenWeatherMap icon code
                 temp_c=temp_c,
@@ -276,14 +307,32 @@ class ToolExecutor:
         else:
             return {"success": False, "error": result.get("error", "Weather query failed")}
 
-    async def _get_weather_forecast(self, args: Dict[str, Any]) -> Dict[str, Any]:
+    async def _get_weather_forecast(self, args: Dict[str, Any], user_id: Optional[int] = None) -> Dict[str, Any]:
         """Get weather forecast"""
         if not self.weather:
             return {"success": False, "error": "Weather API not configured"}
 
-        location = args["location"]
+        # Check if location was provided, otherwise use saved preference
+        location = args.get("location")
         days = args.get("days", 3)
         units = args.get("units", "metric")
+
+        if not location and user_id:
+            # Try to get saved preference
+            pref = self.db.get_weather_preference(user_id)
+            if pref:
+                location = pref['location']
+                units = pref['units']  # Use saved unit preference
+            else:
+                return {
+                    "success": False,
+                    "error": "No location provided. Please specify a location (e.g., 'weather in Tokyo') or set a default location using `/weather_set`."
+                }
+        elif not location:
+            return {
+                "success": False,
+                "error": "No location provided. Please specify a location (e.g., 'weather in Tokyo')."
+            }
 
         result = self.weather.get_forecast(location, units=units, days=days)
 
