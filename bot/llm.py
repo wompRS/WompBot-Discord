@@ -25,15 +25,13 @@ class LLMClient:
         Load system prompt from file or use default
 
         Args:
-            personality: 'default', 'feyd', or 'bogan'
+            personality: 'default' or 'bogan'
 
         Returns:
             System prompt text
         """
         # Determine which file to load
-        if personality == 'feyd':
-            prompt_file = 'system_prompt_feyd.txt'
-        elif personality == 'bogan':
+        if personality == 'bogan':
             prompt_file = 'system_prompt_bogan.txt'
         else:
             prompt_file = 'system_prompt.txt'
@@ -171,15 +169,13 @@ Be useful and real. That's the balance."""
         Args:
             max_tokens: Optional override for max tokens (defaults to MAX_TOKENS_PER_REQUEST env var or 1000)
             rag_context: RAG-retrieved context (semantic matches, facts, summaries)
-            personality: 'default', 'feyd', or 'bogan' - determines system prompt personality
+            personality: 'default' or 'bogan' - determines system prompt personality
             tools: List of tool definitions for function calling (enables LLM to call tools)
         """
         import time
 
         # Select appropriate system prompt based on personality
-        if personality == 'feyd':
-            system_prompt = self.system_prompt_feyd
-        elif personality == 'bogan':
+        if personality == 'bogan':
             system_prompt = self.system_prompt_bogan
         else:
             system_prompt = self.system_prompt_default
