@@ -309,7 +309,7 @@ docker-compose down
 
 ### Utility
 - **/whoami**: Show your Discord user information (ID and username)
-- **/personality <mode>**: Change bot personality (default/feyd/bogan) - Wompie only
+- **/personality <mode>**: Change bot personality (default/bogan) - Wompie only
 
 ### iRacing Integration
 - **/iracing_link <iracing_name>**: Link your Discord account to your iRacing account
@@ -594,14 +594,6 @@ WompBot has multiple personality modes available via `/personality <mode>`:
 - Helpful, professional assistant
 - Clear and informative responses
 - Balanced tone for general use
-
-**Feyd-Rautha (Optional):**
-- Cunning, calculating, and sharp-tongued
-- Dismissive of weakness and logical fallacies
-- Eloquent but menacing speech style
-- Enjoys intellectual dominance and verbal sparring
-- No customer service energy - direct and brutal
-- Occasional Dune references (spice, Houses, desert power)
 
 **Bogan (Optional):**
 - Australian slang and casual language

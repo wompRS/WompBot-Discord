@@ -1150,7 +1150,7 @@ class Database:
             server_id: Discord server ID
 
         Returns:
-            'default' or 'feyd' (defaults to 'default' if not set)
+            'default' or 'bogan' (defaults to 'default' if not set)
         """
         try:
             with self.get_connection() as conn:
@@ -1176,7 +1176,7 @@ class Database:
 
         Args:
             server_id: Discord server ID
-            personality: 'default' or 'feyd'
+            personality: 'default' or 'bogan'
             user_id: ID of user who changed the setting
 
         Returns:
