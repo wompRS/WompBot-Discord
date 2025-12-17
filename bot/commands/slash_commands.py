@@ -194,11 +194,10 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
     
     @bot.tree.command(name="personality", description="Change bot personality mode (Wompie only)")
     @app_commands.describe(
-        mode="Personality mode: default, feyd (Feyd-Rautha), or bogan (Aussie)"
+        mode="Personality mode: default or bogan (Aussie)"
     )
     @app_commands.choices(mode=[
         app_commands.Choice(name="Default (Professional)", value="default"),
-        app_commands.Choice(name="Feyd-Rautha (Ruthless)", value="feyd"),
         app_commands.Choice(name="Australian Bogan", value="bogan")
     ])
     async def personality_slash(interaction: discord.Interaction, mode: app_commands.Choice[str]):
@@ -220,18 +219,7 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
             success = db.set_server_personality(server_id, personality_value, interaction.user.id)
     
             if success:
-                if personality_value == 'feyd':
-                    await interaction.response.send_message(
-                        "⚔️ **Personality changed to Feyd-Rautha Harkonnen**\n\n"
-                        "The bot will now respond with:\n"
-                        "• Cunning, calculating intelligence\n"
-                        "• Sharp-tongued and intellectually ruthless\n"
-                        "• Eloquent but menacing speech\n"
-                        "• Dismissive of weakness and logical fallacies\n"
-                        "• Verbal dominance in every exchange\n\n"
-                        "*\"How delightfully naive...\"*"
-                    )
-                elif personality_value == 'bogan':
+                if personality_value == 'bogan':
                     await interaction.response.send_message(
                         "🍺 **Personality changed to Australian Bogan**\n\n"
                         "The bot will now respond with:\n"
