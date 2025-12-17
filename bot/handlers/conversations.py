@@ -172,13 +172,17 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
         # Check if this is a text mention ("wompbot") vs @mention only
         # Cost logging will only appear for text mentions to reduce log noise
         message_lower = message.content.lower()
-        is_text_mention = 'wompbot' in message_lower or 'womp bot' in message_lower
+        is_text_mention = 'wompbot' in message_lower or 'womp bot' in message_lower or message_lower.startswith('!wb')
 
         # Remove bot mention and "wompbot" from message
         content = message.content.replace(f'<@{bot.user.id}>', '').strip()
         content = content.replace(f'<@!{bot.user.id}>', '').strip()  # Also handle nickname mentions
         content = content.replace('wompbot', '').replace('womp bot', '').strip()
         content = content.replace('WompBot', '').replace('Wompbot', '').strip()
+
+        # Remove !wb shorthand from the beginning (case insensitive)
+        if content.lower().startswith('!wb'):
+            content = content[3:].strip()  # Remove first 3 characters (!wb) and strip whitespace
 
         # Convert Discord mentions to readable usernames
         content = clean_discord_mentions(content, message)

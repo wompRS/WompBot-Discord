@@ -247,7 +247,7 @@ docker-compose down
 ## Commands
 
 ### Conversation
-- **@WompBot** or **"wompbot"**: Chat with the bot (powered by Claude 3.7 Sonnet)
+- **@WompBot**, **"wompbot"**, or **"!wb"**: Chat with the bot (powered by Claude 3.7 Sonnet)
 - **!ping**: Check bot latency
 - **!wompbot help** or **/help**: Show all available commands
 
