@@ -9,10 +9,12 @@ A Discord bot powered by OpenRouter LLMs (Claude Sonnet) with intelligent RAG me
   - **General Chat**: Claude 3.7 Sonnet (high quality, accurate, conversational)
   - **Fact-Checking**: Claude 3.5 Sonnet (slow, highly accurate, zero hallucination)
 - **Context-Aware Conversations**: Professional and helpful personality with conversation memory
+- **LLM Tool Use System**: Function calling for creating visualizations, fetching data, and querying knowledge bases
 - **LLMLingua Compression**: 50-80% token reduction on conversation history using semantic compression, allowing 3-4x longer conversations within API limits
 - **Smart Response Detection**: Only responds when "wompbot" mentioned or @tagged
 - **Discord Mention Support**: Proper @mentions work when bot talks to users (bidirectional conversion)
 - **Web Search Integration**: Automatic Tavily API search when facts are needed
+- **Guild Data Isolation**: Complete data separation between Discord servers (18 tables with guild_id filtering)
 - **Automated Backups**: Daily, weekly, and monthly database backups with configurable retention
 - **Centralized Logging**: Structured logging system with file rotation and error tracking
 - **Comprehensive Rate Limiting**: Multi-layer abuse prevention with cost tracking
@@ -23,7 +25,7 @@ A Discord bot powered by OpenRouter LLMs (Claude Sonnet) with intelligent RAG me
   - Input sanitization (2000 char max)
   - Context token limits (4000 token hard cap)
   - Cost tracking with $1 spending alerts via DM
-- **Message Storage**: PostgreSQL database tracks all conversations
+- **Message Storage**: PostgreSQL database tracks all conversations with server isolation
 - **Small Talk Aware**: Greetings get a quick canned reply before the LLM fires
 
 ### 🧠 RAG (Intelligent Memory System)
@@ -36,6 +38,26 @@ A Discord bot powered by OpenRouter LLMs (Claude Sonnet) with intelligent RAG me
 - **Full History Access**: Search across entire message database without token bloat
 - **pgvector Integration**: Fast vector similarity search with PostgreSQL
 - See [RAG System Documentation](docs/features/RAG_SYSTEM.md) for details
+
+### 🌦️ Weather & Computational Tools (NEW!)
+- **LLM Tool Calling**: Bot can invoke tools to create visualizations and fetch data
+- **Weather Visualizations**: Beautiful weather cards with dual-unit display (°C/°F), gradients, and location metadata
+- **Weather Preferences**: Save default location with `/weather_set` - just say "wompbot weather" without specifying location
+- **Wolfram Alpha Integration**: Mathematical calculations, unit conversions, factual queries
+- **Data Visualizations**: Bar charts, line charts, pie charts, tables, comparison charts
+- **Natural Language**: "What's the weather in Tokyo?" or "Show me a chart of who talks the most"
+- **Automatic Tool Selection**: LLM semantically understands requests and selects appropriate tools
+- **Free Tier APIs**: Wolfram Alpha (2,000/month), OpenWeatherMap (1,000/day)
+- **Zero LLM Cost**: Tool outputs speak for themselves, no synthesis needed
+
+### 🗄️ Guild Data Isolation (NEW!)
+- **Complete Server Separation**: Each Discord server's data is fully isolated
+- **18 Tables with Guild Filtering**: Messages, claims, quotes, stats, etc. all separated by server
+- **Composite Indexes**: 10x faster queries with guild_id + other columns
+- **Zero Performance Overhead**: Single database with smart filtering (faster than separate DBs)
+- **Privacy & Compliance**: Easier GDPR compliance, server-specific data deletion
+- **No Configuration Needed**: Automatic guild_id capture on all new messages
+- See [Guild Isolation Documentation](docs/GUILD_ISOLATION.md) for technical details
 
 ### 📋 Claims & Accountability
 - **Auto Claims Detection**: LLM detects bold predictions, facts, and guarantees
@@ -222,29 +244,21 @@ docker-compose logs -f bot
 docker-compose down
 ```
 
-### 6. Auto-Start on Boot (Optional)
-
-To automatically start the bot when Windows boots:
-
-```powershell
-# Run PowerShell as Administrator
-cd E:\discord-bot
-.\setup-autostart.ps1
-```
-
-This creates a Windows scheduled task that:
-- Starts WSL Debian on system boot
-- Launches Docker daemon
-- Starts bot containers automatically
-
-**See:** [AUTOSTART_QUICKSTART.md](AUTOSTART_QUICKSTART.md) for quick setup or [AUTOSTART_SETUP.md](AUTOSTART_SETUP.md) for detailed configuration.
-
 ## Commands
 
 ### Conversation
 - **@WompBot** or **"wompbot"**: Chat with the bot (powered by Claude 3.7 Sonnet)
 - **!ping**: Check bot latency
 - **!wompbot help** or **/help**: Show all available commands
+
+### Weather & Computational Tools
+- **"wompbot weather [location]"**: Get weather with beautiful visualization (e.g., "weather in Tokyo")
+- **"wompbot forecast [location]"**: Get 5-day weather forecast
+- **/weather_set <location> [units]**: Set your default weather location
+- **/weather_clear**: Clear your saved weather preference
+- **/weather_info**: View your current weather preference
+- **"wompbot [math question]"**: Ask Wolfram Alpha (e.g., "what is 2^100?", "convert 100 USD to EUR")
+- **"wompbot show me a chart of..."**: Create visualizations from server data
 
 ### Claims & Receipts
 - **/receipts [@user] [keyword]**: View tracked claims for a user
@@ -409,31 +423,36 @@ Use `/analyze` command to run analysis.
 ## Database Schema
 
 **Tables:**
-- `messages`: All Discord messages with opt-out flags
-- `user_profiles`: User metadata and message counts
-- `user_behavior`: Analysis results (profanity, tone, patterns)
+- `messages`: All Discord messages with opt-out flags and **guild_id** for server isolation
+- `user_profiles`: User metadata and message counts (global across servers)
+- `user_behavior`: Analysis results (profanity, tone, patterns) with **guild_id**
 - `search_logs`: Web search history
 - `job_last_run`: Last successful timestamp for each background job
-- `claims`: Tracked claims with edit/delete history
-- `hot_takes`: Controversial claims with community tracking and vindication
-- `quotes`: Saved quotes with reaction counts
-- `claim_contradictions`: Detected contradictions
-- `fact_checks`: Fact-check results with sources
-- `reminders`: Context-aware reminders with natural language parsing
-- `events`: Scheduled events with periodic reminders and channel notifications
-- `debates`: Tracked debates with LLM analysis and scores
+- `claims`: Tracked claims with edit/delete history and **guild_id**
+- `hot_takes`: Controversial claims with community tracking and vindication, with **guild_id**
+- `quotes`: Saved quotes with reaction counts and **guild_id**
+- `claim_contradictions`: Detected contradictions with **guild_id**
+- `fact_checks`: Fact-check results with sources with **guild_id**
+- `reminders`: Context-aware reminders with natural language parsing and **guild_id**
+- `events`: Scheduled events with periodic reminders and channel notifications (has guild_id)
+- `debates`: Tracked debates with LLM analysis and scores (has guild_id)
 - `debate_participants`: Individual debate participant records and statistics
-- `stats_cache`: Pre-computed statistics (network, topics, primetime, engagement)
-- `message_interactions`: Network graph data
+- `stats_cache`: Pre-computed statistics (network, topics, primetime, engagement) with **guild_id**
+- `message_interactions`: Network graph data with **guild_id**
+- `message_embeddings`: RAG vector embeddings for semantic search
+- `embedding_queue`: Background processing queue for embeddings
+- `conversation_summaries`: AI-generated conversation summaries with **guild_id**
+- `user_facts`: Learned facts about users with **guild_id**
 - `topic_snapshots`: Trending topics over time
+- `weather_preferences`: User weather location preferences (location, units)
 - `iracing_links`: Discord to iRacing account mappings
-- `iracing_teams`: Racing team metadata (name, tag, description)
+- `iracing_teams`: Racing team metadata (name, tag, description) with **guild_id**
 - `iracing_team_members`: Team rosters with roles
-- `iracing_team_events`: Scheduled team events (practice, races, endurance)
+- `iracing_team_events`: Scheduled team events (practice, races, endurance) with **guild_id**
 - `iracing_driver_availability`: Driver availability per event
 - `iracing_stint_schedule`: Driver stint rotations for endurance races
 - `iracing_participation_history`: Daily participation snapshots for series popularity analytics
-- `user_consent`: GDPR consent tracking and versioning
+- `user_consent`: GDPR consent tracking and versioning with **guild_id**
 - `data_audit_log`: Complete audit trail (7-year retention)
 - `data_export_requests`: Data export request tracking
 - `data_deletion_requests`: Data deletion with 30-day grace period
@@ -444,6 +463,8 @@ Use `/analyze` command to run analysis.
 - `api_costs`: LLM API cost tracking with model and token breakdowns
 - `cost_alerts`: $1 spending alert tracking (prevents duplicate notifications)
 - `feature_rate_limits`: Feature-specific usage tracking (fact-checks, searches, commands)
+
+**Guild Isolation**: 18 tables have `guild_id` columns with composite indexes for 10x faster queries. See [Guild Isolation Documentation](docs/GUILD_ISOLATION.md) for details.
 
 ## Costs
 
@@ -636,21 +657,28 @@ discord-bot/
 │
 └── bot/
     ├── main.py                  # Main bot logic, event handlers, commands
-    ├── llm.py                   # OpenRouter LLM client
-    ├── database.py              # PostgreSQL interface with connection pooling
+    ├── llm.py                   # OpenRouter LLM client with tool calling support
+    ├── database.py              # PostgreSQL interface with connection pooling and guild isolation
     ├── search.py                # Tavily web search
     ├── rag.py                   # RAG (Retrieval Augmented Generation) system
+    ├── compression.py           # LLMLingua semantic compression
     ├── backup_manager.py        # Automated database backup system
     ├── logging_config.py        # Centralized logging configuration
+    ├── weather.py               # OpenWeatherMap API client
+    ├── wolfram.py               # Wolfram Alpha API client
+    ├── viz_tools.py             # Visualization engine (charts, weather cards)
+    ├── tool_executor.py         # LLM tool execution handler
+    ├── llm_tools.py             # LLM tool definitions (function calling)
+    ├── data_retriever.py        # Database query engine for visualizations
     ├── iracing_client.py        # Official iRacing API client
     ├── iracing_viz.py           # iRacing visualizations (matplotlib)
     ├── requirements.txt         # Python dependencies
     ├── handlers/
-    │   ├── conversations.py     # Message handling, LLM conversations
+    │   ├── conversations.py     # Message handling, LLM conversations, tool execution
     │   └── events.py            # Discord event handlers
     ├── commands/
     │   ├── prefix_commands.py   # Prefix commands (!ping, !stats)
-    │   └── slash_commands.py    # Slash commands (/help, /wrapped)
+    │   └── slash_commands.py    # Slash commands (/help, /wrapped, /weather_set)
     ├── features/
     │   ├── claims.py            # Claims tracking system
     │   ├── fact_check.py        # Fact-check feature
