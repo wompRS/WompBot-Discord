@@ -241,18 +241,18 @@ def register_prefix_commands(bot, db, llm, search, help_system, tasks_dict):
             inline=False
         )
         embed.add_field(
-            name="/leaderboard <type> [days]",
-            value="Show top users by: `messages`, `questions`, or `profanity`. Default: 7 days",
-            inline=False
-        )
-        embed.add_field(
-            name="/search <query>",
+            name="!search <query>",
             value="Manually search the web for information.",
             inline=False
         )
         embed.add_field(
-            name="/analyze [days]",
+            name="!analyze [days]",
             value="(Admin only) Analyze user behavior patterns from the last N days.",
+            inline=False
+        )
+        embed.add_field(
+            name="!refreshstats",
+            value="(Admin only) Manually refresh stats cache.",
             inline=False
         )
         embed.add_field(

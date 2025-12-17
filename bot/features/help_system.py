@@ -141,23 +141,6 @@ class HelpSystem:
                 ],
                 "related": ["wompbot_optout", "download_my_data", "delete_my_data"]
             },
-            "leaderboard": {
-                "usage": "!leaderboard <type> [days]",
-                "description": "Show top users by messages, questions, or profanity",
-                "details": [
-                    "Leaderboard types:",
-                    "  • messages - Most active users",
-                    "  • questions - Most questions asked",
-                    "  • profanity - Most profane users",
-                    "Default time period: 7 days",
-                    "Only includes users who haven't opted out"
-                ],
-                "examples": [
-                    "!leaderboard messages - Top messengers (7 days)",
-                    "!leaderboard questions 30 - Top questioners (30 days)",
-                    "!leaderboard profanity 90 - Most profane (90 days)"
-                ]
-            },
             "search": {
                 "usage": "!search <query>",
                 "description": "Manually trigger web search for information",
