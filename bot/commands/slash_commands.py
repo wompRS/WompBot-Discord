@@ -142,13 +142,12 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
         except Exception as e:
             await interaction.followup.send(f"❌ Error fetching quotes: {str(e)}")
     
-    @bot.tree.command(name="verify_claim", description="Verify a claim (Admin only)")
+    @bot.tree.command(name="verify_claim", description="Verify a claim")
     @app_commands.describe(
         claim_id="The claim ID to verify",
         status="Status: true, false, mixed, or outdated",
         notes="Verification notes (optional)"
     )
-    @app_commands.checks.has_permissions(administrator=True)
     async def verify_claim_slash(interaction: discord.Interaction, claim_id: int, status: str, notes: str = None):
         """Verify a claim"""
         if status not in ['true', 'false', 'mixed', 'outdated']:
@@ -4161,52 +4160,6 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
         except Exception as e:
             await interaction.followup.send(f"❌ Error: {str(e)}")
             print(f"❌ Race times error: {e}")
-            import traceback
-            traceback.print_exc()
-    
-    
-    @bot.tree.command(name="uncensored", description="Query a local uncensored LLM model")
-    @app_commands.describe(prompt="Your question or prompt for the uncensored model")
-    async def uncensored(interaction: discord.Interaction, prompt: str):
-        """Query a local uncensored LLM (Drummer's models or similar)"""
-    
-        # Check if local LLM is enabled
-        if not local_llm.enabled:
-            await interaction.response.send_message(
-                "❌ **Local LLM not enabled**\n\n"
-                "To enable uncensored LLM:\n"
-                "1. Set up a local LLM server (Ollama recommended)\n"
-                "2. Add to your `.env` file:\n"
-                "```\n"
-                "LOCAL_LLM_ENABLED=true\n"
-                "LOCAL_LLM_URL=http://localhost:11434/v1\n"
-                "LOCAL_LLM_MODEL=dolphin-llama3:latest\n"
-                "```\n"
-                "3. Restart the bot\n\n"
-                "**Popular Drummer models**: dolphin-llama3, dolphin-mixtral, wizardlm-uncensored",
-                ephemeral=True
-            )
-            return
-    
-        await interaction.response.defer()
-    
-        try:
-            # Generate response from local LLM
-            response = local_llm.generate_response(prompt)
-    
-            # Discord has a 2000 character limit
-            if len(response) > 1900:
-                # Split into chunks
-                chunks = [response[i:i+1900] for i in range(0, len(response), 1900)]
-                await interaction.followup.send(f"**Uncensored Response (Part 1/{len(chunks)}):**\n{chunks[0]}")
-                for i, chunk in enumerate(chunks[1:], 2):
-                    await interaction.followup.send(f"**Part {i}/{len(chunks)}:**\n{chunk}")
-            else:
-                await interaction.followup.send(f"**Uncensored Response:**\n{response}")
-    
-        except Exception as e:
-            await interaction.followup.send(f"❌ Error generating response: {str(e)}")
-            print(f"❌ Uncensored LLM error: {e}")
             import traceback
             traceback.print_exc()
     
