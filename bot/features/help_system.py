@@ -168,87 +168,173 @@ class HelpSystem:
         """Generate general help embed with all commands"""
         embed = discord.Embed(
             title="🤖 WompBot Commands",
-            description="Use `/help <command>` or `!help <command>` for detailed command information",
+            description="**66 slash commands** organized by category\n\nChat: @WompBot, 'wompbot', or '!wb' • Use `/help <command>` for details",
             color=discord.Color.purple()
         )
 
         embed.add_field(
-            name="@mention me",
-            value="Tag me to chat. Powered by Claude 3.7 Sonnet for conversational responses with automatic web search.",
-            inline=False
-        )
-
-        embed.add_field(
-            name="📊 Statistics & Data",
+            name="🛠️ General & Utility",
             value=(
-                "`/stats [@user]` - User statistics\n"
-                "`/receipts [@user] [keyword]` - Tracked claims\n"
-                "`/quotes [@user]` - Saved quotes\n"
-                "`/stats_server [days]` - Server network graph\n"
-                "`/stats_topics [days]` - Trending keywords\n"
-                "`/stats_primetime [@user] [days]` - Activity heatmap\n"
-                "`/stats_engagement [@user] [days]` - Engagement metrics"
+                "`/help` - Show commands or get help\n"
+                "`/whoami` - Show your Discord info\n"
+                "`/personality` - Change bot personality (Wompie only)"
             ),
             inline=False
         )
 
         embed.add_field(
-            name="💬 Interactions",
+            name="📋 Claims & Quotes",
             value=(
-                "☁️ **Save Quote** - React with :cloud: to save a quote\n"
-                "⚠️ **Fact-Check** - React with :warning: to fact-check (uses Claude + web search)\n"
-                "Rate limits: 5-min cooldown, 10/day per user"
+                "`/receipts` - View tracked claims\n"
+                "`/quotes` - View saved quotes\n"
+                "`/verify_claim` - Verify a claim\n"
+                "☁️ React to save quote • ⚠️ React to fact-check"
             ),
             inline=False
         )
 
         embed.add_field(
-            name="🎮 iRacing",
+            name="📊 Chat Statistics",
             value=(
-                "`/iracing_link <customer_id>` - Link your iRacing account\n"
-                "`/iracing_stats [@user]` - View iRacing stats\n"
-                "`/iracing_leaderboard` - Server iRacing leaderboard"
+                "`/stats_server` - Network graph & server stats\n"
+                "`/stats_topics` - Trending keywords\n"
+                "`/stats_primetime` - Activity heatmap\n"
+                "`/stats_engagement` - Engagement metrics"
             ),
             inline=False
         )
 
         embed.add_field(
-            name="📋 Other Commands",
+            name="🔥 Hot Takes",
             value=(
-                "`!leaderboard <type> [days]` - Top users (messages/questions/profanity)\n"
-                "`!search <query>` - Manual web search\n"
-                "`!ping` - Check bot latency\n"
-                "`!analyze [days]` - (Admin) Behavior analysis"
+                "`/hottakes` - Hot takes leaderboard\n"
+                "`/mystats_hottakes` - Your hot takes stats\n"
+                "`/vindicate` - Mark hot take vindicated (Admin)"
             ),
             inline=False
         )
 
         embed.add_field(
-            name="🔒 Privacy & Data (Opt-Out Model)",
+            name="⏰ Reminders & Events",
             value=(
-                "`/wompbot_optout` - Opt out of data collection\n"
-                "`/download_my_data` - Export your data (GDPR Art. 15)\n"
-                "`/delete_my_data` - Delete your data (GDPR Art. 17)\n"
-                "`/my_privacy_status` - View your privacy status\n"
-                "`/privacy_policy` - View privacy policy\n"
-                "`/tos` - View Terms of Service"
+                "`/remind` - Set reminder\n"
+                "`/reminders` - View your reminders\n"
+                "`/cancel_reminder` - Cancel reminder\n"
+                "`/schedule_event` - Schedule event\n"
+                "`/events` - View upcoming events\n"
+                "`/cancel_event` - Cancel event"
             ),
             inline=False
         )
 
         embed.add_field(
-            name="🛡️ Rate Limits",
+            name="🎁 Wrapped & QOTD",
             value=(
-                "• Tokens: 1,000/request, 10,000/hour\n"
-                "• Context: 4000 tokens (auto-truncates)\n"
-                "• Fact-checks: 5-min cooldown, 10/day\n"
-                "• Searches: 5/hour, 20/day\n"
-                "• Messages: 3s cooldown, 10/min"
+                "`/wrapped` - Your yearly summary\n"
+                "`/qotd` - Quote of the day"
             ),
             inline=False
         )
 
-        embed.set_footer(text="Use /help <command> for detailed command help • By using WompBot, you accept /tos")
+        embed.add_field(
+            name="⚔️ Debates",
+            value=(
+                "`/debate_start` - Start tracking debate\n"
+                "`/debate_end` - End & analyze debate\n"
+                "`/debate_stats` - Your debate stats\n"
+                "`/debate_leaderboard` - Top debaters\n"
+                "`/debate_review` - Analyze debate file"
+            ),
+            inline=False
+        )
+
+        embed.add_field(
+            name="🏎️ iRacing (13 commands)",
+            value=(
+                "`/iracing_link` - Link account\n"
+                "`/iracing_profile` - Driver profile\n"
+                "`/iracing_schedule` - Race schedules\n"
+                "`/iracing_meta` - Series meta analysis\n"
+                "`/iracing_results` - Recent results\n"
+                "`/iracing_season_schedule` - Full season\n"
+                "`/iracing_server_leaderboard` - Server rankings\n"
+                "`/iracing_history` - Rating trends\n"
+                "`/iracing_win_rate` - Car win rates\n"
+                "`/iracing_compare_drivers` - Compare drivers\n"
+                "`/iracing_series_popularity` - Popular series\n"
+                "`/iracing_timeslots` - Race times\n"
+                "`/iracing_upcoming_races` - Official races"
+            ),
+            inline=False
+        )
+
+        embed.add_field(
+            name="🌦️ Weather",
+            value=(
+                "Say: 'wompbot weather' or 'wompbot forecast'\n"
+                "`/weather_set` - Set default location\n"
+                "`/weather_clear` - Clear saved location\n"
+                "`/weather_info` - View saved location"
+            ),
+            inline=False
+        )
+
+        embed.add_field(
+            name="🏁 iRacing Teams (6 commands)",
+            value=(
+                "`/iracing_team_create` - Create team\n"
+                "`/iracing_team_invite` - Invite member\n"
+                "`/iracing_team_leave` - Leave team\n"
+                "`/iracing_team_info` - Team details\n"
+                "`/iracing_team_list` - All teams\n"
+                "`/iracing_my_teams` - Your teams"
+            ),
+            inline=False
+        )
+
+        embed.add_field(
+            name="📅 iRacing Events (5 commands)",
+            value=(
+                "`/iracing_event_create` - Create event\n"
+                "`/iracing_team_events` - View events\n"
+                "`/iracing_event_availability` - Set availability\n"
+                "`/iracing_event_roster` - View roster\n"
+                "`/iracing_upcoming_races` - Official races"
+            ),
+            inline=False
+        )
+
+        embed.add_field(
+            name="🔒 Privacy & GDPR (10 commands)",
+            value=(
+                "`/wompbot_optout` - Opt out\n"
+                "`/download_my_data` - Export data\n"
+                "`/delete_my_data` - Delete data\n"
+                "`/cancel_deletion` - Cancel deletion\n"
+                "`/my_privacy_status` - Check status\n"
+                "`/privacy_policy` - View policy\n"
+                "`/privacy_support` - Get help\n"
+                "`/tos` - Terms of Service\n"
+                "`/privacy_settings` - Server privacy (Admin)\n"
+                "`/privacy_audit` - Audit report (Admin)"
+            ),
+            inline=False
+        )
+
+        embed.add_field(
+            name="💬 Prefix Commands",
+            value=(
+                "`!ping` - Check latency\n"
+                "`!help` - Show help\n"
+                "`!stats` - User stats\n"
+                "`!search` - Web search\n"
+                "`!analyze` - Behavior analysis (Admin)\n"
+                "`!refreshstats` - Refresh cache (Admin)"
+            ),
+            inline=False
+        )
+
+        embed.set_footer(text="Use /help <command> for detailed help • By using WompBot, you accept /tos")
 
         return embed
 
