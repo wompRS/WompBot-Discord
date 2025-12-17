@@ -262,7 +262,7 @@ docker-compose down
 
 ### Claims & Receipts
 - **/receipts [@user] [keyword]**: View tracked claims for a user
-- **/verify_claim <id> <status> [notes]**: (Admin) Verify a claim as true/false/mixed/outdated
+- **/verify_claim <id> <status> [notes]**: Verify a claim as true/false/mixed/outdated
 
 ### Quotes
 - **☁️ React**: React to any message with ☁️ emoji to save as quote
@@ -310,7 +310,6 @@ docker-compose down
 ### Utility
 - **/whoami**: Show your Discord user information (ID and username)
 - **/personality <mode>**: Change bot personality (default/feyd/bogan) - Wompie only
-- **/uncensored <prompt>**: Query a local uncensored LLM model (if configured)
 
 ### iRacing Integration
 - **/iracing_link <iracing_name>**: Link your Discord account to your iRacing account
