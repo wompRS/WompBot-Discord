@@ -216,6 +216,11 @@ def register_events(bot, db, privacy_manager, claims_tracker, debate_scorekeeper
             should_respond = True
             is_addressing_bot = True
 
+        # 3. Message starts with "!wb" shorthand (case insensitive)
+        if message_lower.startswith('!wb'):
+            should_respond = True
+            is_addressing_bot = True
+
         # Analyze for trackable claims ONLY if not directly addressing bot
         # (Skip claim analysis for direct conversations with bot)
         if not opted_out and len(message.content) > 20 and not is_addressing_bot:

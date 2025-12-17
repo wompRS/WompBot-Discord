@@ -187,8 +187,8 @@ def register_prefix_commands(bot, db, llm, search, help_system, tasks_dict):
         )
 
         embed.add_field(
-            name="@mention me",
-            value="Tag me in a message to chat. Powered by Hermes-3 70B for fast, conversational responses with automatic web search when needed.",
+            name="Chat with WompBot",
+            value="Tag me with @WompBot, type 'wompbot', or use !wb shorthand. Powered by Claude 3.7 Sonnet for fast, conversational responses with automatic web search when needed.",
             inline=False
         )
         embed.add_field(
