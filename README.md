@@ -305,6 +305,12 @@ docker-compose down
 - **/debate_end**: End debate and show LLM analysis with scores and fallacies
 - **/debate_stats [user]**: View debate statistics and win/loss record
 - **/debate_leaderboard**: Top debaters by wins and average score
+- **/debate_review <file>**: Analyze a debate from an uploaded text file transcript
+
+### Utility
+- **/whoami**: Show your Discord user information (ID and username)
+- **/personality <mode>**: Change bot personality (default/feyd/bogan) - Wompie only
+- **/uncensored <prompt>**: Query a local uncensored LLM model (if configured)
 
 ### iRacing Integration
 - **/iracing_link <iracing_name>**: Link your Discord account to your iRacing account
@@ -313,10 +319,13 @@ docker-compose down
 - **/iracing_history [driver_name] [category] [days]**: View rating progression chart (default: 30 days)
 - **/iracing_server_leaderboard [category]**: Show iRating rankings for linked Discord members
 - **/iracing_meta <series> [season] [week] [track]**: View meta analysis showing best cars for a series
+- **/iracing_win_rate <series_name> [season]**: View win rate analysis for cars in a series
 - **/iracing_schedule [series] [category] [week]**: View schedules by series or category with chart output
 - **/iracing_series_popularity [time_range]**: Show most popular series (season/yearly/all_time) with charts
 - **/iracing_season_schedule <series_name> [season]**: View the full season track rotation
+- **/iracing_timeslots <series> [week]**: View race session times for a specific series
 - **/iracing_results [driver_name]**: View recent race results (uses linked account if no name provided)
+- **/iracing_upcoming_races [hours] [category]**: View all upcoming official races (default: next 24 hours)
 
 > Adaptive rate limiting: the iRacing client now retries gently after a 429 response and otherwise fires requests at full speed, keeping schedule and dashboard commands snappy while staying within API limits.
 
@@ -334,11 +343,11 @@ docker-compose down
 - **/iracing_event_availability <event_id> <status> [notes]**: Mark your availability (available/unavailable/maybe/confirmed)
 - **/iracing_event_roster <event_id>**: View driver availability for an event
 
-### User Analytics & Leaderboards
+### User Analytics
 - **!stats [@user]**: View user statistics and behavior analysis
-- **!leaderboard <type> [days]**: Show leaderboards (messages/questions/profanity)
 - **!search <query>**: Manually search the web
 - **!analyze [days]**: (Admin) Analyze user behavior patterns
+- **!refreshstats**: (Admin) Manually refresh stats cache
 
 ## Privacy Features
 
