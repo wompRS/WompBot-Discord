@@ -13,13 +13,15 @@ def generate_key():
     """Generate a new encryption key"""
     return Fernet.generate_key()
 
-def encrypt_credentials(email, password, key):
+def encrypt_credentials(email, password, client_id, client_secret, key):
     """Encrypt credentials using Fernet symmetric encryption"""
     f = Fernet(key)
 
     credentials = {
         'email': email,
-        'password': password
+        'password': password,
+        'client_id': client_id,
+        'client_secret': client_secret
     }
 
     # Convert to JSON and encrypt
@@ -65,16 +67,25 @@ def main():
     # Get credentials
     email = input("iRacing Email: ").strip()
     password = input("iRacing Password: ").strip()
+    print()
+    print("OAuth2 Credentials (required as of Dec 2025):")
+    client_id = input("Client ID (from iRacing OAuth): ").strip()
+    client_secret = input("Client Secret (from iRacing OAuth): ").strip()
 
     if not email or not password:
         print("\n❌ Error: Email and password cannot be empty")
+        sys.exit(1)
+
+    if not client_id or not client_secret:
+        print("\n❌ Error: OAuth2 credentials (client_id and client_secret) are required")
+        print("   Request them from iRacing support for OAuth2 authentication")
         sys.exit(1)
 
     print()
     print("Encrypting credentials...")
 
     # Encrypt
-    encrypted = encrypt_credentials(email, password, key)
+    encrypted = encrypt_credentials(email, password, client_id, client_secret, key)
 
     # Save encrypted credentials
     with open(credentials_file, 'wb') as f:
