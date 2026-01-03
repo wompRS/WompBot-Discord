@@ -128,8 +128,13 @@ except Exception as e:
 
 iracing_credentials = credential_manager.get_iracing_credentials()
 if iracing_credentials:
-    iracing_email, iracing_password = iracing_credentials
-    iracing = iRacingIntegration(db, iracing_email, iracing_password)
+    iracing = iRacingIntegration(
+        db,
+        email=iracing_credentials['email'],
+        password=iracing_credentials['password'],
+        client_id=iracing_credentials.get('client_id'),
+        client_secret=iracing_credentials.get('client_secret')
+    )
     print("✅ iRacing integration enabled (using encrypted credentials)")
 else:
     print("⚠️ iRacing integration disabled (no encrypted credentials found)")

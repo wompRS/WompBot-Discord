@@ -15,10 +15,12 @@ from features.iracing_meta import MetaAnalyzer
 class iRacingIntegration:
     """Manage iRacing data and Discord commands"""
 
-    def __init__(self, db, email: str, password: str):
+    def __init__(self, db, email: str, password: str, client_id: str = None, client_secret: str = None):
         self.db = db
         self.email = email
         self.password = password
+        self.client_id = client_id
+        self.client_secret = client_secret
         self.client = None
         self._client_lock = asyncio.Lock()
         self._cache = {}
@@ -36,7 +38,7 @@ class iRacingIntegration:
         """Get or create iRacing client with serialized initialization."""
         async with self._client_lock:
             if self.client is None:
-                self.client = iRacingClient(self.email, self.password)
+                self.client = iRacingClient(self.email, self.password, self.client_id, self.client_secret)
                 await self.client.authenticate()
             elif not self.client.authenticated:
                 await self.client.authenticate()

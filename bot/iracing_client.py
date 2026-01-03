@@ -17,13 +17,18 @@ class iRacingClient:
     """Client for interacting with iRacing's data API"""
 
     BASE_URL = "https://members-ng.iracing.com"
+    OAUTH_URL = "https://oauth.iracing.com"
 
-    def __init__(self, email: str, password: str):
+    def __init__(self, email: str, password: str, client_id: str = None, client_secret: str = None):
         self.email = email
         self.password = password
+        self.client_id = client_id
+        self.client_secret = client_secret
         self.session = None
         self.authenticated = False
         self.auth_expires = None
+        self.access_token = None
+        self.refresh_token = None
         self._request_lock = asyncio.Lock()
         self._next_request_time = 0.0
         self._min_rate_limit_backoff = 0.75
@@ -50,46 +55,156 @@ class iRacingClient:
             )
         return self.session
 
+    def _mask_credential(self, credential: str, identifier: str) -> str:
+        """
+        Mask credentials using SHA-256 hash with identifier.
+
+        Args:
+            credential: The credential to mask (password or client_secret)
+            identifier: The identifier to use (username for password, client_id for secret)
+
+        Returns:
+            Base64 encoded SHA-256 hash
+        """
+        # Concatenate credential with lowercase identifier
+        combined = (credential + identifier.lower()).encode('utf-8')
+        # Hash with SHA-256
+        hashed = hashlib.sha256(combined).digest()
+        # Encode to base64
+        return base64.b64encode(hashed).decode('utf-8')
+
     async def authenticate(self) -> bool:
         """
-        Authenticate with iRacing and establish session.
+        Authenticate with iRacing using OAuth2 password_limited flow.
+
+        Returns True if successful, False otherwise.
+        """
+        # If OAuth credentials are provided, use OAuth2
+        if self.client_id and self.client_secret:
+            return await self._authenticate_oauth2()
+        else:
+            # Legacy authentication not supported as of Dec 2025
+            print("❌ OAuth2 credentials required. Legacy authentication no longer supported.")
+            print("   Update credentials using: docker compose exec bot python encrypt_credentials.py")
+            return False
+
+    async def _authenticate_oauth2(self) -> bool:
+        """
+        Authenticate using OAuth2 password_limited grant.
 
         Returns True if successful, False otherwise.
         """
         try:
-            # Encode password
-            password_hash = hashlib.sha256((self.password + self.email.lower()).encode('utf-8')).digest()
-            password_encoded = base64.b64encode(password_hash).decode('utf-8')
+            # Mask password and client_secret
+            masked_password = self._mask_credential(self.password, self.email)
+            masked_secret = self._mask_credential(self.client_secret, self.client_id)
 
             session = await self._get_session()
 
-            # Login request
-            login_data = {
-                "email": self.email,
-                "password": password_encoded
+            # Prepare form data (URL-encoded)
+            form_data = {
+                'grant_type': 'password_limited',
+                'client_id': self.client_id,
+                'client_secret': masked_secret,
+                'username': self.email,
+                'password': masked_password,
+                'scope': 'iracing.auth'
             }
 
+            # POST to OAuth token endpoint
             async with session.post(
-                f"{self.BASE_URL}/auth",
-                json=login_data,
-                headers={"Content-Type": "application/json"}
+                f"{self.OAUTH_URL}/oauth2/token",
+                data=form_data,  # URL-encoded form data
+                headers={"Content-Type": "application/x-www-form-urlencoded"}
             ) as response:
                 if response.status == 200:
+                    token_data = await response.json()
+
+                    # Store tokens
+                    self.access_token = token_data.get('access_token')
+                    self.refresh_token = token_data.get('refresh_token')
+
+                    # Access token expires in 600 seconds (10 minutes) by default
+                    expires_in = token_data.get('expires_in', 600)
+                    self.auth_expires = datetime.now() + timedelta(seconds=expires_in)
+
                     self.authenticated = True
-                    self.auth_expires = datetime.now() + timedelta(hours=1)
-                    print("✅ iRacing authentication successful")
+                    print("✅ iRacing OAuth2 authentication successful")
                     return True
                 else:
-                    print(f"❌ iRacing authentication failed: {response.status}")
+                    error_text = await response.text()
+                    print(f"❌ iRacing OAuth2 authentication failed: {response.status}")
+                    print(f"   Response: {error_text}")
                     return False
 
         except Exception as e:
-            print(f"❌ iRacing authentication error: {e}")
+            print(f"❌ iRacing OAuth2 authentication error: {e}")
+            return False
+
+    async def _refresh_access_token(self) -> bool:
+        """
+        Refresh access token using refresh token.
+
+        Returns True if successful, False otherwise.
+        """
+        if not self.refresh_token:
+            return False
+
+        try:
+            session = await self._get_session()
+
+            # Prepare form data for token refresh
+            form_data = {
+                'grant_type': 'refresh_token',
+                'client_id': self.client_id,
+                'refresh_token': self.refresh_token
+            }
+
+            # POST to OAuth token endpoint
+            async with session.post(
+                f"{self.OAUTH_URL}/oauth2/token",
+                data=form_data,
+                headers={"Content-Type": "application/x-www-form-urlencoded"}
+            ) as response:
+                if response.status == 200:
+                    token_data = await response.json()
+
+                    # Update tokens
+                    self.access_token = token_data.get('access_token')
+                    self.refresh_token = token_data.get('refresh_token')
+
+                    # Access token expires in 600 seconds (10 minutes) by default
+                    expires_in = token_data.get('expires_in', 600)
+                    self.auth_expires = datetime.now() + timedelta(seconds=expires_in)
+
+                    self.authenticated = True
+                    print("✅ iRacing OAuth2 token refreshed")
+                    return True
+                else:
+                    error_text = await response.text()
+                    print(f"❌ iRacing OAuth2 token refresh failed: {response.status}")
+                    print(f"   Response: {error_text}")
+                    return False
+
+        except Exception as e:
+            print(f"❌ iRacing OAuth2 token refresh error: {e}")
             return False
 
     async def _ensure_authenticated(self):
         """Ensure we have a valid authentication"""
-        if not self.authenticated or self.auth_expires < datetime.now():
+        # If not authenticated at all, do full auth
+        if not self.authenticated:
+            await self.authenticate()
+            return
+
+        # If token expired, try refresh first, then full auth if refresh fails
+        if self.auth_expires and self.auth_expires < datetime.now():
+            # Try to refresh token first (more efficient)
+            if self.refresh_token:
+                success = await self._refresh_access_token()
+                if success:
+                    return
+            # If refresh failed or no refresh token, do full auth
             await self.authenticate()
 
     async def _get(self, endpoint: str, params: Optional[Dict] = None) -> Optional[Dict]:
@@ -123,7 +238,12 @@ class iRacingClient:
                         print(f"🌐 Making GET request to: {url}")
                         print(f"   Query params: {params}")
 
-                    async with session.get(url, params=params) as response:
+                    # Add Bearer token for OAuth2 authentication
+                    request_headers = {}
+                    if self.access_token:
+                        request_headers['Authorization'] = f'Bearer {self.access_token}'
+
+                    async with session.get(url, params=params, headers=request_headers) as response:
                         status = response.status
                         headers = dict(response.headers)
 

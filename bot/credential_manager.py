@@ -20,12 +20,13 @@ class CredentialManager:
         """Check if encrypted credentials exist"""
         return os.path.exists(self.key_file) and os.path.exists(self.credentials_file)
 
-    def get_iracing_credentials(self) -> Optional[Tuple[str, str]]:
+    def get_iracing_credentials(self) -> Optional[dict]:
         """
         Retrieve and decrypt iRacing credentials.
 
         Returns:
-            Tuple of (email, password) or None if not available
+            Dict with keys: email, password, client_id, client_secret
+            Or None if not available
         """
         if not self.credentials_exist():
             return None
@@ -46,9 +47,16 @@ class CredentialManager:
 
             email = credentials.get('email')
             password = credentials.get('password')
+            client_id = credentials.get('client_id')
+            client_secret = credentials.get('client_secret')
 
             if email and password:
-                return (email, password)
+                return {
+                    'email': email,
+                    'password': password,
+                    'client_id': client_id,
+                    'client_secret': client_secret
+                }
             else:
                 print("❌ Error: Encrypted credentials missing email or password")
                 return None
