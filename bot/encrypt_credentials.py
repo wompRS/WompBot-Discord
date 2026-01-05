@@ -55,9 +55,14 @@ def main():
         key = generate_key()
         with open(key_file, 'wb') as f:
             f.write(key)
-        os.chmod(key_file, 0o600)  # Restrict to owner only
-        print(f"✓ Generated and saved encryption key to {key_file}")
-        print(f"  (File permissions set to 600 - owner read/write only)")
+        # Try to set restrictive permissions (may fail on mounted volumes)
+        try:
+            os.chmod(key_file, 0o600)  # Restrict to owner only
+            print(f"✓ Generated and saved encryption key to {key_file}")
+            print(f"  (File permissions set to 600 - owner read/write only)")
+        except (OSError, PermissionError):
+            print(f"✓ Generated and saved encryption key to {key_file}")
+            print(f"  (Unable to set file permissions on mounted volume - this is normal)")
 
     print()
     print("Please enter your iRacing credentials:")
@@ -91,10 +96,14 @@ def main():
     with open(credentials_file, 'wb') as f:
         f.write(encrypted)
 
-    os.chmod(credentials_file, 0o600)  # Restrict to owner only
-
-    print(f"✓ Encrypted credentials saved to {credentials_file}")
-    print(f"  (File permissions set to 600 - owner read/write only)")
+    # Try to set restrictive permissions (may fail on mounted volumes)
+    try:
+        os.chmod(credentials_file, 0o600)  # Restrict to owner only
+        print(f"✓ Encrypted credentials saved to {credentials_file}")
+        print(f"  (File permissions set to 600 - owner read/write only)")
+    except (OSError, PermissionError):
+        print(f"✓ Encrypted credentials saved to {credentials_file}")
+        print(f"  (Unable to set file permissions on mounted volume - this is normal)")
     print()
 
     # Verify by decrypting
