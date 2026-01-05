@@ -57,3 +57,6 @@ AUTO-START-SETUP.md
 startup.log
 monitor.log
 cron.log
+
+# Internal debugging guide (not for public repo)
+DEBUGGING_GUIDE.md
