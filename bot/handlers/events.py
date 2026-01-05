@@ -14,7 +14,7 @@ from cost_tracker import CostTracker
 def register_events(bot, db, privacy_manager, claims_tracker, debate_scorekeeper,
                     llm, cost_tracker, iracing, iracing_team_manager, rag,
                     hot_takes_tracker, fact_checker, wompie_user_id, wompie_username,
-                    tasks_dict, search, self_knowledge, wolfram=None, weather=None):
+                    tasks_dict, search, self_knowledge, wolfram=None, weather=None, series_cache=None):
     """
     Register all Discord event handlers with the bot.
 
@@ -36,6 +36,7 @@ def register_events(bot, db, privacy_manager, claims_tracker, debate_scorekeeper
         tasks_dict: Dictionary of background task references from register_tasks()
         search: Web search engine for fact-checking
         self_knowledge: Bot documentation system
+        series_cache: Dict for iRacing series autocomplete cache (mutable ref)
     """
 
     # Import handle_bot_mention from conversations module
@@ -163,10 +164,10 @@ def register_events(bot, db, privacy_manager, claims_tracker, debate_scorekeeper
                     import time
                     series = await iracing.get_current_series()
                     if series:
-                        # Update globals in main module
-                        import main
-                        main._series_autocomplete_cache = series
-                        main._series_cache_time = time.time()
+                        # Update series cache (passed as mutable dict reference)
+                        if series_cache is not None:
+                            series_cache['data'] = series
+                            series_cache['time'] = time.time()
                         print(f"✅ Series cache ready ({len(series)} series loaded)")
                         if db:
                             db.update_job_last_run("warm_series_cache")
