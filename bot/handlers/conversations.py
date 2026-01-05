@@ -354,10 +354,11 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
 
         # Start typing indicator
         async with message.channel.typing():
-            # Get conversation context - last 10 messages from ALL users in channel (including bot)
+            # Get conversation context - use CONTEXT_WINDOW_MESSAGES env var
+            context_window = int(os.getenv('CONTEXT_WINDOW_MESSAGES', '50'))
             conversation_history = db.get_recent_messages(
                 message.channel.id,
-                limit=10,  # Last 10 messages total (all users)
+                limit=context_window,
                 exclude_opted_out=True,
                 guild_id=message.guild.id if message.guild else None
                 # Include bot messages so it can remember what it said
