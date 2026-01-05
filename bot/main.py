@@ -152,9 +152,8 @@ WOMPIE_USER_ID = [WOMPIE_USER_ID_VALUE]  # Mutable reference for event handlers
 # iRacing series popularity cache
 iracing_popularity_cache = {}  # {time_range: {'data': [(series, count), ...], 'timestamp': datetime}}
 
-# iRacing series autocomplete cache (for slash commands)
-_series_autocomplete_cache = None
-_series_cache_time = 0
+# iRacing series autocomplete cache (for slash commands) - mutable dict for event handler updates
+series_autocomplete_cache = {'data': None, 'time': 0}
 
 # =========================================================================
 # Register all modules with the bot
@@ -196,7 +195,8 @@ register_events(
     search=search,
     self_knowledge=self_knowledge,
     wolfram=wolfram,
-    weather=weather
+    weather=weather,
+    series_cache=series_autocomplete_cache
 )
 
 # Register prefix commands
@@ -230,8 +230,7 @@ register_slash_commands(
     iracing_team_manager=iracing_team_manager,
     help_system=help_system,
     wompie_user_id=WOMPIE_USER_ID,
-    series_autocomplete_cache=_series_autocomplete_cache,
-    series_cache_time=_series_cache_time
+    series_autocomplete_cache=series_autocomplete_cache
 )
 
 print("\n✅ All modules registered successfully!\n")

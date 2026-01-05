@@ -12,17 +12,11 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Literal
 from collections import Counter
 
-# Module-level cache for series autocomplete
-_series_autocomplete_cache = None
-_series_cache_time = None
-
-
 def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                             hot_takes_tracker, reminder_system, event_system,
                             debate_scorekeeper, yearly_wrapped, qotd, iracing,
                             iracing_viz, iracing_team_manager, help_system,
-                            wompie_user_id, series_autocomplete_cache,
-                            series_cache_time):
+                            wompie_user_id, series_autocomplete_cache):
     """
     Register all slash commands with the bot.
 
@@ -44,8 +38,7 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
         iracing_team_manager: iRacing team management system
         help_system: Help system instance
         wompie_user_id: Wompie's Discord user ID (list ref)
-        series_autocomplete_cache: iRacing series cache
-        series_cache_time: iRacing series cache time
+        series_autocomplete_cache: iRacing series cache dict (mutable ref)
     """
 
     # Unpack Wompie user ID
@@ -2098,27 +2091,25 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
         current: str,
     ) -> list[app_commands.Choice[str]]:
         """Autocomplete function for series names"""
-        global _series_autocomplete_cache, _series_cache_time
-    
         if not iracing:
             print("⚠️ Series autocomplete: iRacing integration not available")
             return []
-    
+
         try:
             import asyncio
             import time
 
             # Try to use cache first for performance
-            if _series_autocomplete_cache:
-                all_series = _series_autocomplete_cache
+            if series_autocomplete_cache and series_autocomplete_cache.get('data'):
+                all_series = series_autocomplete_cache['data']
                 print(f"✅ Series autocomplete: Using cached data ({len(all_series)} series)")
             else:
                 # No cache - fetch with timeout close to Discord's 3-second limit
                 try:
                     all_series = await asyncio.wait_for(iracing.get_current_series(), timeout=2.8)
                     if all_series:
-                        _series_autocomplete_cache = all_series
-                        _series_cache_time = time.time()
+                        series_autocomplete_cache['data'] = all_series
+                        series_autocomplete_cache['time'] = time.time()
                         print(f"✅ Series autocomplete: Loaded {len(all_series)} series (cache created)")
                     else:
                         print(f"⚠️ Series autocomplete: No series data returned")

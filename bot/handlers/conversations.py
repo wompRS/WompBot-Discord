@@ -364,6 +364,12 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                 # Include bot messages so it can remember what it said
             )
 
+            # Debug: Log conversation history
+            print(f"🔍 Retrieved {len(conversation_history)} messages for context (limit={context_window})")
+            if len(conversation_history) > 0:
+                print(f"   First message: {conversation_history[0].get('username')}: {conversation_history[0].get('content', '')[:50]}")
+                print(f"   Last message: {conversation_history[-1].get('username')}: {conversation_history[-1].get('content', '')[:50]}")
+
             # Clean Discord mentions from conversation history
             for msg in conversation_history:
                 if msg.get('content'):
