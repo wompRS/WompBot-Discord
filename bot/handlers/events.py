@@ -181,15 +181,16 @@ def register_events(bot, db, privacy_manager, claims_tracker, debate_scorekeeper
     @bot.event
     async def on_message(message):
         # Check GDPR opt-out status (users are opted-in by default - legitimate interest basis)
+        # Bot's own messages are always stored for conversation context
+        if message.author == bot.user:
+            db.store_message(message, opted_out=False)
+            return  # Don't respond to own messages (prevent infinite loops)
+
         consent_status = privacy_manager.get_consent_status(message.author.id)
         opted_out = consent_status.get('consent_withdrawn', False) if consent_status else False
 
-        # Store ALL messages (including bot's own) for conversation context
+        # Store user messages
         db.store_message(message, opted_out=opted_out)
-
-        # Don't respond to bot's own messages (prevent infinite loops)
-        if message.author == bot.user:
-            return
 
         # Track messages for active debates
         if debate_scorekeeper.is_debate_active(message.channel.id):
