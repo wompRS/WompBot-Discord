@@ -181,10 +181,16 @@ def register_events(bot, db, privacy_manager, claims_tracker, debate_scorekeeper
 
     @bot.event
     async def on_message(message):
+        # DEBUG: Log every on_message call
+        import random
+        call_id = random.randint(1000, 9999)
+        print(f"🔍 [{call_id}] on_message called for: {message.author} | {message.content[:50]}")
+
         # Check GDPR opt-out status (users are opted-in by default - legitimate interest basis)
         # Bot's own messages are always stored for conversation context
         if message.author == bot.user:
             db.store_message(message, opted_out=False)
+            print(f"🔍 [{call_id}] Skipping - message from bot itself")
             return  # Don't respond to own messages (prevent infinite loops)
 
         consent_status = privacy_manager.get_consent_status(message.author.id)
@@ -192,6 +198,7 @@ def register_events(bot, db, privacy_manager, claims_tracker, debate_scorekeeper
 
         # Store user messages
         db.store_message(message, opted_out=opted_out)
+        print(f"🔍 [{call_id}] Message stored, opted_out={opted_out}")
 
         # Track messages for active debates
         if debate_scorekeeper.is_debate_active(message.channel.id):
@@ -264,15 +271,21 @@ def register_events(bot, db, privacy_manager, claims_tracker, debate_scorekeeper
                         if hot_take_id:
                             print(f"🔥 Hot take detected! ID: {hot_take_id}, Confidence: {controversy_data['confidence']:.2f}")
 
+        print(f"🔍 [{call_id}] should_respond={should_respond}, is_addressing_bot={is_addressing_bot}")
+
         if should_respond:
             # Import here to avoid circular dependency
             from handlers.conversations import handle_bot_mention
+            print(f"🔍 [{call_id}] Calling handle_bot_mention")
             await handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker,
                                     search=search, self_knowledge=self_knowledge, rag=rag,
                                     wolfram=wolfram, weather=weather)
+            print(f"🔍 [{call_id}] handle_bot_mention completed")
 
         # Process commands
+        print(f"🔍 [{call_id}] Calling bot.process_commands")
         await bot.process_commands(message)
+        print(f"🔍 [{call_id}] on_message handler complete")
 
     @bot.event
     async def on_member_join(member):
