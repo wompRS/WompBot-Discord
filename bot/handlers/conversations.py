@@ -17,6 +17,18 @@ from viz_tools import GeneralVisualizer
 from llm_tools import VISUALIZATION_TOOLS, ALL_TOOLS, DataRetriever
 from tool_executor import ToolExecutor
 
+# Rotating search status messages
+SEARCH_STATUS_MESSAGES = [
+    "🔍 Need to fact-check this real quick...",
+    "🔍 Let me verify that with a quick search...",
+    "🔍 Pulling up recent information...",
+    "🔍 Checking the latest info...",
+    "🔍 Looking up current data...",
+    "🔍 Searching for up-to-date details...",
+    "🔍 Grabbing fresh info from the web...",
+    "🔍 Let me look into that...",
+]
+
 
 # Rate limiting state for mention handling
 MENTION_RATE_STATE = {}
@@ -421,7 +433,7 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                         )
                     # Skip search but continue with response
                 else:
-                    search_msg = await message.channel.send("🔍 Searching for current info...")
+                    search_msg = await message.channel.send(random.choice(SEARCH_STATUS_MESSAGES))
 
                     search_results_raw = await asyncio.to_thread(search.search, content)
                     search_results = search.format_results_for_llm(search_results_raw)
@@ -476,7 +488,7 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
 
                 # Show appropriate status message
                 if has_search:
-                    status_msg = await message.channel.send("🔍 Searching for information...")
+                    status_msg = await message.channel.send(random.choice(SEARCH_STATUS_MESSAGES))
                 elif has_viz:
                     status_msg = await message.channel.send("📊 Creating visualization...")
                 else:
@@ -665,7 +677,7 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
 
                     # Show appropriate status message
                     if has_search:
-                        status_msg = await message.channel.send("🔍 Searching for information...")
+                        status_msg = await message.channel.send(random.choice(SEARCH_STATUS_MESSAGES))
                     elif has_viz:
                         status_msg = await message.channel.send("📊 Creating visualization...")
                     else:
