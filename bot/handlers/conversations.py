@@ -806,6 +806,8 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                 # Edit the search message with the response
                 if len(response) > 2000:
                     await search_msg.edit(content=response[:2000])
+                    # Store the edited response in database (edit doesn't trigger on_message)
+                    db.store_message(search_msg, opted_out=False, content_override=response[:2000])
                     # Send remaining chunks as new messages
                     remaining = response[2000:]
                     chunks = [remaining[i:i+2000] for i in range(0, len(remaining), 2000)]
@@ -815,6 +817,8 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                     print(f"✅ Search message edited, sent {len(chunks)} additional chunks")
                 else:
                     await search_msg.edit(content=response)
+                    # Store the edited response in database (edit doesn't trigger on_message)
+                    db.store_message(search_msg, opted_out=False, content_override=response)
                     print(f"✅ Search message edited")
             elif response is not None:
                 print(f"📤 Sending final response as new message")

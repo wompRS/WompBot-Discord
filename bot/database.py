@@ -110,12 +110,19 @@ class Database:
 
         return False, last_run
     
-    def store_message(self, message, opted_out=False):
-        """Store a Discord message while respecting privacy settings."""
+    def store_message(self, message, opted_out=False, content_override=None):
+        """Store a Discord message while respecting privacy settings.
+
+        Args:
+            message: Discord message object
+            opted_out: Whether user has opted out of data storage
+            content_override: Optional content to store instead of message.content (for edited messages)
+        """
         try:
             profile_username = str(message.author) if not opted_out else "[redacted]"
             timestamp = message.created_at
             guild_id = message.guild.id if message.guild else None
+            content = content_override if content_override is not None else message.content
 
             with self.get_connection() as conn:
                 with conn.cursor() as cur:
@@ -125,15 +132,15 @@ class Database:
                         cur.execute("""
                             INSERT INTO messages (message_id, user_id, username, channel_id, channel_name, content, timestamp, opted_out, guild_id)
                             VALUES (%s, %s, %s, %s, %s, %s, %s, FALSE, %s)
-                            ON CONFLICT (message_id) DO NOTHING
+                            ON CONFLICT (message_id) DO UPDATE SET content = EXCLUDED.content
                             RETURNING message_id
                         """, (
                             message.id,
                             message.author.id,
                             profile_username,
                             message.channel.id,
-                            message.channel.name,
-                            message.content,
+                            message.channel.name if hasattr(message.channel, 'name') else str(message.channel.id),
+                            content,
                             timestamp,
                             guild_id
                         ))
@@ -165,7 +172,7 @@ class Database:
                     ))
 
                     if stored_id:
-                        preview = (message.content or "")[:50]
+                        preview = (content or "")[:50]
                         print(f"📥 Stored message {stored_id} from {message.author}: {preview}")
 
         except Exception as e:
