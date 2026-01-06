@@ -281,8 +281,11 @@ def register_events(bot, db, privacy_manager, claims_tracker, debate_scorekeeper
                                     search=search, self_knowledge=self_knowledge, rag=rag,
                                     wolfram=wolfram, weather=weather)
             print(f"🔍 [{call_id}] handle_bot_mention completed")
+            # Don't process as command if we already handled it as bot mention
+            print(f"🔍 [{call_id}] on_message handler complete (skipped command processing)")
+            return
 
-        # Process commands
+        # Process commands only if we didn't handle as bot mention
         print(f"🔍 [{call_id}] Calling bot.process_commands")
         await bot.process_commands(message)
         print(f"🔍 [{call_id}] on_message handler complete")
