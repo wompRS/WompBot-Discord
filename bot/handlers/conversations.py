@@ -181,6 +181,9 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                              self_knowledge=None, rag=None, wolfram=None, weather=None):
     """Handle when bot is mentioned/tagged"""
     try:
+        # Check if user is admin (bypass all rate limits)
+        is_admin = str(message.author).lower() == 'wompie__' or message.author.id == YOUR_ADMIN_USER_ID
+
         # Check if this is a text mention ("wompbot") vs @mention only
         # Cost logging will only appear for text mentions to reduce log noise
         message_lower = message.content.lower()
@@ -211,26 +214,27 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                 f"⚠️ Message truncated to {max_input_length} characters for processing."
             )
 
-        # Message frequency rate limiting
-        message_cooldown = int(os.getenv('MESSAGE_COOLDOWN', '3'))  # 3 seconds default
-        max_messages_per_minute = int(os.getenv('MAX_MESSAGES_PER_MINUTE', '10'))  # 10/min default
+        # Message frequency rate limiting (skip for admin)
+        if not is_admin:
+            message_cooldown = int(os.getenv('MESSAGE_COOLDOWN', '3'))  # 3 seconds default
+            max_messages_per_minute = int(os.getenv('MAX_MESSAGES_PER_MINUTE', '10'))  # 10/min default
 
-        freq_check = db.check_feature_rate_limit(
-            message.author.id,
-            'bot_message',
-            cooldown_seconds=message_cooldown,
-            hourly_limit=max_messages_per_minute * 6  # Convert per-minute to per-hour approximation
-        )
+            freq_check = db.check_feature_rate_limit(
+                message.author.id,
+                'bot_message',
+                cooldown_seconds=message_cooldown,
+                hourly_limit=max_messages_per_minute * 6  # Convert per-minute to per-hour approximation
+            )
 
-        if not freq_check['allowed']:
-            if freq_check['reason'] == 'cooldown':
-                # Silent cooldown - just ignore to prevent spam
-                return
-            elif freq_check['reason'] == 'hourly_limit':
-                await message.channel.send(
-                    f"⏱️ Slow down! You're sending messages too quickly."
-                )
-                return
+            if not freq_check['allowed']:
+                if freq_check['reason'] == 'cooldown':
+                    # Silent cooldown - just ignore to prevent spam
+                    return
+                elif freq_check['reason'] == 'hourly_limit':
+                    await message.channel.send(
+                        f"⏱️ Slow down! You're sending messages too quickly."
+                    )
+                    return
 
         # Record message
         db.record_feature_usage(message.author.id, 'bot_message')
@@ -295,61 +299,64 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                 await generate_leaderboard_response(message.channel, stat_type, days, db, llm)
                 return
 
-        # Rate limiting (per user to avoid abuse)
-        rate_window = float(os.getenv("MENTION_RATE_WINDOW_SECONDS", "6"))
-        max_per_window = int(os.getenv("MENTION_RATE_MAX_CALLS", "3"))
-        if rate_window > 0 and max_per_window > 0:
-            now_ts = datetime.now(timezone.utc).timestamp()
-            user_bucket = MENTION_RATE_STATE.get(message.author.id)
-            if user_bucket and now_ts - user_bucket["window_start"] <= rate_window:
-                if user_bucket["count"] >= max_per_window:
-                    await message.channel.send(
-                        "⏱️ Let's take a breather. Try again in a few seconds."
-                    )
-                    return
-                user_bucket["count"] += 1
-            else:
-                MENTION_RATE_STATE[message.author.id] = {
-                    "count": 1,
-                    "window_start": now_ts,
-                }
+        # Rate limiting (per user to avoid abuse) - skip for admin
+        if not is_admin:
+            rate_window = float(os.getenv("MENTION_RATE_WINDOW_SECONDS", "6"))
+            max_per_window = int(os.getenv("MENTION_RATE_MAX_CALLS", "3"))
+            if rate_window > 0 and max_per_window > 0:
+                now_ts = datetime.now(timezone.utc).timestamp()
+                user_bucket = MENTION_RATE_STATE.get(message.author.id)
+                if user_bucket and now_ts - user_bucket["window_start"] <= rate_window:
+                    if user_bucket["count"] >= max_per_window:
+                        await message.channel.send(
+                            "⏱️ Let's take a breather. Try again in a few seconds."
+                        )
+                        return
+                    user_bucket["count"] += 1
+                else:
+                    MENTION_RATE_STATE[message.author.id] = {
+                        "count": 1,
+                        "window_start": now_ts,
+                    }
 
-        # Token-based rate limiting check
-        max_tokens_per_request = int(os.getenv('MAX_TOKENS_PER_REQUEST', '1000'))
-        rate_limit_check = db.check_rate_limit(
-            message.author.id,
-            str(message.author),
-            max_tokens_per_request
-        )
-
-        if not rate_limit_check['allowed']:
-            tokens_used = rate_limit_check['tokens_used']
-            limit = rate_limit_check['limit']
-            reset_minutes = rate_limit_check['reset_seconds'] // 60
-            reset_seconds = rate_limit_check['reset_seconds'] % 60
-
-            await message.channel.send(
-                f"⏱️ Token limit reached! You've used {tokens_used:,}/{limit:,} tokens this hour.\n"
-                f"Reset in {reset_minutes}m {reset_seconds}s."
+        # Token-based rate limiting check (skip for admin)
+        if not is_admin:
+            max_tokens_per_request = int(os.getenv('MAX_TOKENS_PER_REQUEST', '1000'))
+            rate_limit_check = db.check_rate_limit(
+                message.author.id,
+                str(message.author),
+                max_tokens_per_request
             )
-            return
 
-        # Repeated message detection (anti-gaming)
-        repeated_check = db.check_repeated_messages(
-            message.author.id,
-            content
-        )
+            if not rate_limit_check['allowed']:
+                tokens_used = rate_limit_check['tokens_used']
+                limit = rate_limit_check['limit']
+                reset_minutes = rate_limit_check['reset_seconds'] // 60
+                reset_seconds = rate_limit_check['reset_seconds'] % 60
 
-        if not repeated_check['allowed']:
-            similar_count = repeated_check['similar_count']
-            threshold = repeated_check['threshold']
-            window_minutes = repeated_check['window_minutes']
+                await message.channel.send(
+                    f"⏱️ Token limit reached! You've used {tokens_used:,}/{limit:,} tokens this hour.\n"
+                    f"Reset in {reset_minutes}m {reset_seconds}s."
+                )
+                return
 
-            await message.channel.send(
-                f"🚫 Repeated message detected! You've asked {similar_count} similar questions in the last {window_minutes} minutes.\n"
-                f"Please wait before asking similar questions again. (Limit: {threshold} similar messages per {window_minutes}m)"
+        # Repeated message detection (anti-gaming) - skip for admin
+        if not is_admin:
+            repeated_check = db.check_repeated_messages(
+                message.author.id,
+                content
             )
-            return
+
+            if not repeated_check['allowed']:
+                similar_count = repeated_check['similar_count']
+                threshold = repeated_check['threshold']
+                window_minutes = repeated_check['window_minutes']
+
+                await message.channel.send(
+                    f"🚫 Repeated message detected! You've asked {similar_count} similar questions in the last {window_minutes} minutes.\n"
+                    f"Please wait before asking similar questions again. (Limit: {threshold} similar messages per {window_minutes}m)"
+                )
+                return
 
         # Concurrent request limiting
         max_concurrent_requests = int(os.getenv('MAX_CONCURRENT_REQUESTS', '3'))
@@ -411,16 +418,18 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
             search_msg = None
 
             if search and not bot_docs and llm.should_search(content, conversation_history):
-                # Check search rate limits
-                search_hourly_limit = int(os.getenv('SEARCH_HOURLY_LIMIT', '5'))
-                search_daily_limit = int(os.getenv('SEARCH_DAILY_LIMIT', '20'))
+                # Check search rate limits (skip for admin)
+                search_rate_check = {'allowed': True}
+                if not is_admin:
+                    search_hourly_limit = int(os.getenv('SEARCH_HOURLY_LIMIT', '5'))
+                    search_daily_limit = int(os.getenv('SEARCH_DAILY_LIMIT', '20'))
 
-                search_rate_check = db.check_feature_rate_limit(
-                    message.author.id,
-                    'search',
-                    hourly_limit=search_hourly_limit,
-                    daily_limit=search_daily_limit
-                )
+                    search_rate_check = db.check_feature_rate_limit(
+                        message.author.id,
+                        'search',
+                        hourly_limit=search_hourly_limit,
+                        daily_limit=search_daily_limit
+                    )
 
                 if not search_rate_check['allowed']:
                     if search_rate_check['reason'] == 'hourly_limit':
@@ -625,16 +634,18 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
 
             # Check if LLM says it needs more info (skip if we used bot docs or response is None)
             if response is not None and search and not bot_docs and not search_results and llm.detect_needs_search_from_response(response):
-                # Check search rate limits (second attempt)
-                search_hourly_limit = int(os.getenv('SEARCH_HOURLY_LIMIT', '5'))
-                search_daily_limit = int(os.getenv('SEARCH_DAILY_LIMIT', '20'))
+                # Check search rate limits (second attempt) - skip for admin
+                search_rate_check = {'allowed': True}
+                if not is_admin:
+                    search_hourly_limit = int(os.getenv('SEARCH_HOURLY_LIMIT', '5'))
+                    search_daily_limit = int(os.getenv('SEARCH_DAILY_LIMIT', '20'))
 
-                search_rate_check = db.check_feature_rate_limit(
-                    message.author.id,
-                    'search',
-                    hourly_limit=search_hourly_limit,
-                    daily_limit=search_daily_limit
-                )
+                    search_rate_check = db.check_feature_rate_limit(
+                        message.author.id,
+                        'search',
+                        hourly_limit=search_hourly_limit,
+                        daily_limit=search_daily_limit
+                    )
 
                 if search_rate_check['allowed']:
                     if not search_msg:
