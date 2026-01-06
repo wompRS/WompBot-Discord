@@ -260,6 +260,7 @@ Be useful and real. That's the balance."""
                 messages.append({"role": "user", "content": f"[Conversation History]:\n{compressed_history}"})
             else:
                 # Fallback to standard message-by-message format for short conversations
+                print(f"🔍 [LLM] Formatting {len(recent_messages)} messages for API (compression disabled)")
                 for msg in recent_messages:
                     if not msg.get("content"):
                         continue
@@ -275,6 +276,7 @@ Be useful and real. That's the balance."""
                         display_name = msg.get("username", "User")
                         content = f"{display_name}: {msg['content']}"
                     messages.append({"role": role, "content": content})
+                    print(f"🔍 [LLM] Added {role} message: {content[:60]}")
 
             # Add search results to user message with conversational framing
             if search_results:
@@ -305,6 +307,13 @@ SEARCH RESULTS:
 
             if messages_removed > 0:
                 print(f"⚠️ Context truncated: removed {messages_removed} old messages (was {estimated_tokens + messages_removed * 100} tokens, now ~{estimated_tokens})")
+
+            print(f"🔍 [LLM] Final message count being sent to API: {len(messages)} messages")
+            # Debug: Check if bot's previous response is complete
+            for i, msg in enumerate(messages):
+                if msg.get("role") == "assistant" and "favorite" in msg.get("content", "").lower():
+                    print(f"🔍 [LLM] DEBUG - Found 'favorite' in assistant message {i}: length={len(msg['content'])} chars")
+                    print(f"🔍 [LLM] DEBUG - Full content: {msg['content']}")
 
             # Also enforce character limit as fallback
             while total_chars > self.MAX_HISTORY_CHARS and len(messages) > 3:
