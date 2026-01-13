@@ -187,10 +187,11 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
     
     @bot.tree.command(name="personality", description="Change bot personality mode (Wompie only)")
     @app_commands.describe(
-        mode="Personality mode: default or bogan (Aussie)"
+        mode="Personality mode: default, concise, or bogan"
     )
     @app_commands.choices(mode=[
-        app_commands.Choice(name="Default (Professional)", value="default"),
+        app_commands.Choice(name="Default (Conversational)", value="default"),
+        app_commands.Choice(name="Concise (Brief responses)", value="concise"),
         app_commands.Choice(name="Australian Bogan", value="bogan")
     ])
     async def personality_slash(interaction: discord.Interaction, mode: app_commands.Choice[str]):
@@ -223,12 +224,22 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                         "• Still helpful, just sounds like a pub chat\n\n"
                         "*\"Yeah nah mate, she'll be right!\"*"
                     )
+                elif personality_value == 'concise':
+                    await interaction.response.send_message(
+                        "✅ **Personality changed to Concise**\n\n"
+                        "The bot will now respond with:\n"
+                        "• Very brief responses (1-2 sentences)\n"
+                        "• Straight to the point, no fluff\n"
+                        "• Simple statements get simple acknowledgments\n"
+                        "• No unnecessary explanation\n"
+                        "• Economical with words"
+                    )
                 else:
                     await interaction.response.send_message(
-                        "✅ **Personality changed to Default (Professional)**\n\n"
+                        "✅ **Personality changed to Default (Conversational)**\n\n"
                         "The bot will now respond with:\n"
-                        "• Professional but friendly tone\n"
-                        "• Conversational and helpful\n"
+                        "• Conversational and friendly tone\n"
+                        "• Helpful and informative\n"
                         "• Direct and honest\n"
                         "• Focused on providing value"
                     )

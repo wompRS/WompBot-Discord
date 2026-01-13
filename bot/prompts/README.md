@@ -1,45 +1,76 @@
 # LLM System Prompt Customization
 
-This directory contains the system prompt that defines WompBot's personality and behavior.
+This directory contains the system prompts that define WompBot's personality and behavior.
+
+## Available Personalities
+
+WompBot has three built-in personality modes:
+
+**Default (Conversational)** - system_prompt.txt
+- Helpful and conversational tone
+- Provides detailed responses with personality
+- Balances information with natural conversation
+- Adapts to the user's communication style
+- Typical response length: 2-4 sentences
+
+**Concise (Brief)** - system_prompt_concise.txt
+- Very brief responses (1-2 sentences maximum)
+- Gets straight to the point without elaboration
+- Simple acknowledgments for simple statements
+- No unnecessary context or explanation
+- Ideal for quick information or minimal text preference
+
+**Bogan (Australian)** - system_prompt_bogan.txt
+- Full Australian slang and working-class dialect
+- Casual, pub-style conversation tone
+- Uses authentic Aussie expressions and humor
+- Still helpful, just with strong personality
+- Natural variation to sound authentic, not scripted
 
 ## How It Works
 
-- **`system_prompt_sample.txt`**: Default sample prompt (tracked in git)
-- **`system_prompt.txt`**: Your custom prompt (gitignored, not tracked)
+The bot automatically loads all personality prompts at startup:
+1. Looks for system_prompt.txt for the default personality
+2. Looks for system_prompt_bogan.txt for the bogan personality
+3. Looks for system_prompt_concise.txt for the concise personality
+4. Falls back to built-in defaults if files don't exist
 
-The bot will:
-1. Try to load `system_prompt.txt` (your customization)
-2. Fall back to built-in default if file doesn't exist
+Users with admin permissions can switch personalities using the /personality command. The setting is per-server and persists in the database.
 
-## Setup
+## File Structure
 
-**To use the default personality:**
-```bash
-# No action needed - bot uses built-in default if file doesn't exist
-```
+- **system_prompt_sample.txt**: Sample default prompt (tracked in git)
+- **system_prompt.txt**: Your custom default prompt (gitignored, not tracked)
+- **system_prompt_bogan.txt**: Bogan personality (tracked in git)
+- **system_prompt_concise.txt**: Concise personality (tracked in git)
 
-**To customize the personality:**
+## Customizing the Default Personality
+
+To customize the default (conversational) personality:
+
 ```bash
 # Copy sample to create your custom prompt
 cp system_prompt_sample.txt system_prompt.txt
 
-# Edit system_prompt.txt with your preferred personality
-nano system_prompt.txt  # or use your editor
+# Edit with your preferred personality
+nano system_prompt.txt
 
 # Restart the bot to apply changes
 docker-compose restart bot
 ```
 
+Your custom system_prompt.txt is gitignored, so your changes stay private.
+
 ## What You Can Customize
 
 The system prompt controls:
-- **Personality traits** (formal, casual, sarcastic, helpful, etc.)
-- **Response style** (concise, detailed, technical, conversational)
-- **Behavior rules** (emoji usage, profanity, tone matching)
-- **Knowledge limitations** (what to admit not knowing)
-- **Special instructions** (topic avoidance, user handling, etc.)
+- Personality traits (formal, casual, sarcastic, helpful)
+- Response style (concise, detailed, technical, conversational)
+- Behavior rules (emoji usage, profanity, tone matching)
+- Knowledge limitations (what to admit not knowing)
+- Special instructions (topic avoidance, user handling)
 
-## Examples
+## Customization Examples
 
 **Make it more formal:**
 ```
@@ -77,24 +108,25 @@ PERSONALITY:
 
 ## Best Practices
 
-1. **Test changes**: Try different prompts to see what works
-2. **Be specific**: Clear instructions = consistent behavior
-3. **Set boundaries**: Define what bot should/shouldn't do
+1. **Test changes**: Try different prompts to see what works for your server
+2. **Be specific**: Clear instructions lead to consistent behavior
+3. **Set boundaries**: Define what the bot should and shouldn't do
 4. **Balance personality**: Helpful first, personality second
-5. **Restart bot**: Changes only apply after restart
+5. **Restart bot**: Changes only apply after restarting the bot container
 
 ## Notes
 
-- `system_prompt.txt` is gitignored - your customizations stay private
-- Sample prompt shows the default personality
-- Bot falls back to built-in default if file is missing or corrupted
-- You can reload by restarting: `docker-compose restart bot`
+- system_prompt.txt is gitignored - your customizations stay private
+- The bot falls back to built-in defaults if files are missing or corrupted
+- All personalities are loaded at startup and cached for performance
+- Personality changes take effect immediately when switched via /personality command
+- You can reload prompts by restarting: docker-compose restart bot
 
-## Current Default
+## Current Personalities
 
-See `system_prompt_sample.txt` for the default personality:
-- Conversational and helpful
-- Honest about limitations
-- Matches user's energy/tone
-- Prioritizes value over style
-- No emoji usage
+See the individual prompt files for full details:
+- system_prompt_sample.txt - Default conversational personality
+- system_prompt_concise.txt - Brief, direct responses
+- system_prompt_bogan.txt - Australian slang mode
+
+Each personality maintains the same knowledge limitations and safety guidelines while adapting the communication style.

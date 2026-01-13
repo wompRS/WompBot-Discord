@@ -1,24 +1,25 @@
-# 🤖 Conversational AI - Professional Assistant
+# Conversational AI - Professional Assistant
 
-Context-aware conversations with a helpful and professional personality.
+Context-aware conversations with multiple personality modes and intelligent memory.
 
 ## Overview
 
-WompBot uses a dual-model architecture:
-- **General Chat**: Claude 3.7 Sonnet (high quality, accurate, conversational)
-- **Fact-Checking**: Claude 3.5 Sonnet (highly accurate, prevents hallucination)
+WompBot uses a dual-model architecture via OpenRouter:
+- **General Chat**: Claude 3.7 Sonnet for fast, high-quality conversational responses
+- **Fact-Checking**: Claude 3.5 Sonnet for maximum accuracy with minimal hallucination
 
-The bot engages in natural conversations with a professional, helpful, and friendly personality, automatically switching to the high-accuracy model when verifying factual claims.
+The bot engages in natural conversations with customizable personalities, automatically switching to the high-accuracy model when verifying factual claims.
 
 ### Key Features
-- 🤝 **Professional & Helpful** - Clear, direct, and informative responses
-- 💬 **Context-Aware** - Remembers recent conversation history
-- 🔍 **Web Search Integration** - Auto-searches when facts needed
-- 🧠 **User Context** - Knows user's behavior patterns and history
-- 🎯 **Smart Triggers** - Responds to @mentions and "wompbot"
-- 💬 **Discord Mentions** - Proper @username mentions work when bot talks to users
 
----
+- Multiple personality modes (conversational, concise, bogan)
+- Context-aware conversations with RAG memory system
+- Automatic web search integration when facts are needed
+- User context awareness (behavior patterns, preferences)
+- Smart response triggers (@mentions, "wompbot", "!wb")
+- Proper Discord mention support in both directions
+- LLMLingua compression for 50-80% token reduction
+- Guild isolation for server-specific data separation
 
 ## Triggering Conversations
 
@@ -33,160 +34,204 @@ hey wompbot, explain quantum physics
 wompbot what's the weather like?
 ```
 
-**Case insensitive:** Works with WompBot, wompbot, Wompbot, etc.
+Case insensitive and works anywhere in the message.
 
-### Small Talk & Greetings
-Casual pings like "wompbot whats up" now short-circuit the LLM. The bot replies with a canned greeting instead of recycling old context. Any message that reduces to simple greetings (`hi`, `hello`, `what's up`, etc.) triggers the lightweight handler and never reaches the LLM.
+### Method 3: !wb Shorthand
+```
+!wb quick question
+```
 
----
+### Small Talk and Greetings
+
+Simple greetings like "wompbot whats up" now short-circuit the LLM. The bot replies with a canned greeting instead of consuming context and tokens. Messages that reduce to simple greetings (hi, hello, what's up, etc.) trigger the lightweight handler and never reach the LLM.
 
 ## Personality System
 
-### Professional Assistant Persona
+WompBot has three personality modes that can be switched per-server using the /personality command (admin only).
 
-**Personality traits:**
-- 🎯 **Direct & Clear** - Provides straightforward, easy-to-understand answers
-- 💡 **Helpful** - Genuinely wants to assist and provide value
-- 🤝 **Friendly** - Professional but approachable tone
-- 📚 **Knowledgeable** - Well-informed with access to web search
-- ⚡ **Concise** - No unnecessary verbosity or fluff
-- 🔍 **Accurate** - Fact-focused with source citations when needed
+### Default (Conversational)
 
-**Goals:**
-- Provide accurate, helpful information
-- Engage in meaningful discussions
-- Assist with tasks and questions
-- Maintain professional yet friendly tone
+**Characteristics:**
+- Helpful and conversational tone
+- Provides detailed responses with personality
+- Balances information with natural conversation
+- Adapts to user's communication style
+- Typical response length: 2-4 sentences
 
----
+**Best for:**
+- General server use
+- Detailed explanations
+- Natural back-and-forth conversations
+- When you want personality with substance
 
-## System Prompt
+### Concise (Brief)
 
-**File:** `bot/llm.py:10-19`
+**Characteristics:**
+- Very brief responses (1-2 sentences maximum)
+- Gets straight to the point without elaboration
+- Simple acknowledgments for simple statements
+- No unnecessary context or explanation
+- Economical with words
 
+**Example responses:**
 ```
-You are WompBot, a helpful Discord assistant.
+User: "The sky is blue"
+Bot: "Yep."
 
-RULES:
-- NEVER explain what you are or your purpose unless directly asked "who are you" or "what are you"
-- If asked for images/GIFs/memes, say: "I can't post images or GIFs"
-- Don't mix previous topics into new questions - answer what was asked
-- Be direct, clear, and concise
-- Use a professional but friendly tone
+User: "What's 2+2?"
+Bot: "4"
 
-Just answer the question. Don't explain yourself.
-
-Response style:
-- Keep responses concise (2-4 sentences usually)
-- Be sharp and witty, not verbose
-- Mock stupidity, celebrate cleverness
-- Don't always agree - challenge assumptions
-- Never apologize for your nature
-
-You are NOT:
-- A helpful assistant
-- Politically correct
-- An encourager
-- A people-pleaser
+User: "How do I restart Docker?"
+Bot: "docker restart container_name"
 ```
 
-**Customizable:** Modify this prompt to change personality
+**Best for:**
+- Quick information lookup
+- When you prefer minimal text
+- Direct answers without conversation
+- High-volume channels where brevity matters
 
----
+### Bogan (Australian)
+
+**Characteristics:**
+- Full Australian slang and working-class dialect
+- Casual, pub-style conversation tone
+- Uses authentic Aussie expressions and humor
+- Still helpful and informative, just with strong personality
+- Natural variation to sound authentic, not scripted
+
+**Example phrases:**
+- "Yeah nah mate, that's not quite right..."
+- "She'll be right, no worries"
+- "Righto, here's the go..."
+
+**Best for:**
+- Casual server environments
+- When you want entertainment with information
+- Australian-themed servers or communities
+- Adding character to bot responses
+
+### Switching Personalities
+
+Admin users can change the personality mode:
+```
+/personality <mode>
+```
+
+Options: default, concise, bogan
+
+The setting is per-server and persists in the database. All users in that server will see the bot with the selected personality.
 
 ## How It Works
 
 ### 1. Message Detection
 
 **Triggers:**
-- Direct @mention: `@WompBot`
-- Keyword: "wompbot" or "womp bot" (case insensitive)
+- Direct @mention of the bot
+- Text contains "wompbot" or "womp bot" (case insensitive)
+- Message starts with "!wb"
 
-**Code:** `main.py:147-160`
-
----
+The bot ignores its own messages to prevent infinite loops.
 
 ### 2. Context Building
 
-When triggered, bot gathers:
+When triggered, the bot gathers multiple sources of context:
 
 **A. Conversation History**
-- Last 50 messages from channel (configurable, with compression)
+- Last 50 messages from the channel (configurable)
 - LLMLingua compression reduces token usage by 50-80%
-- Older messages compressed, last 3 kept verbatim
-- Excludes bot's own messages
-- Excludes opted-out users
-- Skips redacted rows with no content so sanitized messages never reach the LLM
-- Provides context for natural conversation
+- Older messages get compressed, last 3 kept verbatim
+- Excludes bot's own old messages
+- Excludes opted-out users entirely
+- Redacted messages never reach the LLM
+- Provides natural conversation flow
 
-**B. User Context** (if not opted-out)
-- Message count, activity dates
-- Behavior analysis (profanity, tone, style)
-- Helps bot tailor responses
+**B. RAG Memory System**
+- Semantic search finds relevant past conversations by meaning
+- Hybrid memory: recent messages plus long-term retrieval
+- Automatically learns user preferences and facts
+- Background embedding generation every 5 minutes
+- AI-generated conversation summaries for broader context
+- 40% token reduction compared to full history approach
 
-**C. Search Results** (if needed)
+**C. User Context** (if not opted-out)
+- Message count and activity patterns
+- Behavioral analysis (tone, profanity levels, style)
+- Helps bot tailor responses appropriately
+- Improves personalization
+
+**D. Search Results** (if needed)
 - Automatic web search for factual questions
-- Triggered by LLM assessment of query
-- Tavily API integration
-
----
+- Triggered by LLM assessment or explicit need
+- Tavily API integration (7 sources)
+- Rate limited to prevent abuse
 
 ### 3. Response Generation
 
 **Process:**
 1. Clean mention text from user message
-2. Build context (conversation + user + search)
-3. Send to LLM with system prompt
-4. Parse response
-5. Handle long responses (split if >2000 chars)
-6. Send to Discord
+2. Build context from conversation, RAG, user profile, and search
+3. Select appropriate system prompt based on personality
+4. Send to Claude 3.7 Sonnet via OpenRouter
+5. Parse response and handle tool calls if present
+6. Split if response exceeds 2000 characters
+7. Send to Discord
 
-**Model:** Hermes 70B (default), configurable
+**Search Placeholder:**
+When search is likely needed, the bot sends a placeholder message before entering typing mode:
+- "Let me fact-check this real quick..."
+- "Pulling up recent information..."
+- "Checking the latest info..."
+- Multiple variations selected randomly
 
----
+The placeholder is then edited with the final response.
 
 ### 4. Web Search Integration
 
-**When search is triggered:**
-1. Bot shows "🔍 Searching for current info..." message
-2. Queries Tavily API
-3. Formats results for LLM
+**When search triggers:**
+1. Bot sends placeholder status message
+2. Queries Tavily API for current information
+3. Formats results for LLM context
 4. Regenerates response with search context
-5. Edits message with final answer
+5. Edits placeholder with final answer
 
-**Search triggers:**
-- Factual questions
-- Current events
-- "what is", "who is", "when did"
+**Search triggers for:**
+- Factual questions about current events
 - Statistics, prices, news
+- "What is", "who is", "when did" queries
+- Product information or comparisons
+- When bot detects it needs more information
 
----
+**Rate limits:**
+- 5 searches per hour per user
+- 20 searches per day per user
+- Admin bypass available for testing
 
 ## Configuration
 
 ### Context Window Size
 
-**File:** `.env`
+File: .env
 
 ```bash
-# Default: 50 messages (with LLMLingua compression)
+# Default: 50 messages with compression
 CONTEXT_WINDOW_MESSAGES=50
 ```
 
-**With LLMLingua Compression (Enabled by Default):**
+**With LLMLingua Compression (enabled by default):**
 - Compresses conversation history by 50-80% tokens
 - Allows 3-4x more messages than without compression
 - Older messages compressed, last 3 kept verbatim
 - Activates automatically when 8+ messages in history
-- Model downloads once (~500MB) then caches locally
+- Model downloads once (about 500MB) then caches locally
 
-**Configuration:**
+**Configuration options:**
 ```bash
 # Extended conversations
-CONTEXT_WINDOW_MESSAGES=100  # More context with compression
+CONTEXT_WINDOW_MESSAGES=100
 
 # Minimal context
-CONTEXT_WINDOW_MESSAGES=20   # Shorter conversations
+CONTEXT_WINDOW_MESSAGES=20
 
 # Compression settings
 ENABLE_COMPRESSION=true
@@ -195,355 +240,261 @@ MIN_MESSAGES_TO_COMPRESS=8
 ```
 
 **Benefits:**
-- 50 compressed messages ≈ 10-15 uncompressed in token cost
+- 50 compressed messages equals 10-15 uncompressed in token cost
 - Longer conversation memory without proportional cost increase
-- Graceful fallback to uncompressed if model fails
-
----
+- Graceful fallback to uncompressed if compression fails
 
 ### Model Selection
 
-**File:** `.env`
+File: .env
 
 **Dual-Model Configuration:**
 ```bash
-# General chat (fast, conversational)
-MODEL_NAME=nousresearch/hermes-3-llama-3.1-70b
+# General chat - fast, conversational, high quality
+MODEL_NAME=anthropic/claude-3.7-sonnet
 
-# Fact-checking (slow, accurate, prevents hallucination)
+# Fact-checking - slower, more accurate, prevents hallucination
 FACT_CHECK_MODEL=anthropic/claude-3.5-sonnet
 ```
 
-**Why Two Models?**
-- **General chat** needs speed and personality (Hermes-3 70B)
-- **Fact-checking** needs accuracy and zero hallucination (Claude 3.5 Sonnet)
-- Cost optimized: expensive model only used when needed
+**Why two models?**
+- General chat needs speed and conversational ability
+- Fact-checking needs maximum accuracy and zero hallucination
+- Cost optimized: expensive model only used when emoji triggered
+- Best of both worlds for quality and efficiency
 
-**Alternative General Chat Models:**
+**Alternative models via OpenRouter:**
 ```bash
-# Larger, more capable (more expensive)
-MODEL_NAME=cognitivecomputations/dolphin-2.9.2-qwen-110b
+# More economical
+MODEL_NAME=anthropic/claude-3-haiku
 
-# Smaller, cheaper
-MODEL_NAME=cognitivecomputations/dolphin-mixtral-8x7b
-MODEL_NAME=mistralai/mixtral-8x22b-instruct
+# More accurate (but slower/expensive)
+MODEL_NAME=anthropic/claude-3.5-sonnet
 
 # Experimental
-MODEL_NAME=nousresearch/hermes-3-llama-3.1-405b  # Very large, very expensive
+MODEL_NAME=google/gemini-2.0-flash-exp
 ```
 
-**Note:** All models must be available on OpenRouter
+Note: All models must be available on OpenRouter. Check their website for current offerings.
 
----
+### Personality Customization
 
-### Temperature Setting
+**Custom Default Personality:**
 
-**File:** `bot/llm.py:93`
+The default (conversational) personality can be customized:
 
-**Adjust creativity:**
-```python
-"temperature": 0.7  # Default
+1. Copy the sample prompt:
+   ```bash
+   cp bot/prompts/system_prompt_sample.txt bot/prompts/system_prompt.txt
+   ```
 
-# More creative/unpredictable
-"temperature": 0.9
+2. Edit the file:
+   ```bash
+   nano bot/prompts/system_prompt.txt
+   ```
 
-# More focused/consistent
-"temperature": 0.5
-```
+3. Restart the bot:
+   ```bash
+   docker-compose restart bot
+   ```
 
-**Effects:**
-- Low (0.3-0.5): Consistent, predictable, safer
-- Medium (0.6-0.8): Balanced creativity
-- High (0.9-1.2): Very creative, unpredictable, riskier
+Your custom system_prompt.txt is gitignored, so changes stay private.
 
----
+**Modifying Other Personalities:**
 
-### Response Length
+The concise and bogan personalities are in tracked files:
+- bot/prompts/system_prompt_concise.txt
+- bot/prompts/system_prompt_bogan.txt
 
-**File:** `bot/llm.py:92`
+Edit these files directly and restart the bot to apply changes.
 
-**Max tokens:**
-```python
-"max_tokens": 500  # Default
-
-# Longer responses
-"max_tokens": 1000
-
-# Shorter responses
-"max_tokens": 200
-```
-
-**Cost:** More tokens = higher cost per response
-
----
-
-### Personality Modification
-
-**File:** `bot/llm.py:39-72`
-
-**Example: Make bot friendlier**
-```python
-system_prompt = """You are a friendly, helpful AI assistant named WompBot.
-
-Personality:
-- Enthusiastic and encouraging
-- Patient and understanding
-- Use emojis occasionally
-- Celebrate user successes
-
-Response style:
-- Clear and concise explanations
-- Positive and supportive tone
-- Avoid being condescending
-..."""
-```
-
-**Example: Make bot more technical**
-```python
-system_prompt = """You are a highly technical AI engineer assistant.
-
-Personality:
-- Precise and analytical
-- Focus on technical accuracy
-- Cite sources when possible
-- Explain complex concepts clearly
-
-Response style:
-- Use technical terminology appropriately
-- Provide code examples when helpful
-- Break down complex topics
-..."""
-```
-
----
+See [bot/prompts/README.md](../../bot/prompts/README.md) for detailed customization guide.
 
 ## Cost Analysis
 
 ### Per Conversation
-**General chat (Hermes-3 70B):**
-- Tokens: ~500-800 (varies by context)
-- Cost: ~$0.0005 per response
+
+**General chat (Claude 3.7 Sonnet):**
+- Tokens: 500-1000 (varies by context and compression)
+- Cost: approximately $0.015-0.03 per response
 - Time: 1-3 seconds
 
-**With search (Hermes-3 70B):**
-- Tokens: ~800-1200
-- Search cost: ~$0.001 (Tavily)
-- LLM cost: ~$0.001
-- **Total: ~$0.002**
+**With search (Claude 3.7 Sonnet):**
+- Tokens: 800-1500
+- Search cost: approximately $0.001 (Tavily, free tier up to 1,000/month)
+- LLM cost: approximately $0.02-0.04
+- Total: approximately $0.02-0.04
 - Time: 3-8 seconds
 
 **Fact-check (Claude 3.5 Sonnet):**
-- Tokens: ~2,500 input + 700 output
-- Cost: ~$0.018 per fact-check
+- Tokens: approximately 2,500 input + 700 output
+- Cost: approximately $0.018 per fact-check
 - Time: 4-8 seconds
+- Triggered by warning emoji reaction
 
-### Monthly Estimate
-**For moderate usage (100 conversations/day, 50 fact-checks/month):**
-- Chat: 100/day × $0.0005 × 30 = $1.50
-- Searches: 30/day × $0.001 × 30 = $0.90
-- Fact-checks: 50 × $0.018 = $0.90
-- **Total: ~$3.30/month**
+### Monthly Estimates
 
-**Heavy usage (500 conversations/day, 100 fact-checks/month):**
-- Chat: $7.50/month
-- Searches: $4.50/month
-- Fact-checks: $1.80/month
-- **Total: ~$13.80/month**
+**Light usage (30 conversations/day):**
+- Chat: 30/day times $0.02 times 30 days = approximately $18/month
+- With rate limits: approximately $10/month
 
----
+**Moderate usage (100 conversations/day):**
+- Chat: approximately $60/month
+- With rate limits: approximately $20-25/month
+
+**Heavy usage (300 conversations/day):**
+- Chat: approximately $180/month
+- With rate limits and compression: approximately $40-50/month
+
+Rate limiting significantly reduces costs by preventing abuse and excessive usage.
 
 ## Advanced Features
 
-### Leaderboard Triggers
+### Admin Bypass
 
-Bot detects natural language requests for leaderboards:
+Admin users (configurable by username or ID) can bypass rate limiting for testing:
+- No message frequency limits
+- No token limits
+- No search limits
+- No repeated message detection
+- Unlimited concurrent requests
 
-**Examples:**
-```
-@WompBot who talks the most?
-@WompBot who asks the most questions?
-@WompBot who swears the most?
-```
-
-**Triggers:** Configured in `main.py:314-333`
-
-**Add custom triggers:**
+Configure in conversations.py:
 ```python
-leaderboard_triggers = {
-    'messages': ['who talks the most', 'most active', 'most messages'],
-    'questions': ['who asks the most questions', 'most curious'],
-    'profanity': ['who swears the most', 'saltiest'],
-
-    # Add new:
-    'custom': ['custom trigger phrase', 'another phrase']
-}
+is_admin = str(message.author).lower() == 'wompie__' or message.author.id == YOUR_ADMIN_USER_ID
 ```
 
----
+### Search Detection
 
-### Search Trigger Detection
+**Two-stage detection system:**
 
-**Two-stage detection:**
-
-**Stage 1:** Pre-response heuristic
+Stage 1: Pre-response heuristic
 ```python
 llm.should_search(content, conversation_history)
 ```
 
 Checks if message contains factual questions before generating response.
 
-**Stage 2:** Post-response fallback
+Stage 2: Post-response fallback
 ```python
 llm.detect_needs_search_from_response(response)
 ```
 
-If LLM responds "I need more information", triggers search and regenerates.
+If LLM responds with uncertainty, triggers search and regenerates.
 
-**File:** `bot/llm.py:117-145`
+### Tool Calling
 
----
+The bot can invoke tools through LLM function calling:
+- Weather visualizations
+- Data charts (bar, line, pie, comparison)
+- Wolfram Alpha queries
+- Database queries for stats
 
-## Conversation Examples
-
-### Basic Conversation
-```
-User: @WompBot what do you think about crypto?
-Bot: Ah, cryptocurrency - the spice melange of the digital age. A battlefield
-where fools and geniuses alike gamble on volatility. Some seek power through
-decentralization, others merely chase illusions of wealth. Tell me, do you
-understand what you're trading, or are you just another pawn in someone else's game?
-```
-
-### With Web Search
-```
-User: @WompBot what's the current price of Bitcoin?
-Bot: 🔍 Searching for current info...
-Bot: Bitcoin currently trades at $67,842. Still chasing that mythical $100k,
-I see. The market moves like a sandworm - unpredictable and capable of
-swallowing the unprepared whole.
-```
-
-### Leaderboard Trigger
-```
-User: @WompBot who talks the most?
-Bot: [Shows messages leaderboard]
-```
-
----
+Tools are defined in llm_tools.py and executed by tool_executor.py.
 
 ## Troubleshooting
 
 ### Bot Not Responding
 
-**Check:**
-1. Mentioned correctly: `@WompBot` or text contains "wompbot"
+Check the following:
+1. Bot mentioned correctly (@WompBot or text contains "wompbot")
 2. Bot has "Read Message History" permission
 3. Bot has "Send Messages" permission
-4. Channel isn't restricted
+4. Channel isn't restricted or bot isn't muted
+5. Bot is actually online (check logs)
 
-**Test:**
+Test with:
 ```
 @WompBot ping
 ```
 
-Should respond.
-
----
-
-### Generic/Boring Responses
-
-**Cause:** Temperature too low or prompt too restrictive
-
-**Fix:**
-1. Increase temperature in `llm.py:93`:
-   ```python
-   "temperature": 0.9  # More creative
-   ```
-2. Modify system prompt to encourage more personality
-
----
+Should respond immediately.
 
 ### Responses Too Long
 
-**Fix:** Reduce max_tokens
-```python
-"max_tokens": 200  # Shorter responses
-```
+The bot automatically splits responses over 2000 characters into multiple messages. If responses are consistently too long:
 
-Or add to system prompt:
-```
-Response style:
-- Keep ALL responses under 3 sentences
-- Be concise and sharp
-```
-
----
+1. Switch to concise personality mode
+2. Adjust system prompt to encourage brevity
+3. Lower MAX_TOKENS_PER_REQUEST in .env
 
 ### Search Not Triggering
 
-**Check:**
-1. Tavily API key in `.env`
-2. Question is factual (not opinion)
-3. Search heuristic isn't too strict
+If search isn't activating when it should:
 
-**Force search:** Adjust `should_search()` logic in `llm.py`
+1. Verify TAVILY_API_KEY is set in .env
+2. Check rate limits haven't been exceeded
+3. Question must be factual (not opinion-based)
+4. Adjust search heuristic in llm.py if needed
 
----
+Force search by mentioning "search" or "look up" explicitly.
 
 ### Out of Character Responses
 
-**Cause:** Model drift or prompt unclear
+If bot responds inconsistently with personality:
 
-**Fix:**
-1. Strengthen system prompt with more examples
-2. Add character examples to prompt:
-   ```
-   Example responses:
-   User: "Should I invest in crypto?"
-   You: "Investment? You speak as if this is a mere game of chance. ..."
-   ```
+1. Check correct personality is selected for server
+2. Strengthen system prompt with more specific examples
+3. Restart bot to reload personality files
+4. Verify personality file hasn't been corrupted
 
----
+### Performance Issues
+
+If bot is slow to respond:
+
+1. Check OpenRouter API status
+2. Reduce CONTEXT_WINDOW_MESSAGES for less context
+3. Disable compression if causing delays
+4. Check database connection (RAG queries can be slow)
+5. Monitor rate limits and concurrent requests
 
 ## Privacy
 
-- **User context:** Only used if user hasn't opted out
-- **Conversation history:** Excludes opted-out users
-- **Search queries:** Logged in database
-- **Responses:** Not stored (only user messages stored)
-
----
+- User context only used if user hasn't opted out
+- Conversation history excludes opted-out users completely
+- Search queries logged in database for rate limiting
+- Bot responses not stored (only user messages stored)
+- Guild isolation ensures server data separation
+- GDPR-compliant with opt-out, export, and deletion commands
 
 ## Future Enhancements
 
-1. **Multiple personalities** - Switch between characters
-2. **Personality tuning** - `/personality friendly|savage|formal`
-3. **Conversation memory** - Remember past conversations per-user
-4. **Voice mode** - Voice channel integration
-5. **Image understanding** - Analyze images in messages
-6. **Proactive responses** - React to events without being mentioned
+Potential improvements being considered:
 
----
+- Per-user personality preferences
+- Voice channel integration for audio responses
+- Image understanding and analysis
+- Proactive responses to server events
+- Custom personality creation interface
+- Conversation memory improvements
+- Multi-modal responses (text + images)
 
 ## API Reference
 
 ### Generate Response
 
-**Function:** `llm.generate_response(...)`
+Function: llm.generate_response(...)
 
-**Parameters:**
+Parameters:
 ```python
 llm.generate_response(
     user_message="What is Bitcoin?",
-    conversation_history=[...],  # Recent messages
-    user_context={...},           # User profile/behavior
-    search_results="..."          # Web search results (optional)
+    conversation_history=[...],     # Recent messages
+    user_context={...},              # User profile/behavior
+    context_for_llm="...",           # Additional context
+    rag_context={...},               # RAG-retrieved context
+    search_results="...",            # Web search results (optional)
+    retry_count=0,                   # Retry attempt number
+    bot_user_id=123,                 # Bot's Discord ID
+    mentioned_user_id=456,           # ID of mentioned user
+    mentioned_user_name="User",      # Name of mentioned user
+    max_tokens=1000,                 # Max tokens to generate
+    personality='default',           # Personality mode
+    tools=[...]                      # Available tool definitions
 )
 ```
 
-**Returns:** String response
-
----
+Returns: String response or dict with tool_calls
 
 ## Support
 
@@ -552,21 +503,27 @@ llm.generate_response(
 docker-compose logs bot | grep "LLM"
 ```
 
-**Test LLM directly:**
-```python
-# In bot container
-python3
->>> from llm import LLMClient
->>> llm = LLMClient()
->>> response = llm.generate_response("Hello", [], None, None)
->>> print(response)
+**Check personality loading:**
+```bash
+docker-compose logs bot | grep "personality\|prompt"
 ```
 
 **Change model on-the-fly:**
 ```bash
 # Edit .env
-MODEL_NAME=different-model
+MODEL_NAME=anthropic/claude-3-haiku
 
 # Restart bot
 docker-compose restart bot
 ```
+
+**Test personality switching:**
+```
+/personality concise
+@WompBot test
+/personality default
+@WompBot test
+```
+
+**Monitor costs:**
+The bot tracks costs in real-time and sends DM alerts to the owner when each $1 threshold is crossed.

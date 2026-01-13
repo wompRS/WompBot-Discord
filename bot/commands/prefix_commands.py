@@ -181,7 +181,7 @@ def register_prefix_commands(bot, db, llm, search, help_system, tasks_dict):
     async def wompbot_help(ctx):
         """Show bot commands"""
         embed = discord.Embed(
-            title="🤖 WompBot Commands",
+            title="WompBot Commands",
             description="Here's what I can do:",
             color=discord.Color.purple()
         )
@@ -191,77 +191,71 @@ def register_prefix_commands(bot, db, llm, search, help_system, tasks_dict):
             value="Tag me with @WompBot, type 'wompbot', or use !wb shorthand. Powered by Claude 3.7 Sonnet for fast, conversational responses with automatic web search when needed.",
             inline=False
         )
+
         embed.add_field(
-            name="/stats [@user]",
-            value="View statistics and behavior analysis for yourself or another user.",
-            inline=False
-        )
-        embed.add_field(
-            name="/receipts [@user] [keyword]",
-            value="View tracked claims for a user. Optional keyword filter.",
-            inline=False
-        )
-        embed.add_field(
-            name="/quotes [@user]",
-            value="View saved quotes for a user.",
-            inline=False
-        )
-        embed.add_field(
-            name="☁️ Save Quote",
-            value="React to any message with :cloud: emoji to save it as a quote.",
-            inline=False
-        )
-        embed.add_field(
-            name="⚠️ Fact-Check",
-            value="React to any message with :warning: emoji to trigger high-accuracy fact-checking. Uses Claude 3.5 Sonnet, web search, and multi-source verification (requires ≥2 sources). Rate limited: 5-minute cooldown, 10/day per user.",
-            inline=False
-        )
-        embed.add_field(
-            name="🛡️ Rate Limits & Cost Control",
+            name="Personality Modes",
             value=(
-                "• Token limits: 1,000/request, 10,000/hour per user\n"
-                "• Context: 4000 token hard cap (auto-truncates)\n"
-                "• Fact-checks: 5-min cooldown, 10/day\n"
-                "• Searches: 5/hour, 20/day per user\n"
-                "• Messages: 3s cooldown, 10/min\n"
-                "• Max concurrent requests: 3\n"
-                "• $1 spending alerts: DM to bot owner\n"
+                "Three modes available (admin can switch with /personality):\n"
+                "• Default - Conversational and helpful with detailed responses\n"
+                "• Concise - Brief, direct answers (1-2 sentences max)\n"
+                "• Bogan - Full Australian slang mode for casual fun"
+            ),
+            inline=False
+        )
+
+        embed.add_field(
+            name="Save Quote",
+            value="React to any message with cloud emoji to save it as a quote.",
+            inline=False
+        )
+
+        embed.add_field(
+            name="Fact-Check",
+            value="React to any message with warning emoji to trigger high-accuracy fact-checking. Uses Claude 3.5 Sonnet, web search, and multi-source verification (requires 2+ sources). Rate limited: 5-minute cooldown, 10 per day per user.",
+            inline=False
+        )
+
+        embed.add_field(
+            name="Rate Limits and Cost Control",
+            value=(
+                "Token limits: 1,000 per request, 10,000 per hour per user\n"
+                "Context: 4000 token hard cap (auto-truncates)\n"
+                "Fact-checks: 5-min cooldown, 10 per day\n"
+                "Searches: 5 per hour, 20 per day per user\n"
+                "Messages: 3s cooldown, 10 per min\n"
+                "Max concurrent requests: 3\n"
+                "$1 spending alerts sent via DM to bot owner\n"
                 "All limits configurable via .env"
             ),
             inline=False
         )
+
         embed.add_field(
-            name="📊 Chat Statistics",
+            name="Chat Statistics",
             value=(
-                "/stats_server [days|date_range] - Network graph & server stats\n"
-                "/stats_topics [days|date_range] - Trending keywords (TF-IDF)\n"
-                "/stats_primetime [@user] [days|date_range] - Activity heatmap\n"
-                "/stats_engagement [@user] [days|date_range] - Engagement metrics"
+                "/stats_server [days] - Network graph and server stats\n"
+                "/stats_topics [days] - Trending keywords (TF-IDF)\n"
+                "/stats_primetime [@user] [days] - Activity heatmap\n"
+                "/stats_engagement [@user] [days] - Engagement metrics"
             ),
             inline=False
         )
+
         embed.add_field(
-            name="!search <query>",
-            value="Manually search the web for information.",
-            inline=False
-        )
-        embed.add_field(
-            name="!analyze [days]",
-            value="(Admin only) Analyze user behavior patterns from the last N days.",
-            inline=False
-        )
-        embed.add_field(
-            name="!refreshstats",
-            value="(Admin only) Manually refresh stats cache.",
-            inline=False
-        )
-        embed.add_field(
-            name="/ping",
-            value="Check bot latency.",
+            name="Other Commands",
+            value=(
+                "/stats [@user] - View user statistics and behavior analysis\n"
+                "/receipts [@user] [keyword] - View tracked claims\n"
+                "/quotes [@user] - View saved quotes\n"
+                "!search <query> - Manually search the web\n"
+                "!analyze [days] - (Admin) Analyze user behavior patterns\n"
+                "!refreshstats - (Admin) Manually refresh stats cache\n"
+                "/ping - Check bot latency"
+            ),
             inline=False
         )
 
-        embed.set_footer(text="Privacy: Use /wompbot_noconsent to opt out of data collection.")
+        embed.set_footer(text="Privacy: Use /wompbot_optout to opt out of data collection. Use /help for full command list.")
 
         await ctx.send(embed=embed)
 
