@@ -161,42 +161,132 @@ class HelpSystem:
                 "examples": [
                     "!ping - Show latency"
                 ]
+            },
+            "personality": {
+                "usage": "/personality <mode>",
+                "description": "Change bot personality mode (Admin only)",
+                "details": [
+                    "Three personality modes available:",
+                    "  • Default - Conversational and helpful with detailed responses",
+                    "  • Concise - Brief, direct answers (1-2 sentences max)",
+                    "  • Bogan - Full Australian slang mode for casual conversations",
+                    "Setting is per-server and persists in the database",
+                    "Only admin users can change personality modes"
+                ],
+                "examples": [
+                    "/personality default - Set conversational mode",
+                    "/personality concise - Set brief response mode",
+                    "/personality bogan - Set Australian slang mode"
+                ]
+            },
+            "whoami": {
+                "usage": "/whoami",
+                "description": "Show your Discord user information",
+                "details": [
+                    "Displays your Discord username, user ID, account creation date",
+                    "Shows when you joined the current server",
+                    "Useful for troubleshooting or checking your account info"
+                ],
+                "examples": [
+                    "/whoami - Show your Discord information"
+                ]
+            },
+            "wrapped": {
+                "usage": "/wrapped [year] [user]",
+                "description": "View your yearly activity summary (Spotify Wrapped for Discord)",
+                "details": [
+                    "Shows your Discord activity statistics for a specific year",
+                    "Includes message counts, social network, claims, quotes",
+                    "Personality insights based on your activity",
+                    "Achievement badges: Night Owl, Early Bird, Debate Champion, Quote Machine",
+                    "Zero LLM cost - pure database queries"
+                ],
+                "examples": [
+                    "/wrapped - View your current year summary",
+                    "/wrapped 2024 - View your 2024 summary",
+                    "/wrapped 2024 @user - View another user's 2024 summary"
+                ]
+            },
+            "qotd": {
+                "usage": "/qotd [mode]",
+                "description": "View featured quotes from different time periods",
+                "details": [
+                    "Modes: Daily, Weekly, Monthly, All-Time Greats, or Random",
+                    "Smart selection based on reaction counts",
+                    "Zero LLM cost - database queries only"
+                ],
+                "examples": [
+                    "/qotd - View daily quote",
+                    "/qotd weekly - View weekly quote",
+                    "/qotd all-time - View all-time great quotes"
+                ]
+            },
+            "remind": {
+                "usage": "/remind <time> <message> [recurring]",
+                "description": "Set a reminder with natural language time",
+                "details": [
+                    "Natural language parsing: 'in 5 minutes', 'tomorrow at 3pm', 'next Monday'",
+                    "Context links jump back to the original message",
+                    "Delivery options: DM or channel mention",
+                    "Recurring support: daily, weekly, or custom intervals",
+                    "Zero LLM cost - pure time parsing"
+                ],
+                "examples": [
+                    "/remind in 30 minutes Check the oven",
+                    "/remind tomorrow at 9am Team meeting",
+                    "/remind friday at 5pm Weekly standup recurring:weekly"
+                ]
+            },
+            "weather_set": {
+                "usage": "/weather_set <location> [units]",
+                "description": "Set your default weather location",
+                "details": [
+                    "Save your location for quick weather lookups",
+                    "Units: metric (Celsius) or imperial (Fahrenheit)",
+                    "After setting, just say 'wompbot weather' for updates"
+                ],
+                "examples": [
+                    "/weather_set London",
+                    "/weather_set New York imperial",
+                    "/weather_set Tokyo metric"
+                ]
             }
         }
 
     def get_general_help(self) -> discord.Embed:
         """Generate general help embed with all commands"""
         embed = discord.Embed(
-            title="🤖 WompBot Commands",
-            description="**66 slash commands** organized by category\n\nChat: @WompBot, 'wompbot', or '!wb' • Use `/help <command>` for details",
+            title="WompBot Commands",
+            description="**62 slash commands** organized by category\n\nChat: @WompBot, 'wompbot', or '!wb' • Powered by Claude 3.7 Sonnet\nUse `/help <command>` for details",
             color=discord.Color.purple()
         )
 
         embed.add_field(
-            name="🛠️ General & Utility",
+            name="General and Utility",
             value=(
                 "`/help` - Show commands or get help\n"
                 "`/whoami` - Show your Discord info\n"
-                "`/personality` - Change bot personality (Wompie only)"
+                "`/personality` - Change bot personality mode (Admin only)\n"
+                "Three modes: Default (conversational), Concise (brief), Bogan (Aussie slang)"
             ),
             inline=False
         )
 
         embed.add_field(
-            name="📋 Claims & Quotes",
+            name="Claims and Quotes",
             value=(
                 "`/receipts` - View tracked claims\n"
                 "`/quotes` - View saved quotes\n"
                 "`/verify_claim` - Verify a claim\n"
-                "☁️ React to save quote • ⚠️ React to fact-check"
+                "React with cloud emoji to save quote, warning emoji to fact-check"
             ),
             inline=False
         )
 
         embed.add_field(
-            name="📊 Chat Statistics",
+            name="Chat Statistics",
             value=(
-                "`/stats_server` - Network graph & server stats\n"
+                "`/stats_server` - Network graph and server stats\n"
                 "`/stats_topics` - Trending keywords\n"
                 "`/stats_primetime` - Activity heatmap\n"
                 "`/stats_engagement` - Engagement metrics"
@@ -205,7 +295,7 @@ class HelpSystem:
         )
 
         embed.add_field(
-            name="🔥 Hot Takes",
+            name="Hot Takes",
             value=(
                 "`/hottakes` - Hot takes leaderboard\n"
                 "`/mystats_hottakes` - Your hot takes stats\n"
@@ -215,7 +305,7 @@ class HelpSystem:
         )
 
         embed.add_field(
-            name="⏰ Reminders & Events",
+            name="Reminders and Events",
             value=(
                 "`/remind` - Set reminder\n"
                 "`/reminders` - View your reminders\n"
@@ -228,7 +318,7 @@ class HelpSystem:
         )
 
         embed.add_field(
-            name="🎁 Wrapped & QOTD",
+            name="Wrapped and Quote of the Day",
             value=(
                 "`/wrapped` - Your yearly summary\n"
                 "`/qotd` - Quote of the day"
@@ -237,10 +327,10 @@ class HelpSystem:
         )
 
         embed.add_field(
-            name="⚔️ Debates",
+            name="Debates",
             value=(
                 "`/debate_start` - Start tracking debate\n"
-                "`/debate_end` - End & analyze debate\n"
+                "`/debate_end` - End and analyze debate\n"
                 "`/debate_stats` - Your debate stats\n"
                 "`/debate_leaderboard` - Top debaters\n"
                 "`/debate_review` - Analyze debate file"
@@ -249,7 +339,7 @@ class HelpSystem:
         )
 
         embed.add_field(
-            name="🏎️ iRacing (13 commands)",
+            name="iRacing (13 commands)",
             value=(
                 "`/iracing_link` - Link account\n"
                 "`/iracing_profile` - Driver profile\n"
@@ -263,13 +353,13 @@ class HelpSystem:
                 "`/iracing_compare_drivers` - Compare drivers\n"
                 "`/iracing_series_popularity` - Popular series\n"
                 "`/iracing_timeslots` - Race times\n"
-                "`/iracing_upcoming_races` - Official races"
+                "`/iracing_upcoming_races` - Upcoming official races"
             ),
             inline=False
         )
 
         embed.add_field(
-            name="🌦️ Weather",
+            name="Weather",
             value=(
                 "Say: 'wompbot weather' or 'wompbot forecast'\n"
                 "`/weather_set` - Set default location\n"
@@ -280,7 +370,7 @@ class HelpSystem:
         )
 
         embed.add_field(
-            name="🏁 iRacing Teams (6 commands)",
+            name="iRacing Teams (6 commands)",
             value=(
                 "`/iracing_team_create` - Create team\n"
                 "`/iracing_team_invite` - Invite member\n"
@@ -293,21 +383,20 @@ class HelpSystem:
         )
 
         embed.add_field(
-            name="📅 iRacing Events (5 commands)",
+            name="iRacing Team Events (4 commands)",
             value=(
-                "`/iracing_event_create` - Create event\n"
-                "`/iracing_team_events` - View events\n"
+                "`/iracing_event_create` - Create team event\n"
+                "`/iracing_team_events` - View team events\n"
                 "`/iracing_event_availability` - Set availability\n"
-                "`/iracing_event_roster` - View roster\n"
-                "`/iracing_upcoming_races` - Official races"
+                "`/iracing_event_roster` - View event roster"
             ),
             inline=False
         )
 
         embed.add_field(
-            name="🔒 Privacy & GDPR (10 commands)",
+            name="Privacy and GDPR (10 commands)",
             value=(
-                "`/wompbot_optout` - Opt out\n"
+                "`/wompbot_optout` - Opt out of data collection\n"
                 "`/download_my_data` - Export data\n"
                 "`/delete_my_data` - Delete data\n"
                 "`/cancel_deletion` - Cancel deletion\n"
@@ -322,7 +411,7 @@ class HelpSystem:
         )
 
         embed.add_field(
-            name="💬 Prefix Commands",
+            name="Prefix Commands",
             value=(
                 "`!ping` - Check latency\n"
                 "`!help` - Show help\n"
@@ -351,7 +440,7 @@ class HelpSystem:
                     # Parse markdown and create embed
                     # For now, just show the raw content
                     embed = discord.Embed(
-                        title=f"📖 Command: `/{command}`",
+                        title=f"Command: /{command}",
                         description=content[:4000],  # Discord limit
                         color=discord.Color.blue()
                     )
@@ -367,7 +456,7 @@ class HelpSystem:
         doc = self.command_docs[command]
 
         embed = discord.Embed(
-            title=f"📖 Command: `{doc['usage']}`",
+            title=f"Command: {doc['usage']}",
             description=doc['description'],
             color=discord.Color.blue()
         )

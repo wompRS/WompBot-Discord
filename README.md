@@ -1,229 +1,294 @@
 # WompBot - Discord Bot
 
-A Discord bot powered by OpenRouter LLMs (Claude Sonnet) with intelligent RAG memory system, semantic search, web search, claims tracking, user behavior analysis, and iRacing integration.
+A Discord bot powered by Claude Sonnet through OpenRouter, featuring intelligent conversation memory (RAG), semantic search, web search integration, claims tracking, user behavior analysis, and iRacing integration.
 
-## Features
+## Core Features
 
-### 🤖 Core Features
-- **Dual-Model AI Architecture**:
-  - **General Chat**: Claude 3.7 Sonnet (high quality, accurate, conversational)
-  - **Fact-Checking**: Claude 3.5 Sonnet (slow, highly accurate, zero hallucination)
-- **Context-Aware Conversations**: Professional and helpful personality with conversation memory
-- **LLM Tool Use System**: Function calling for creating visualizations, fetching data, and querying knowledge bases
-- **LLMLingua Compression**: 50-80% token reduction on conversation history using semantic compression, allowing 3-4x longer conversations within API limits
-- **Smart Response Detection**: Only responds when "wompbot" mentioned or @tagged
-- **Discord Mention Support**: Proper @mentions work when bot talks to users (bidirectional conversion)
-- **Web Search Integration**: Automatic Tavily API search when facts are needed
-- **Guild Data Isolation**: Complete data separation between Discord servers (18 tables with guild_id filtering)
-- **Automated Backups**: Daily, weekly, and monthly database backups with configurable retention
-- **Centralized Logging**: Structured logging system with file rotation and error tracking
-- **Comprehensive Rate Limiting**: Multi-layer abuse prevention with cost tracking
-  - Token limits (1,000/request, 10,000/hour per user)
-  - Feature-specific limits (fact-checks, searches, commands)
-  - Concurrent request limiting (3 simultaneous requests max)
-  - Message frequency controls (3s cooldown, 10/min)
-  - Input sanitization (2000 char max)
-  - Context token limits (4000 token hard cap)
-  - Cost tracking with $1 spending alerts via DM
-- **Message Storage**: PostgreSQL database tracks all conversations with server isolation
-- **Small Talk Aware**: Greetings get a quick canned reply before the LLM fires
+### Conversational AI
 
-### 🧠 RAG (Intelligent Memory System)
-- **Semantic Search**: Vector embeddings enable finding relevant past conversations by meaning, not just keywords
-- **Hybrid Memory Architecture**: Combines working memory (last 10 messages) with long-term retrieval
-- **Automatic User Facts**: Learns your preferences, projects, and skills automatically
-- **40% Token Reduction**: Smaller context window with smarter retrieval saves costs
-- **Background Processing**: Automatic embedding generation every 5 minutes
-- **Conversation Summaries**: AI-generated summaries for broader context
-- **Full History Access**: Search across entire message database without token bloat
-- **pgvector Integration**: Fast vector similarity search with PostgreSQL
-- See [RAG System Documentation](docs/features/RAG_SYSTEM.md) for details
+**Dual-Model Architecture**
+- General Chat: Claude 3.7 Sonnet for high-quality conversational responses
+- Fact-Checking: Claude 3.5 Sonnet for maximum accuracy with minimal hallucination
 
-### 🌦️ Weather & Computational Tools (NEW!)
-- **LLM Tool Calling**: Bot can invoke tools to create visualizations and fetch data
-- **Weather Visualizations**: Beautiful weather cards with dual-unit display (°C/°F), gradients, and location metadata
-- **Weather Preferences**: Save default location with `/weather_set` - just say "wompbot weather" without specifying location
-- **Wolfram Alpha Integration**: Mathematical calculations, unit conversions, factual queries
-- **Data Visualizations**: Bar charts, line charts, pie charts, tables, comparison charts
-- **Natural Language**: "What's the weather in Tokyo?" or "Show me a chart of who talks the most"
-- **Automatic Tool Selection**: LLM semantically understands requests and selects appropriate tools
-- **Free Tier APIs**: Wolfram Alpha (2,000/month), OpenWeatherMap (1,000/day)
-- **Zero LLM Cost**: Tool outputs speak for themselves, no synthesis needed
+**Three Personality Modes**
+- Default: Conversational and helpful, provides detailed responses with personality
+- Concise: Brief and direct, gets straight to the point without elaboration
+- Bogan: Full Australian slang mode for casual pub-style conversations
 
-### 🗄️ Guild Data Isolation (NEW!)
-- **Complete Server Separation**: Each Discord server's data is fully isolated
-- **18 Tables with Guild Filtering**: Messages, claims, quotes, stats, etc. all separated by server
-- **Composite Indexes**: 10x faster queries with guild_id + other columns
-- **Zero Performance Overhead**: Single database with smart filtering (faster than separate DBs)
-- **Privacy & Compliance**: Easier GDPR compliance, server-specific data deletion
-- **No Configuration Needed**: Automatic guild_id capture on all new messages
-- See [Guild Isolation Documentation](docs/GUILD_ISOLATION.md) for technical details
+**Smart Context Management**
+- Professional conversation memory that remembers your preferences and past discussions
+- LLMLingua compression reduces token usage by 50-80%, allowing much longer conversations
+- Only responds when mentioned, tagged, or when you use "wompbot" or "!wb"
+- Proper Discord mention support works both ways
 
-### 📋 Claims & Accountability
-- **Auto Claims Detection**: LLM detects bold predictions, facts, and guarantees
-- **Edit Tracking**: Preserves original text when claims are edited
-- **Deletion Tracking**: Saves deleted messages with claims
-- **Contradiction Detection**: Identifies when users contradict previous claims
-- **Receipts Command**: `/receipts [@user] [keyword]` - View tracked claims
+**Web Search Integration**
+- Automatic Tavily API search when the bot needs current information
+- Rate-limited to prevent abuse: 5 per hour, 20 per day per user
 
-### ☁️ Quotes System
-- **Save Quotes**: React with ☁️ emoji to save memorable quotes
-- **Quotes Command**: `/quotes [@user]` - View saved quotes with context
-- **Auto-Categorization**: Tracks reaction counts and timestamps
+**Guild Data Isolation**
+- Complete separation of data between Discord servers
+- 18 tables use guild_id filtering for privacy and performance
+- Composite indexes make queries 10x faster than separate databases
 
-### ⚠️ Fact-Check Feature
-- **Emoji Triggered**: React with ⚠️ to any message to trigger fact-check
-- **High-Accuracy Model**: Uses Claude 3.5 Sonnet (dedicated fact-checking model)
-- **Multi-Source Verification**: Requires ≥2 sources to corroborate claims
-- **Anti-Hallucination**: Strict prompts prevent LLM from fabricating information
-- **Web Search**: Automatically searches 7 sources for evidence using Tavily
-- **Source Citations**: Includes numbered source references with links
-- **Verdict System**: ✅ True, ❌ False, 🔀 Mixed, ⚠️ Misleading, ❓ Unverifiable
-- **Cross-Reference**: Explicitly cites which sources ([1], [2]) agree on each fact
-- **Rate Limiting**: 5-minute cooldown, 10 per day per user (prevents abuse)
+**Automated Backups**
+- Daily, weekly, and monthly database backups with configurable retention
+- Centralized logging with file rotation and error tracking
 
-### 📊 User Analytics
-- **Behavior Analysis**: Profanity scores, tone, honesty patterns
-- **Leaderboards**: `/leaderboard <type> [days]` - messages, questions, profanity
-- **User Stats**: `/stats [@user]` - View detailed user statistics
-- **Privacy Controls**: Opt-out system with `/wompbot_optout` command (GDPR-compliant)
+**Comprehensive Rate Limiting**
+- Multi-layer protection prevents abuse and controls costs
+- Token limits: 1,000 per request, 10,000 per hour per user
+- Message frequency controls: 3-second cooldown, max 10 per minute
+- Feature-specific limits for fact-checks, searches, and expensive commands
+- Concurrent request limiting: 3 simultaneous requests maximum
+- Cost tracking with $1 spending alerts sent via DM
 
-### 📈 Chat Statistics
-- **Network Graphs**: `/stats_server [days]` - Who interacts with whom
-- **Topic Trends**: `/stats_topics [days]` - Trending keywords using TF-IDF
-- **Prime Time**: `/stats_primetime [@user] [days]` - Activity heatmaps by hour/day
-- **Engagement**: `/stats_engagement [@user] [days]` - Response times, patterns
-- **Zero Cost**: Uses machine learning, no LLM needed
-- **Background Updates**: Auto-refreshes every hour
+### RAG - Intelligent Memory System
 
-### 🔥 Hot Takes Leaderboard
-- **Auto Detection**: Identifies controversial claims using pattern matching
-- **Community Tracking**: Monitors reactions and replies automatically
-- **Multiple Leaderboards**: Controversial, Vindicated, Worst, Community Favorites, Combined
-- **Vindication System**: Track which hot takes aged well or poorly
-- **User Stats**: `/mystats_hottakes` - Your personal controversy metrics
-- **Smart Hybrid**: Three-stage system keeps costs under $1/month
-- **Track Record**: See who has the best/worst prediction accuracy
+The bot uses Retrieval Augmented Generation to remember conversations more efficiently than just keeping everything in context.
 
-### ⏰ Context-Aware Reminders
-- **Natural Language**: "in 5 minutes", "tomorrow at 3pm", "next Monday"
-- **Context Links**: Jump back to original message
-- **Flexible Delivery**: DM or channel mention
-- **Recurring Support**: Daily, weekly, or custom intervals
-- **Zero Cost**: Pure time parsing, no LLM needed
-- **Background Checker**: Runs every minute for precise delivery
+**How it works:**
+- Semantic search using vector embeddings finds relevant past conversations by meaning, not keywords
+- Hybrid memory combines recent messages (working memory) with long-term retrieval
+- Learns your preferences, projects, and skills automatically
+- Background processing generates embeddings every 5 minutes
+- AI-generated conversation summaries provide broader context
+- pgvector integration enables fast similarity search in PostgreSQL
 
-### 📅 Event Scheduling
-- **Scheduled Events**: Create events with automatic periodic reminders
-- **Natural Language**: "Friday at 8pm", "in 3 days", "next Monday at 7pm", "october 20"
-- **Periodic Reminders**: Configurable intervals (default: 1 week, 1 day, 1 hour before)
-- **Channel Announcements**: Public event notifications with Discord timestamps
-- **Event Management**: List upcoming events, cancel events by ID
-- **Zero Cost**: No LLM needed, pure time parsing
-- **Background Checker**: Runs every 5 minutes for reminder delivery
+**Benefits:**
+- 40% token reduction compared to keeping full conversation history
+- Access to full message database without bloating context
+- Smarter context assembly means better responses
 
-### 📊 Yearly Wrapped (NEW!)
-- **Year-End Summary**: Spotify-style statistics for your Discord activity
-- **Comprehensive Stats**: Messages, social network, claims, quotes, personality insights
-- **Achievements**: Earn badges like Night Owl, Early Bird, Debate Champion, Quote Machine
-- **Compare Years**: View any year (2020-present) or compare users
-- **Beautiful Embeds**: Gold-themed cards with your profile picture
-- **Zero Cost**: Pure database queries, no LLM needed
+### Weather and Computational Tools
 
-### 🏆 Quote of the Day (NEW!)
-- **Featured Quotes**: Highlight the best quotes from your server
-- **Multiple Modes**: Daily, Weekly, Monthly, All-Time Greats, or Random
-- **Smart Selection**: Top quotes by reaction count from each time period
-- **Beautiful Display**: Purple embeds with context, attribution, and category badges
-- **Zero Cost**: Pure database queries, no LLM needed
+The bot can invoke tools through LLM function calling to create visualizations and fetch data.
 
-### ⚔️ Debate Scorekeeper (NEW!)
-- **Track Debates**: Start/end debates with `/debate_start` and `/debate_end`
-- **LLM Analysis**: Automatic scoring of arguments and detection of logical fallacies
-- **Winner Determination**: AI judges declare winners and explain why
-- **Individual Scores**: Each participant gets scored 0-10 on argument quality
-- **Fallacy Detection**: Identifies ad hominem, strawman, and other logical fallacies
-- **Debate History**: Track your wins, losses, average score, and favorite topics
-- **Leaderboards**: See who the best debaters are by wins and scores
-- **Low Cost**: Only uses LLM when debate ends (typically $0.01-0.05 per debate)
+**Weather Features:**
+- Beautiful weather cards with dual-unit display (Celsius/Fahrenheit)
+- Save your default location with /weather_set
+- 5-day forecasts available
+- Just say "wompbot weather" after setting your preference
 
-### 🏁 iRacing Integration (NEW!)
-- **Driver Profiles**: View any iRacing driver's stats across all license categories
-- **Driver Comparison**: Side-by-side comparison charts with license ratings and career stats
-- **Performance Dashboard**: /iracing_history shows rating trends, per-race deltas, wins/podiums, and your top series & cars for any timeframe
-- **Series Popularity Analytics**: Daily participation snapshots power season/year/all-time charts
-- **Server Leaderboards**: See who's the fastest in your Discord server by category
-- **Meta Analysis**: View best cars for any series with performance statistics
-- **Account Linking**: Link your Discord account to your iRacing profile
-- **Schedule Visuals**: Highlight the current week, show UTC open times, and include season date ranges
-- **Smart Search**: Automatically finds drivers by name
-- **Category Autocomplete**: Easy selection of Oval, Sports Car, Formula Car, Dirt Oval, Dirt Road
-- **Professional Visualizations**: Charts and tables using matplotlib with blue-tinted dark mode theme
-- **Dynamic Image Sizing**: Tables automatically fit content without extra whitespace
-- **Live Data + Background Caching**: Direct API integration with scheduled cache refreshes
-- **Optional Feature**: Only enabled if credentials are provided
-- **Zero Cost**: No LLM usage, pure API calls
+**Wolfram Alpha Integration:**
+- Mathematical calculations and unit conversions
+- Factual queries about math, science, geography
+- Free tier: 2,000 queries per month
 
-### 🏁 iRacing Team Management (NEW!)
-- **Team Creation**: Create racing teams with custom names and tags
-- **Role Management**: Assign roles (manager, driver, crew_chief, spotter)
-- **Event Scheduling**: Schedule practice sessions, races, and endurance events
-- **Natural Language Times**: "tomorrow 8pm", "next Friday 7:00pm", "January 15 2025 19:00"
-- **Driver Availability**: Track who's available for each event (available/unavailable/maybe/confirmed)
-- **Team Roster**: View team members with their iRacing profiles
-- **Multi-Guild Support**: Teams are server-specific
-- **Event Calendar**: View all upcoming team events with Discord timestamps
-- **Availability Tracking**: See driver availability and roster status for events
-- **Integration**: Works with existing iRacing account links
-- **Zero Cost**: Pure database operations, no LLM or API usage
+**Data Visualizations:**
+- Bar charts, line charts, pie charts, tables, comparison charts
+- Natural language requests: "show me a chart of who talks the most"
+- Zero LLM cost - tool outputs speak for themselves
+
+### Claims and Accountability
+
+The bot automatically detects when people make bold predictions, factual claims, or guarantees.
+
+**Features:**
+- LLM-powered claim detection
+- Edit tracking preserves original text
+- Deletion tracking saves deleted claims
+- Contradiction detection identifies when users contradict previous claims
+- Use /receipts to view tracked claims for any user
+- Verify claims as true/false/mixed with /verify_claim
+
+### Quotes System
+
+React with a cloud emoji to any message to save it as a memorable quote.
+
+**Commands:**
+- /quotes to view saved quotes for a user
+- Tracks reaction counts and timestamps
+- Auto-categorizes quotes by context
+
+### Fact-Check Feature
+
+React with a warning emoji to trigger an automated fact-check.
+
+**How it works:**
+- Uses Claude 3.5 Sonnet for high accuracy
+- Automatically searches 7 web sources using Tavily
+- Requires at least 2 sources to corroborate claims
+- Strict anti-hallucination prompts
+- Provides numbered source references with links
+- Verdict system: True, False, Mixed, Misleading, or Unverifiable
+- Rate limited: 5-minute cooldown, 10 per day per user
+
+### User Analytics
+
+Track behavior patterns and participation across your server.
+
+**Available Stats:**
+- Behavior analysis: profanity scores, tone, honesty patterns
+- Leaderboards: messages, questions, profanity usage
+- User-specific statistics with /stats
+- GDPR-compliant opt-out system
+
+### Chat Statistics
+
+Zero-cost machine learning analytics for your server.
+
+**Features:**
+- Network graphs showing interaction patterns
+- Topic trends using TF-IDF analysis
+- Activity heatmaps by hour and day
+- Engagement metrics and response time analysis
+- Background updates every hour
+- Commands: /stats_server, /stats_topics, /stats_primetime, /stats_engagement
+
+### Hot Takes Leaderboard
+
+Tracks controversial claims and monitors how they age.
+
+**Features:**
+- Automatic detection using pattern matching
+- Community tracking via reactions and replies
+- Multiple leaderboard types: Controversial, Vindicated, Worst, Community Favorites, Combined
+- Vindication system tracks which predictions aged well or poorly
+- Three-stage hybrid system keeps costs under $1/month
+- View your personal stats with /mystats_hottakes
+
+### Context-Aware Reminders
+
+Natural language reminders that link back to the original conversation.
+
+**Features:**
+- Natural language parsing: "in 5 minutes", "tomorrow at 3pm", "next Monday"
+- Context links jump back to the original message
+- Delivery options: DM or channel mention
+- Recurring support: daily, weekly, or custom intervals
+- Zero LLM cost - pure time parsing
+- Background checker runs every minute
+
+### Event Scheduling
+
+Schedule events with automatic periodic reminders.
+
+**Features:**
+- Natural language time input: "Friday at 8pm", "in 3 days", "October 20"
+- Configurable reminder intervals (default: 1 week, 1 day, 1 hour before)
+- Public channel announcements with Discord timestamps
+- Event management: list upcoming events, cancel by ID
+- Zero LLM cost
+- Background checker runs every 5 minutes
+
+### Yearly Wrapped
+
+Spotify-style statistics for Discord activity.
+
+**Features:**
+- Year-end summary of messages, social network, claims, quotes
+- Personality insights based on your activity
+- Achievement badges: Night Owl, Early Bird, Debate Champion, Quote Machine
+- Compare any year from 2020 to present
+- Gold-themed embeds with profile pictures
+- Zero LLM cost - pure database queries
+
+### Quote of the Day
+
+Highlight the best quotes from your server.
+
+**Modes:**
+- Daily, Weekly, Monthly, All-Time Greats, or Random
+- Smart selection based on reaction counts
+- Beautiful purple embeds with context and attribution
+- Zero LLM cost
+
+### Debate Scorekeeper
+
+Track and analyze debates with LLM judging.
+
+**Features:**
+- Start/end debates with commands
+- Automatic scoring of arguments (0-10 scale)
+- Logical fallacy detection: ad hominem, strawman, etc.
+- Winner determination with explanations
+- Debate history and leaderboards
+- Personal stats: wins, losses, average score
+- Cost: $0.01-0.05 per debate (only when ending)
+
+### iRacing Integration
+
+Comprehensive iRacing stats and team management.
+
+**Driver Stats:**
+- View any driver's profile across all license categories
+- Side-by-side driver comparisons with charts
+- Performance dashboard: rating trends, wins, podiums, top series
+- Server leaderboards showing fastest drivers by category
+- Smart driver search by name
+- Account linking between Discord and iRacing
+
+**Series Analytics:**
+- Series popularity charts: season, yearly, all-time
+- Meta analysis showing best cars for any series
+- Win rate analysis per car
+- Schedule visualization with current week highlighted
+- Timeslot viewer for race sessions
+
+**Team Management:**
+- Create racing teams with custom names and tags
+- Role management: manager, driver, crew chief, spotter
+- Event scheduling with natural language times
+- Driver availability tracking: available, unavailable, maybe, confirmed
+- Team rosters with iRacing profile integration
+- Event calendar with Discord timestamps
+- Server-specific teams (multi-guild support)
+
+**Technical Details:**
+- Professional visualizations using matplotlib with dark mode theme
+- Live data with background caching for performance
+- Adaptive rate limiting with gentle retries
+- Optional feature - only enabled if credentials provided
+- Zero LLM cost - pure API calls
+- Encrypted credential storage using Fernet
 
 ## Setup Instructions
 
 ### 1. Install Dependencies (WSL2 Debian)
 
-Already done if you followed the setup commands.
+Already done if you followed the initial setup.
 
 ### 2. Configure Environment
 
-Edit `.env` file and fill in your API keys:
+Edit your .env file:
 
 ```bash
 nano .env
 ```
 
-Replace these values:
-- `DISCORD_TOKEN`: Your Discord bot token
-- `OPENROUTER_API_KEY`: Your OpenRouter API key
-- `TAVILY_API_KEY`: Your Tavily API key
-- `MODEL_NAME`: LLM model for general chat (default: `anthropic/claude-3.7-sonnet`)
-- `POSTGRES_PASSWORD`: Choose a secure password
+**Required Settings:**
+- DISCORD_TOKEN: Your Discord bot token
+- OPENROUTER_API_KEY: Your OpenRouter API key
+- TAVILY_API_KEY: Your Tavily search API key
+- MODEL_NAME: LLM model for chat (default: anthropic/claude-3.7-sonnet)
+- POSTGRES_PASSWORD: Choose a secure database password
 
-**Optional - Rate Limiting & Cost Control:**
-- `MAX_TOKENS_PER_REQUEST`: Max tokens per single request (default: 1000)
-- `HOURLY_TOKEN_LIMIT`: Max tokens per user per hour (default: 10000)
-- `MAX_CONTEXT_TOKENS`: Max context size in tokens (default: 4000)
-- `MAX_CONCURRENT_REQUESTS`: Max simultaneous requests per user (default: 3)
-- `MESSAGE_COOLDOWN`: Seconds between messages per user (default: 3)
-- `MAX_MESSAGES_PER_MINUTE`: Messages per minute per user (default: 10)
-- `MAX_INPUT_LENGTH`: Max input message length in characters (default: 2000)
-- `FACT_CHECK_COOLDOWN`: Seconds between fact-checks (default: 300)
-- `FACT_CHECK_DAILY_LIMIT`: Fact-checks per day per user (default: 10)
-- `SEARCH_HOURLY_LIMIT`: Web searches per hour per user (default: 5)
-- `SEARCH_DAILY_LIMIT`: Web searches per day per user (default: 20)
-- `WRAPPED_COOLDOWN`: Seconds between /wrapped commands (default: 60)
-- `IRACING_LEADERBOARD_COOLDOWN`: Seconds between server leaderboards (default: 60)
+**Optional Rate Limiting:**
+- MAX_TOKENS_PER_REQUEST: Max tokens per request (default: 1000)
+- HOURLY_TOKEN_LIMIT: Max tokens per user per hour (default: 10000)
+- MAX_CONTEXT_TOKENS: Max context size (default: 4000)
+- MAX_CONCURRENT_REQUESTS: Simultaneous requests per user (default: 3)
+- MESSAGE_COOLDOWN: Seconds between messages (default: 3)
+- MAX_MESSAGES_PER_MINUTE: Messages per minute per user (default: 10)
+- MAX_INPUT_LENGTH: Max message length in characters (default: 2000)
+- FACT_CHECK_COOLDOWN: Seconds between fact-checks (default: 300)
+- FACT_CHECK_DAILY_LIMIT: Fact-checks per day per user (default: 10)
+- SEARCH_HOURLY_LIMIT: Web searches per hour (default: 5)
+- SEARCH_DAILY_LIMIT: Web searches per day (default: 20)
 
-**Optional - iRacing Integration:**
-To enable iRacing features securely with encrypted credentials:
-1. See **[CREDENTIALS_SETUP.md](docs/guides/CREDENTIALS_SETUP.md)** for detailed instructions
+**Optional iRacing Integration:**
+
+To enable iRacing features with encrypted credentials:
+
+1. See [CREDENTIALS_SETUP.md](docs/guides/CREDENTIALS_SETUP.md) for detailed instructions
 2. Quick start:
    ```bash
-   docker-compose build bot  # Install encryption library
-   docker-compose run --rm bot python encrypt_credentials.py  # Encrypt credentials
-   docker-compose up -d bot  # Restart with encrypted credentials
+   docker-compose build bot
+   docker-compose run --rm bot python encrypt_credentials.py
+   docker-compose up -d bot
    ```
 
-**Note**: Credentials are encrypted using Fernet symmetric encryption and never stored in plaintext.
+Credentials are encrypted using Fernet symmetric encryption and never stored in plaintext.
 
 ### 3. Start the Bot
 
@@ -247,272 +312,307 @@ docker-compose down
 ## Commands
 
 ### Conversation
-- **@WompBot**, **"wompbot"**, or **"!wb"**: Chat with the bot (powered by Claude 3.7 Sonnet)
-- **!ping**: Check bot latency
-- **!wompbot help** or **/help**: Show all available commands
 
-### Weather & Computational Tools
-- **"wompbot weather [location]"**: Get weather with beautiful visualization (e.g., "weather in Tokyo")
-- **"wompbot forecast [location]"**: Get 5-day weather forecast
-- **/weather_set <location> [units]**: Set your default weather location
-- **/weather_clear**: Clear your saved weather preference
-- **/weather_info**: View your current weather preference
-- **"wompbot [math question]"**: Ask Wolfram Alpha (e.g., "what is 2^100?", "convert 100 USD to EUR")
-- **"wompbot show me a chart of..."**: Create visualizations from server data
+- Mention @WompBot, say "wompbot", or use "!wb" to chat with the bot
+- !ping: Check bot latency
+- !wompbot help or /help: Show all commands
 
-### Claims & Receipts
-- **/receipts [@user] [keyword]**: View tracked claims for a user
-- **/verify_claim <id> <status> [notes]**: Verify a claim as true/false/mixed/outdated
+### Weather and Computational
+
+- "wompbot weather [location]": Get weather with visualization
+- "wompbot forecast [location]": Get 5-day forecast
+- /weather_set <location> [units]: Set your default location
+- /weather_clear: Clear saved weather preference
+- /weather_info: View current preference
+- "wompbot [math question]": Ask Wolfram Alpha
+- "wompbot show me a chart of...": Create visualizations
+
+### Claims and Receipts
+
+- /receipts [@user] [keyword]: View tracked claims
+- /verify_claim <id> <status> [notes]: Verify a claim
 
 ### Quotes
-- **☁️ React**: React to any message with ☁️ emoji to save as quote
-- **/quotes [@user]**: View saved quotes for a user
+
+- React with cloud emoji to save a quote
+- /quotes [@user]: View saved quotes
 
 ### Fact-Checking
-- **⚠️ React**: React to any message with ⚠️ emoji to trigger fact-check
-- Bot will search web and analyze claim accuracy
+
+- React with warning emoji to trigger fact-check
 
 ### Chat Statistics
-- **/stats_server [days|date_range]**: Network graph and interaction stats
-- **/stats_topics [days|date_range]**: Trending keywords (TF-IDF)
-- **/stats_primetime [@user] [days|date_range]**: Activity heatmaps
-- **/stats_engagement [@user] [days|date_range]**: Engagement metrics
-- **!refreshstats**: (Admin) Manually refresh stats cache
 
-### Hot Takes Leaderboard
-- **/hottakes [type] [days]**: View hot takes leaderboards (controversial/vindicated/worst/community/combined)
-- **/mystats_hottakes**: View your personal hot takes statistics
-- **/vindicate <id> <status> [notes]**: (Admin) Mark a hot take as vindicated/proven wrong
+- /stats_server [days|date_range]: Network graph and interaction stats
+- /stats_topics [days|date_range]: Trending keywords
+- /stats_primetime [@user] [days|date_range]: Activity heatmaps
+- /stats_engagement [@user] [days|date_range]: Engagement metrics
+- !refreshstats: (Admin) Manually refresh cache
+
+### Hot Takes
+
+- /hottakes [type] [days]: View leaderboards
+- /mystats_hottakes: Your personal stats
+- /vindicate <id> <status> [notes]: (Admin) Mark vindication status
 
 ### Reminders
-- **/remind <time> <message> [recurring]**: Set a reminder with natural language time
-- **/reminders**: View all your active reminders
-- **/cancel_reminder <id>**: Cancel one of your reminders
 
-### Event Scheduling
-- **/schedule_event <name> <date> [description] [reminders]**: Schedule an event with automatic reminders
-- **/events [limit]**: View upcoming scheduled events
-- **/cancel_event <id>**: Cancel a scheduled event
+- /remind <time> <message> [recurring]: Set reminder
+- /reminders: View active reminders
+- /cancel_reminder <id>: Cancel a reminder
+
+### Events
+
+- /schedule_event <name> <date> [description] [reminders]: Schedule event
+- /events [limit]: View upcoming events
+- /cancel_event <id>: Cancel event
 
 ### Yearly Wrapped
-- **/wrapped [year] [user]**: View your yearly activity summary (Spotify Wrapped for Discord!)
+
+- /wrapped [year] [user]: View yearly summary
 
 ### Quote of the Day
-- **/qotd [mode]**: View featured quotes (daily/weekly/monthly/alltime/random)
+
+- /qotd [mode]: View featured quotes
 
 ### Debate Scorekeeper
-- **/debate_start <topic>**: Start tracking a debate in the current channel
-- **/debate_end**: End debate and show LLM analysis with scores and fallacies
-- **/debate_stats [user]**: View debate statistics and win/loss record
-- **/debate_leaderboard**: Top debaters by wins and average score
-- **/debate_review <file>**: Analyze a debate from an uploaded text file transcript
+
+- /debate_start <topic>: Start tracking debate
+- /debate_end: End debate and show analysis
+- /debate_stats [user]: View debate statistics
+- /debate_leaderboard: Top debaters
+- /debate_review <file>: Analyze uploaded transcript
 
 ### Utility
-- **/whoami**: Show your Discord user information (ID and username)
-- **/personality <mode>**: Change bot personality (default/bogan) - Wompie only
+
+- /whoami: Show your Discord information
+- /personality <mode>: Change bot personality (default/concise/bogan) - Admin only
 
 ### iRacing Integration
-- **/iracing_link <iracing_name>**: Link your Discord account to your iRacing account
-- **/iracing_profile [driver_name]**: View iRacing driver profile (uses linked account if no name provided)
-- **/iracing_compare_drivers <driver1> <driver2> [category]**: Compare two drivers side-by-side with charts
-- **/iracing_history [driver_name] [category] [days]**: View rating progression chart (default: 30 days)
-- **/iracing_server_leaderboard [category]**: Show iRating rankings for linked Discord members
-- **/iracing_meta <series> [season] [week] [track]**: View meta analysis showing best cars for a series
-- **/iracing_win_rate <series_name> [season]**: View win rate analysis for cars in a series
-- **/iracing_schedule [series] [category] [week]**: View schedules by series or category with chart output
-- **/iracing_series_popularity [time_range]**: Show most popular series (season/yearly/all_time) with charts
-- **/iracing_season_schedule <series_name> [season]**: View the full season track rotation
-- **/iracing_timeslots <series> [week]**: View race session times for a specific series
-- **/iracing_results [driver_name]**: View recent race results (uses linked account if no name provided)
-- **/iracing_upcoming_races [hours] [category]**: View all upcoming official races (default: next 24 hours)
 
-> Adaptive rate limiting: the iRacing client now retries gently after a 429 response and otherwise fires requests at full speed, keeping schedule and dashboard commands snappy while staying within API limits.
+**Driver Stats:**
+- /iracing_link <name>: Link Discord to iRacing account
+- /iracing_profile [name]: View driver profile
+- /iracing_compare_drivers <driver1> <driver2> [category]: Compare drivers
+- /iracing_history [name] [category] [days]: Rating progression
+- /iracing_server_leaderboard [category]: Server rankings
+- /iracing_results [name]: Recent race results
 
-> Need everything pre-cached before a broadcast or league night? Run `docker-compose exec bot python -m bot.scripts.warm_iracing_cache` to prefetch schedules and meta statistics for every active series in the current season. Add `--limit N` to test with a subset or `--sleep 1.0` to slow requests.
+**Series and Schedule:**
+- /iracing_meta <series> [season] [week] [track]: Best cars for series
+- /iracing_win_rate <series> [season]: Win rates by car
+- /iracing_schedule [series] [category] [week]: View schedules
+- /iracing_series_popularity [time_range]: Popular series charts
+- /iracing_season_schedule <series> [season]: Full season rotation
+- /iracing_timeslots <series> [week]: Race session times
+- /iracing_upcoming_races [hours] [category]: Upcoming races
 
-### iRacing Team Management
-- **/iracing_team_create <name> <tag> [description]**: Create a new racing team
-- **/iracing_team_invite <team_id> <member> [role]**: Invite a member to your team (roles: driver, manager, crew_chief, spotter)
-- **/iracing_team_leave <team_id>**: Leave a team
-- **/iracing_team_info <team_id>**: View team details and roster
-- **/iracing_team_list**: List all teams in this server
-- **/iracing_my_teams**: View teams you're a member of
-- **/iracing_event_create <team_id> <name> <type> <time> [duration] [series] [track]**: Schedule a team event
-- **/iracing_team_events <team_id>**: View upcoming events for a team
-- **/iracing_event_availability <event_id> <status> [notes]**: Mark your availability (available/unavailable/maybe/confirmed)
-- **/iracing_event_roster <event_id>**: View driver availability for an event
+**Team Management:**
+- /iracing_team_create <name> <tag> [description]: Create team
+- /iracing_team_invite <team_id> <member> [role]: Invite member
+- /iracing_team_leave <team_id>: Leave team
+- /iracing_team_info <team_id>: View team details
+- /iracing_team_list: List all teams
+- /iracing_my_teams: Your teams
+- /iracing_event_create <team_id> <name> <type> <time> [duration] [series] [track]: Schedule event
+- /iracing_team_events <team_id>: View events
+- /iracing_event_availability <event_id> <status> [notes]: Mark availability
+- /iracing_event_roster <event_id>: View driver availability
+
+Note: The iRacing client uses adaptive rate limiting with gentle retries after 429 responses while keeping commands snappy at full speed within API limits.
+
+For pre-caching before broadcasts or league nights, run:
+```bash
+docker-compose exec bot python -m bot.scripts.warm_iracing_cache
+```
+Add --limit N to test with a subset or --sleep 1.0 to slow requests.
 
 ### User Analytics
-- **!stats [@user]**: View user statistics and behavior analysis
-- **!search <query>**: Manually search the web
-- **!analyze [days]**: (Admin) Analyze user behavior patterns
-- **!refreshstats**: (Admin) Manually refresh stats cache
+
+- !stats [@user]: View user statistics
+- !search <query>: Manual web search
+- !analyze [days]: (Admin) Analyze behavior patterns
+- !refreshstats: (Admin) Refresh stats cache
 
 ## Privacy Features
 
-**GDPR-Compliant Privacy Controls (Opt-Out Model):**
+GDPR-compliant privacy controls using an opt-out model.
 
-**Legal Basis**: Data processing operates under **Legitimate Interest** (GDPR Art. 6.1.f) - WompBot collects data by default to provide conversational AI features with context awareness and personalization. Users can opt out at any time.
+**Legal Basis:**
 
-**Default Behavior**: All users are opted-in by default for:
+Data processing operates under Legitimate Interest (GDPR Art. 6.1.f). WompBot collects data by default to provide conversational AI with context awareness and personalization. Users can opt out at any time.
+
+**Default Behavior:**
+
+All users are opted-in by default for:
 - Message history storage
 - Behavioral profiling (tone, style, profanity levels)
-- Personalized responses based on user context
+- Personalized responses based on context
 - Full access to all bot features
 
 **User Privacy Commands:**
-- **/wompbot_optout**: Opt out of data collection and processing
-- **/download_my_data**: Export all your data in JSON format (GDPR Art. 15)
-- **/delete_my_data**: Request deletion with 30-day grace period (GDPR Art. 17)
-  - ⚠️ Currently deletes messages, claims, quotes, reminders, events - **does not** delete user_behavior, search_logs, or debate records
-- **/my_privacy_status**: View your current privacy and opt-out status
-- **/privacy_policy**: View the complete privacy policy
+
+- /wompbot_optout: Opt out of data collection
+- /download_my_data: Export all your data (GDPR Art. 15)
+- /delete_my_data: Request deletion with 30-day grace period (GDPR Art. 17)
+  - Warning: Currently deletes messages, claims, quotes, reminders, events - does not delete user_behavior, search_logs, or debate records
+- /my_privacy_status: View current privacy status
+- /privacy_policy: View complete privacy policy
 
 **Admin Privacy Commands:**
-- **/privacy_settings**: Get a live overview of consent counts and stored data
-- **/privacy_audit**: Download a JSON report summarizing current privacy posture
 
-**Compliance Status**: See [GDPR Compliance Manual](docs/compliance/GDPR_COMPLIANCE.md) for full details on implemented controls and known gaps.
+- /privacy_settings: Live overview of consent counts and stored data
+- /privacy_audit: Download JSON report of privacy posture
+
+**Compliance Status:**
+
+See [GDPR Compliance Manual](docs/compliance/GDPR_COMPLIANCE.md) for full details on implemented controls and known gaps.
 
 **When Opted Out:**
-- Message content and usernames are redacted before storage (only metadata retained)
-- Messages are flagged as opted-out
+
+- Message content and usernames are redacted before storage
+- Messages flagged as opted-out
 - Excluded from behavioral profiling
 - Not included in conversation context or LLM prompts
 - Bot still responds but without personalization
 
-**Background jobs respect opt-out status & rate limits:**
-- Scheduled tasks persist their last successful run in `job_last_run`
-- On startup each loop checks the stored timestamp and skips work until the interval (hourly/daily/weekly) elapses
-- Prevents duplicate GDPR cleanup or iRacing snapshots after restarts while keeping cron cadence predictable
-- New members automatically receive a welcome DM outlining privacy commands and opt-out options (set `PRIVACY_DM_NEW_MEMBERS=0` to disable)
+**Background Jobs:**
+
+Background tasks respect opt-out status and rate limits. Scheduled tasks persist their last successful run in job_last_run table. On startup, each loop checks the stored timestamp and skips work until the interval elapses. This prevents duplicate GDPR cleanup or iRacing snapshots after restarts while keeping schedules predictable.
+
+New members automatically receive a welcome DM outlining privacy commands and opt-out options. Set PRIVACY_DM_NEW_MEMBERS=0 to disable.
 
 ## Behavior Analysis
 
-Weekly or on-demand analysis tracks:
-- Profanity frequency (0-10 scale)
-- Conversational tone
-- Honesty patterns (fact-based vs exaggeration)
-- Communication style
-
-Use `/analyze` command to run analysis.
+Weekly or on-demand analysis tracks profanity frequency, conversational tone, honesty patterns, and communication style. Use the /analyze command to run analysis.
 
 ## Documentation
 
-📚 **Comprehensive guides available:**
+Comprehensive guides are available in the docs directory.
 
 **Feature Documentation:**
-- [🤖 Conversational AI](docs/features/CONVERSATIONAL_AI.md) - Professional assistant, LLM configuration
-- [📋 Claims Tracking](docs/features/CLAIMS_TRACKING.md) - Auto-detection, edit tracking, contradictions
-- [⚠️ Fact-Checking](docs/features/FACT_CHECK.md) - Web search integration, verdict system
-- [☁️ Quotes System](docs/features/QUOTES.md) - Emoji reactions, context preservation
-- [📊 User Analytics](docs/features/USER_ANALYTICS.md) - Behavior analysis, leaderboards
-- [📈 Chat Statistics](docs/features/CHAT_STATISTICS.md) - Network graphs, topics, prime time
-- [🔥 Hot Takes Leaderboard](docs/features/HOT_TAKES.md) - Controversy detection, vindication tracking
-- [⏰ Reminders](docs/features/REMINDERS.md) - Natural language time parsing, context preservation
-- [📅 Event Scheduling](docs/features/EVENTS.md) - Scheduled events with periodic reminders
-- [🏁 iRacing Integration](docs/features/IRACING.md) - Driver stats, team management, event scheduling
+- [Conversational AI](docs/features/CONVERSATIONAL_AI.md) - Personality modes, LLM configuration
+- [Claims Tracking](docs/features/CLAIMS_TRACKING.md) - Auto-detection, edit tracking
+- [Fact-Checking](docs/features/FACT_CHECK.md) - Web search, verdict system
+- [Quotes System](docs/features/QUOTES.md) - Emoji reactions, context
+- [User Analytics](docs/features/USER_ANALYTICS.md) - Behavior analysis
+- [Chat Statistics](docs/features/CHAT_STATISTICS.md) - Network graphs, topics
+- [Hot Takes Leaderboard](docs/features/HOT_TAKES.md) - Controversy tracking
+- [Reminders](docs/features/REMINDERS.md) - Natural language parsing
+- [Event Scheduling](docs/features/EVENTS.md) - Scheduled events
+- [iRacing Integration](docs/features/IRACING.md) - Driver stats, teams
+- [RAG System](docs/features/RAG_SYSTEM.md) - Memory architecture
 
-**Configuration & Development:**
-- [⚙️ Configuration Guide](docs/CONFIGURATION.md) - All settings, API keys, environment variables
-- [🛠️ Development Guide](docs/DEVELOPMENT.md) - Adding features, database migrations, testing
-- [💰 Cost Optimization](docs/COST_OPTIMIZATION.md) - Two-stage hybrid detection for claims
+**Configuration and Development:**
+- [Configuration Guide](docs/CONFIGURATION.md) - All settings and variables
+- [Development Guide](docs/DEVELOPMENT.md) - Adding features, migrations
+- [Cost Optimization](docs/COST_OPTIMIZATION.md) - Hybrid detection
 
 **Guides:**
-- [🔐 Encrypted Credentials Setup](docs/guides/CREDENTIALS_SETUP.md) - Secure iRacing credential workflow
-- [🧪 iRacing Testing Checklist](docs/guides/IRACING_TESTING.md) - Validation steps before race nights
+- [Encrypted Credentials Setup](docs/guides/CREDENTIALS_SETUP.md) - Secure workflow
+- [iRacing Testing Checklist](docs/guides/IRACING_TESTING.md) - Validation steps
 
-**Compliance & Security:**
-- [📘 GDPR Compliance Manual](docs/compliance/GDPR_COMPLIANCE.md) - Full breakdown of data rights & flows
-- [📝 GDPR Self-Attestation](docs/compliance/GDPR_SELF_ATTESTATION.md) - Statement for server admins
-- [🛡️ Security & GDPR Release Notes](docs/compliance/SECURITY_AND_GDPR_UPDATE.md) - Details of major hardening release
-- [🔍 Security Audit 2025](docs/compliance/SECURITY_AUDIT_2025.md) - Findings & remediation tracking
+**Compliance and Security:**
+- [GDPR Compliance Manual](docs/compliance/GDPR_COMPLIANCE.md) - Data rights and flows
+- [GDPR Self-Attestation](docs/compliance/GDPR_SELF_ATTESTATION.md) - Server admin statement
+- [Security and GDPR Release Notes](docs/compliance/SECURITY_AND_GDPR_UPDATE.md) - Hardening release
+- [Security Audit 2025](docs/compliance/SECURITY_AUDIT_2025.md) - Findings and remediation
 
 ## Database Schema
 
-**Tables:**
-- `messages`: All Discord messages with opt-out flags and **guild_id** for server isolation
-- `user_profiles`: User metadata and message counts (global across servers)
-- `user_behavior`: Analysis results (profanity, tone, patterns) with **guild_id**
-- `search_logs`: Web search history
-- `job_last_run`: Last successful timestamp for each background job
-- `claims`: Tracked claims with edit/delete history and **guild_id**
-- `hot_takes`: Controversial claims with community tracking and vindication, with **guild_id**
-- `quotes`: Saved quotes with reaction counts and **guild_id**
-- `claim_contradictions`: Detected contradictions with **guild_id**
-- `fact_checks`: Fact-check results with sources with **guild_id**
-- `reminders`: Context-aware reminders with natural language parsing and **guild_id**
-- `events`: Scheduled events with periodic reminders and channel notifications (has guild_id)
-- `debates`: Tracked debates with LLM analysis and scores (has guild_id)
-- `debate_participants`: Individual debate participant records and statistics
-- `stats_cache`: Pre-computed statistics (network, topics, primetime, engagement) with **guild_id**
-- `message_interactions`: Network graph data with **guild_id**
-- `message_embeddings`: RAG vector embeddings for semantic search
-- `embedding_queue`: Background processing queue for embeddings
-- `conversation_summaries`: AI-generated conversation summaries with **guild_id**
-- `user_facts`: Learned facts about users with **guild_id**
-- `topic_snapshots`: Trending topics over time
-- `weather_preferences`: User weather location preferences (location, units)
-- `iracing_links`: Discord to iRacing account mappings
-- `iracing_teams`: Racing team metadata (name, tag, description) with **guild_id**
-- `iracing_team_members`: Team rosters with roles
-- `iracing_team_events`: Scheduled team events (practice, races, endurance) with **guild_id**
-- `iracing_driver_availability`: Driver availability per event
-- `iracing_stint_schedule`: Driver stint rotations for endurance races
-- `iracing_participation_history`: Daily participation snapshots for series popularity analytics
-- `user_consent`: GDPR consent tracking and versioning with **guild_id**
-- `data_audit_log`: Complete audit trail (7-year retention)
-- `data_export_requests`: Data export request tracking
-- `data_deletion_requests`: Data deletion with 30-day grace period
-- `data_retention_config`: Configurable retention policies
-- `data_breach_log`: Security incident tracking
-- `privacy_policy_versions`: Privacy policy version history
-- `rate_limits`: Token usage tracking per user (1-hour rolling window)
-- `api_costs`: LLM API cost tracking with model and token breakdowns
-- `cost_alerts`: $1 spending alert tracking (prevents duplicate notifications)
-- `feature_rate_limits`: Feature-specific usage tracking (fact-checks, searches, commands)
+**Core Tables:**
+- messages: All Discord messages with opt-out flags and guild_id
+- user_profiles: User metadata and message counts (global)
+- user_behavior: Analysis results with guild_id
+- search_logs: Web search history
+- job_last_run: Background job timestamps
+- claims: Tracked claims with edit/delete history and guild_id
+- hot_takes: Controversial claims with vindication and guild_id
+- quotes: Saved quotes with reaction counts and guild_id
+- claim_contradictions: Detected contradictions with guild_id
+- fact_checks: Fact-check results with sources and guild_id
+- reminders: Context-aware reminders with guild_id
+- events: Scheduled events with guild_id
+- debates: Tracked debates with guild_id
+- debate_participants: Individual participant records
 
-**Guild Isolation**: 18 tables have `guild_id` columns with composite indexes for 10x faster queries. See [Guild Isolation Documentation](docs/GUILD_ISOLATION.md) for details.
+**Analytics Tables:**
+- stats_cache: Pre-computed statistics with guild_id
+- message_interactions: Network graph data with guild_id
+- message_embeddings: RAG vector embeddings
+- embedding_queue: Background processing queue
+- conversation_summaries: AI-generated summaries with guild_id
+- user_facts: Learned facts about users with guild_id
+- topic_snapshots: Trending topics over time
+
+**Integration Tables:**
+- weather_preferences: User weather locations
+- iracing_links: Discord to iRacing mappings
+- iracing_teams: Racing team metadata with guild_id
+- iracing_team_members: Team rosters with roles
+- iracing_team_events: Scheduled team events with guild_id
+- iracing_driver_availability: Driver availability per event
+- iracing_stint_schedule: Driver stint rotations
+- iracing_participation_history: Daily participation snapshots
+
+**Privacy and Compliance Tables:**
+- user_consent: GDPR consent tracking with guild_id
+- data_audit_log: Complete audit trail (7-year retention)
+- data_export_requests: Data export tracking
+- data_deletion_requests: Deletion with 30-day grace period
+- data_retention_config: Configurable retention policies
+- data_breach_log: Security incident tracking
+- privacy_policy_versions: Policy version history
+
+**Rate Limiting and Cost Tables:**
+- rate_limits: Token usage tracking (1-hour rolling window)
+- api_costs: LLM API cost tracking with model breakdowns
+- cost_alerts: $1 spending alert tracking
+- feature_rate_limits: Feature-specific usage tracking
+
+**Guild Isolation:**
+
+18 tables have guild_id columns with composite indexes for 10x faster queries. See [Guild Isolation Documentation](docs/GUILD_ISOLATION.md) for technical details.
 
 ## Costs
 
 ### Dual-Model Pricing
 
 **General Chat (Claude 3.7 Sonnet):**
-- ~$3 input / $15 output per 1M tokens
-- ~$0.015-0.03 per message (depending on length)
-- 100 messages/day = ~$45-90/month (without rate limits)
-- **With rate limits**: ~$10-20/month
+- About $3 input / $15 output per 1M tokens
+- Roughly $0.015-0.03 per message depending on length
+- 100 messages per day = $45-90/month without rate limits
+- With rate limits: $10-20/month
 
 **Fact-Checking (Claude 3.5 Sonnet):**
-- ~$3 input / $15 output per 1M tokens
-- ~$0.018 per fact-check (⚠️ emoji trigger)
-- 50 fact-checks/month = ~$0.90/month
-- **Rate limited**: 10 per day per user
+- About $3 input / $15 output per 1M tokens
+- Roughly $0.018 per fact-check (warning emoji trigger)
+- 50 fact-checks per month = $0.90/month
+- Rate limited: 10 per day per user
 
 **Search (Tavily):**
-- Free up to 1,000 searches/month
-- ~$0.001 per search if exceeded
-- **Rate limited**: 5/hour, 20/day per user
+- Free up to 1,000 searches per month
+- About $0.001 per search if exceeded
+- Rate limited: 5 per hour, 20 per day per user
 
 **Total Monthly Estimate (with rate limits):**
-- Light usage: ~$5-10/month
-- Moderate usage: ~$15-25/month
-- Heavy usage: ~$30-50/month
+- Light usage: $5-10/month
+- Moderate usage: $15-25/month
+- Heavy usage: $30-50/month
 
-### Cost Tracking & Alerts
+### Cost Tracking and Alerts
 
 **Automatic Cost Monitoring:**
 - Real-time token usage tracking from API responses
 - Model-specific pricing calculations
-- **$1 spending alerts**: Direct messages to bot owner when each $1 threshold crossed
-- Beautiful embed with cost breakdown by model
-- Database tracking in `api_costs` and `cost_alerts` tables
+- $1 spending alerts sent via direct message
+- Beautiful embeds with cost breakdown by model
+- Database tracking in api_costs and cost_alerts tables
 
 **Cost Control Features:**
 - Token limits prevent runaway spending
-- Feature-specific rate limits (fact-checks, searches)
-- Command cooldowns for expensive operations
+- Feature-specific rate limits for expensive operations
+- Command cooldowns on costly commands
 - Concurrent request limiting
 - Context token hard cap (4000 tokens max)
 - Message frequency controls
@@ -527,30 +627,31 @@ Use `/analyze` command to run analysis.
 - iRacing Integration (API calls only)
 
 **Variable Cost Features:**
-- Debate Analysis: ~$0.01-0.05 per debate
-- Hot Takes Scoring: ~$0.005 per analysis (only high-engagement claims)
-- User Behavior Analysis: ~$0.005 per user
+- Debate Analysis: $0.01-0.05 per debate
+- Hot Takes Scoring: $0.005 per analysis (only high-engagement claims)
+- User Behavior Analysis: $0.005 per user
 
-### Cost Optimization
-- Dual-model architecture: Cheap model for chat, expensive only for fact-checking
+### Cost Optimization Strategy
+
+- Dual-model architecture: cheap model for chat, expensive only for fact-checking
 - Hot Takes use hybrid detection (pattern matching first, LLM only for high engagement)
 - Debate Scorekeeper only uses LLM when ending debates
-- Background stat updates use zero LLM (pure SQL + TF-IDF)
+- Background stat updates use zero LLM (pure SQL and TF-IDF)
 
 ## Troubleshooting
 
-### Bot not responding
+**Bot not responding:**
 ```bash
 docker-compose logs bot
 ```
 
-### Database connection issues
+**Database connection issues:**
 ```bash
 docker-compose restart postgres
 docker-compose logs postgres
 ```
 
-### Reset everything
+**Reset everything:**
 ```bash
 docker-compose down -v
 docker-compose up -d
@@ -558,7 +659,7 @@ docker-compose up -d
 
 ## Model Configuration
 
-WompBot uses **Claude 3.7 Sonnet** via OpenRouter for high-quality, conversational AI:
+WompBot uses Claude 3.7 Sonnet via OpenRouter for high-quality conversational AI:
 
 ```env
 # General chat - Fast, high-quality responses
@@ -569,44 +670,60 @@ FACT_CHECK_MODEL=anthropic/claude-3.5-sonnet
 ```
 
 ### Why Claude?
-- **General chat** uses Claude 3.7 Sonnet for fast, accurate, conversational responses
-- **Fact-checking** uses Claude 3.5 Sonnet for maximum accuracy and zero hallucination
-- **Cost optimized**: Expensive fact-check model only used when ⚠️ emoji triggered
+
+- General chat uses Claude 3.7 Sonnet for fast, accurate, conversational responses
+- Fact-checking uses Claude 3.5 Sonnet for maximum accuracy and zero hallucination
+- Cost optimized: expensive fact-check model only used when warning emoji triggered
 
 ### Alternative Models
 
 **General Chat Models (via OpenRouter):**
-- `anthropic/claude-3.7-sonnet` (Default - excellent balance)
-- `anthropic/claude-3.5-sonnet` (More accurate, slightly slower)
-- `anthropic/claude-3-haiku` (Faster, more economical)
-- `google/gemini-2.0-flash-exp` (Fast alternative)
+- anthropic/claude-3.7-sonnet (Default - excellent balance)
+- anthropic/claude-3.5-sonnet (More accurate, slightly slower)
+- anthropic/claude-3-haiku (Faster, more economical)
+- google/gemini-2.0-flash-exp (Fast alternative)
 
 **Fact-Check Models:**
-- `anthropic/claude-3.5-sonnet` (Default - minimal hallucination)
-- `anthropic/claude-3-opus` (Maximum accuracy, expensive)
+- anthropic/claude-3.5-sonnet (Default - minimal hallucination)
+- anthropic/claude-3-opus (Maximum accuracy, expensive)
 - Other models not recommended for fact-checking
 
 ## Personality System
 
-WompBot has multiple personality modes available via `/personality <mode>`:
+WompBot has three personality modes available via the /personality command (admin only).
 
-**Default (Professional):**
-- Helpful, professional assistant
-- Clear and informative responses
-- Balanced tone for general use
+**Default (Conversational):**
+- Conversational and helpful responses
+- Provides detailed information with personality
+- Balanced tone suitable for most interactions
+- Responds with 2-4 sentences typically
+- Adapts to user's communication style
 
-**Bogan (Optional):**
-- Australian slang and casual language
-- Laid-back, friendly tone
-- Colorful expressions
+**Concise (Brief):**
+- Very brief responses (1-2 sentences maximum)
+- Gets straight to the point without elaboration
+- Simple acknowledgments for statements
+- No unnecessary explanations or context
+- Ideal for quick information or when you prefer minimal text
+- Example responses: "Yep.", "4", "Trump won the 2024 election.", "docker restart container_name"
+
+**Bogan (Australian):**
+- Full Australian slang and casual language
+- Working-class Aussie dialect and expressions
+- Laid-back, friendly tone like chatting at the pub
+- Uses terms like "yeah nah", "mate", "she'll be right"
+- Still helpful and informative, just with personality
+- Natural variation in greetings and responses to sound authentic
+
+The personality setting is per-server and persists in the database.
 
 ## Upcoming Features
 
-- 🎲 **Polls & Voting**: Create polls with slash commands and reaction tracking
-- 🎂 **Birthday Tracking**: Automatic birthday reminders and celebrations
-- 🎮 **Trivia Games**: Quiz system with categories and leaderboards
-- 📊 **Voice Channel Stats**: Track time spent in voice channels
-- 🎯 **Custom Commands**: User-created text commands and responses
+- Polls and Voting: Create polls with slash commands and reaction tracking
+- Birthday Tracking: Automatic birthday reminders and celebrations
+- Trivia Games: Quiz system with categories and leaderboards
+- Voice Channel Stats: Track time spent in voice channels
+- Custom Commands: User-created text commands and responses
 
 ## Development
 
@@ -627,7 +744,7 @@ View logs:
 docker-compose logs -f bot
 ```
 
-**For detailed development guide, see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)**
+For detailed development guide, see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)
 
 ## File Structure
 
@@ -640,45 +757,39 @@ discord-bot/
 │
 ├── docs/                    # Documentation
 │   ├── features/            # Feature-specific guides
-│   │   ├── CHAT_STATISTICS.md
-│   │   ├── CLAIMS_TRACKING.md
-│   │   ├── CONVERSATIONAL_AI.md
-│   │   ├── EVENTS.md
-│   │   ├── FACT_CHECK.md
-│   │   ├── HOT_TAKES.md
-│   │   ├── QUOTES.md
-│   │   ├── REMINDERS.md
-│   │   └── USER_ANALYTICS.md
+│   ├── guides/              # Setup and testing guides
+│   ├── compliance/          # GDPR and security docs
 │   ├── CONFIGURATION.md     # Configuration guide
-│   └── DEVELOPMENT.md       # Development guide
+│   ├── DEVELOPMENT.md       # Development guide
+│   └── COST_OPTIMIZATION.md # Cost optimization strategies
 │
 ├── sql/
 │   └── init.sql             # Database schema
 │
 └── bot/
-    ├── main.py                  # Main bot logic, event handlers, commands
-    ├── llm.py                   # OpenRouter LLM client with tool calling support
-    ├── database.py              # PostgreSQL interface with connection pooling and guild isolation
+    ├── main.py                  # Main bot logic and initialization
+    ├── llm.py                   # OpenRouter LLM client with tool calling
+    ├── database.py              # PostgreSQL interface with connection pooling
     ├── search.py                # Tavily web search
-    ├── rag.py                   # RAG (Retrieval Augmented Generation) system
+    ├── rag.py                   # RAG system for intelligent memory
     ├── compression.py           # LLMLingua semantic compression
-    ├── backup_manager.py        # Automated database backup system
-    ├── logging_config.py        # Centralized logging configuration
+    ├── backup_manager.py        # Automated database backups
+    ├── logging_config.py        # Centralized logging
     ├── weather.py               # OpenWeatherMap API client
     ├── wolfram.py               # Wolfram Alpha API client
-    ├── viz_tools.py             # Visualization engine (charts, weather cards)
+    ├── viz_tools.py             # Visualization engine
     ├── tool_executor.py         # LLM tool execution handler
-    ├── llm_tools.py             # LLM tool definitions (function calling)
-    ├── data_retriever.py        # Database query engine for visualizations
-    ├── iracing_client.py        # Official iRacing API client
-    ├── iracing_viz.py           # iRacing visualizations (matplotlib)
+    ├── llm_tools.py             # LLM tool definitions
+    ├── data_retriever.py        # Database query engine
+    ├── iracing_client.py        # iRacing API client
+    ├── iracing_viz.py           # iRacing visualizations
     ├── requirements.txt         # Python dependencies
     ├── handlers/
-    │   ├── conversations.py     # Message handling, LLM conversations, tool execution
+    │   ├── conversations.py     # Message handling and LLM conversations
     │   └── events.py            # Discord event handlers
     ├── commands/
     │   ├── prefix_commands.py   # Prefix commands (!ping, !stats)
-    │   └── slash_commands.py    # Slash commands (/help, /wrapped, /weather_set)
+    │   └── slash_commands.py    # Slash commands (/help, /wrapped)
     ├── features/
     │   ├── claims.py            # Claims tracking system
     │   ├── fact_check.py        # Fact-check feature
@@ -690,6 +801,10 @@ discord-bot/
     │   ├── iracing.py           # iRacing integration
     │   ├── iracing_teams.py     # iRacing team management
     │   └── yearly_wrapped.py    # Yearly summaries
+    ├── prompts/
+    │   ├── system_prompt.txt        # Default personality
+    │   ├── system_prompt_concise.txt # Concise personality
+    │   └── system_prompt_bogan.txt   # Bogan personality
     └── tasks/
         └── background_jobs.py   # Scheduled background tasks
 ```
@@ -700,3 +815,5 @@ Check logs for errors:
 ```bash
 docker-compose logs -f
 ```
+
+For issues with specific features, check the relevant documentation in the docs directory.
