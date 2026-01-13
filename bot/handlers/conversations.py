@@ -371,23 +371,30 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
         # Increment concurrent request counter
         USER_CONCURRENT_REQUESTS[message.author.id] = current_requests + 1
 
-        # Start typing indicator
-        async with message.channel.typing():
-            # Get conversation context - use CONTEXT_WINDOW_MESSAGES env var
-            context_window = int(os.getenv('CONTEXT_WINDOW_MESSAGES', '50'))
-            conversation_history = db.get_recent_messages(
-                message.channel.id,
-                limit=context_window,
-                exclude_opted_out=True,
-                guild_id=message.guild.id if message.guild else None
-                # Include bot messages so it can remember what it said
-            )
+        # Get conversation context - use CONTEXT_WINDOW_MESSAGES env var
+        context_window = int(os.getenv('CONTEXT_WINDOW_MESSAGES', '50'))
+        conversation_history = db.get_recent_messages(
+            message.channel.id,
+            limit=context_window,
+            exclude_opted_out=True,
+            guild_id=message.guild.id if message.guild else None
+            # Include bot messages so it can remember what it said
+        )
 
-            # Debug: Log conversation history
-            print(f"🔍 Retrieved {len(conversation_history)} messages for context (limit={context_window})")
-            if len(conversation_history) > 0:
-                print(f"   First message: {conversation_history[0].get('username')}: {conversation_history[0].get('content', '')[:50]}")
-                print(f"   Last message: {conversation_history[-1].get('username')}: {conversation_history[-1].get('content', '')[:50]}")
+        # Debug: Log conversation history
+        print(f"🔍 Retrieved {len(conversation_history)} messages for context (limit={context_window})")
+        if len(conversation_history) > 0:
+            print(f"   First message: {conversation_history[0].get('username')}: {conversation_history[0].get('content', '')[:50]}")
+            print(f"   Last message: {conversation_history[-1].get('username')}: {conversation_history[-1].get('content', '')[:50]}")
+
+        # Check if search is likely needed and send placeholder early (before typing indicator)
+        # This makes the bot feel more responsive
+        search_msg = None
+        if search and llm.should_search(content, conversation_history):
+            search_msg = await message.channel.send(random.choice(SEARCH_STATUS_MESSAGES))
+
+        # Start typing indicator (will be invisible if search_msg was sent, but keeps connection alive)
+        async with message.channel.typing():
 
             # Clean Discord mentions from conversation history
             for msg in conversation_history:
@@ -415,7 +422,6 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
 
             # Check if search is needed (skip if we're using docs)
             search_results = None
-            search_msg = None
 
             if search and not bot_docs and llm.should_search(content, conversation_history):
                 # Check search rate limits (skip for admin)
@@ -432,6 +438,11 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                     )
 
                 if not search_rate_check['allowed']:
+                    # Delete the placeholder if rate limited
+                    if search_msg:
+                        await search_msg.delete()
+                        search_msg = None
+
                     if search_rate_check['reason'] == 'hourly_limit':
                         await message.channel.send(
                             f"⏱️ Search limit reached! You've used {search_rate_check['count']}/{search_rate_check['limit']} searches this hour."
@@ -442,13 +453,17 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                         )
                     # Skip search but continue with response
                 else:
-                    search_msg = await message.channel.send(random.choice(SEARCH_STATUS_MESSAGES))
-
+                    # Placeholder already sent, now actually do the search
                     search_results_raw = await asyncio.to_thread(search.search, content)
                     search_results = search.format_results_for_llm(search_results_raw)
 
                     db.store_search_log(content, len(search_results_raw), message.author.id, message.channel.id)
                     db.record_feature_usage(message.author.id, 'search')
+            elif search_msg:
+                # We sent a placeholder but ended up not searching (maybe bot_docs was loaded)
+                # Delete the placeholder
+                await search_msg.delete()
+                search_msg = None
 
             # Get server personality setting
             server_id = message.guild.id if message.guild else None

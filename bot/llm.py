@@ -16,6 +16,7 @@ class LLMClient:
         self.system_prompt_default = self._load_system_prompt('default')
         self.system_prompt_feyd = self._load_system_prompt('feyd')
         self.system_prompt_bogan = self._load_system_prompt('bogan')
+        self.system_prompt_concise = self._load_system_prompt('concise')
 
         # Default to professional personality
         self.system_prompt = self.system_prompt_default
@@ -25,7 +26,7 @@ class LLMClient:
         Load system prompt from file or use default
 
         Args:
-            personality: 'default' or 'bogan'
+            personality: 'default', 'bogan', or 'concise'
 
         Returns:
             System prompt text
@@ -33,6 +34,8 @@ class LLMClient:
         # Determine which file to load
         if personality == 'bogan':
             prompt_file = 'system_prompt_bogan.txt'
+        elif personality == 'concise':
+            prompt_file = 'system_prompt_concise.txt'
         else:
             prompt_file = 'system_prompt.txt'
 
@@ -169,7 +172,7 @@ Be useful and real. That's the balance."""
         Args:
             max_tokens: Optional override for max tokens (defaults to MAX_TOKENS_PER_REQUEST env var or 1000)
             rag_context: RAG-retrieved context (semantic matches, facts, summaries)
-            personality: 'default' or 'bogan' - determines system prompt personality
+            personality: 'default', 'bogan', or 'concise' - determines system prompt personality
             tools: List of tool definitions for function calling (enables LLM to call tools)
         """
         import time
@@ -177,6 +180,8 @@ Be useful and real. That's the balance."""
         # Select appropriate system prompt based on personality
         if personality == 'bogan':
             system_prompt = self.system_prompt_bogan
+        elif personality == 'concise':
+            system_prompt = self.system_prompt_concise
         else:
             system_prompt = self.system_prompt_default
 
@@ -260,7 +265,6 @@ Be useful and real. That's the balance."""
                 messages.append({"role": "user", "content": f"[Conversation History]:\n{compressed_history}"})
             else:
                 # Fallback to standard message-by-message format for short conversations
-                print(f"🔍 [LLM] Formatting {len(recent_messages)} messages for API (compression disabled)")
                 for msg in recent_messages:
                     if not msg.get("content"):
                         continue
@@ -276,7 +280,6 @@ Be useful and real. That's the balance."""
                         display_name = msg.get("username", "User")
                         content = f"{display_name}: {msg['content']}"
                     messages.append({"role": role, "content": content})
-                    print(f"🔍 [LLM] Added {role} message: {content[:60]}")
 
             # Add search results to user message with conversational framing
             if search_results:
@@ -307,13 +310,6 @@ SEARCH RESULTS:
 
             if messages_removed > 0:
                 print(f"⚠️ Context truncated: removed {messages_removed} old messages (was {estimated_tokens + messages_removed * 100} tokens, now ~{estimated_tokens})")
-
-            print(f"🔍 [LLM] Final message count being sent to API: {len(messages)} messages")
-            # Debug: Check if bot's previous response is complete
-            for i, msg in enumerate(messages):
-                if msg.get("role") == "assistant" and "favorite" in msg.get("content", "").lower():
-                    print(f"🔍 [LLM] DEBUG - Found 'favorite' in assistant message {i}: length={len(msg['content'])} chars")
-                    print(f"🔍 [LLM] DEBUG - Full content: {msg['content']}")
 
             # Also enforce character limit as fallback
             while total_chars > self.MAX_HISTORY_CHARS and len(messages) > 3:
