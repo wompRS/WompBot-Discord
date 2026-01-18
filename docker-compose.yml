@@ -22,7 +22,7 @@ services:
     # If you need local access for debugging, use: ports: ["127.0.0.1:5432:5432"]
     # ports:
     #   - "5432:5432"  # REMOVED for security
-    restart: unless-stopped
+    restart: always
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U botuser -d discord_bot"]
       interval: 10s
@@ -76,7 +76,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    restart: unless-stopped
+    restart: always
     volumes:
       - ./bot:/app
       - ./README.md:/README.md          # Self-knowledge system needs README
@@ -107,7 +107,7 @@ services:
       - ./backups:/backups
     depends_on:
       - postgres
-    restart: unless-stopped
+    restart: always
 
 volumes:
   postgres_data:
