@@ -14,7 +14,7 @@ from cost_tracker import CostTracker
 def register_events(bot, db, privacy_manager, claims_tracker, debate_scorekeeper,
                     llm, cost_tracker, iracing, iracing_team_manager, rag,
                     hot_takes_tracker, fact_checker, wompie_user_id, wompie_username,
-                    tasks_dict, search, self_knowledge, wolfram=None, weather=None, series_cache=None):
+                    tasks_dict, search, self_knowledge, wolfram=None, weather=None, series_cache=None, trivia=None):
     """
     Register all Discord event handlers with the bot.
 
@@ -202,6 +202,55 @@ def register_events(bot, db, privacy_manager, claims_tracker, debate_scorekeeper
                 message.content,
                 message.id
             )
+
+        # Check for trivia answer submission
+        if trivia and trivia.is_session_active(message.channel.id):
+            session = trivia.get_active_session(message.channel.id)
+
+            # Only process if session is active (waiting for answers)
+            if session and session['status'] == 'active':
+                result = await trivia.submit_answer(
+                    message.channel.id,
+                    message.author.id,
+                    str(message.author),
+                    message.content
+                )
+
+                if result and not result.get('error'):
+                    # Send feedback
+                    if result['is_correct']:
+                        feedback = f"✅ **{message.author.display_name}** got it! **+{result['points']} points** ({result['time_taken']:.1f}s)"
+                        if result['streak'] >= 3:
+                            feedback += f" 🔥 Streak: {result['streak']}"
+                        await message.channel.send(feedback)
+
+                        # Move to next question after short delay
+                        await asyncio.sleep(2)
+                        session = trivia.get_active_session(message.channel.id)
+                        if session:
+                            session['current_question_num'] += 1
+
+                            question = await trivia.ask_next_question(
+                                message.channel.id,
+                                lambda: trivia.handle_timeout(message.channel)
+                            )
+
+                            if question:
+                                q_num = session['current_question_num'] + 1
+                                total = session['question_count']
+                                embed = discord.Embed(
+                                    title=f"Question {q_num}/{total}",
+                                    description=question['question'],
+                                    color=discord.Color.green()
+                                )
+                                embed.set_footer(text=f"You have {session['time_per_question']} seconds to answer")
+                                await message.channel.send(embed=embed)
+                    else:
+                        # Wrong answer - just react
+                        await message.add_reaction("❌")
+
+                # Don't process command or bot mention if this was a trivia answer
+                return
 
         # Check if bot should respond first
         should_respond = False
