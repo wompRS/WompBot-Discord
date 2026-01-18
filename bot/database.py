@@ -1266,6 +1266,123 @@ class Database:
         finally:
             self.pool.putconn(conn)
 
+    # ===== TRIVIA SYSTEM METHODS =====
+
+    def create_trivia_session(self, guild_id, channel_id, topic, difficulty,
+                             question_count, time_per_question, user_id, username):
+        """Create new trivia session"""
+        with self.get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO trivia_sessions
+                    (guild_id, channel_id, topic, difficulty, question_count,
+                     time_per_question, started_by_user_id, started_by_username)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id
+                """, (guild_id, channel_id, topic, difficulty, question_count,
+                      time_per_question, user_id, username))
+                return cur.fetchone()[0]
+
+    def create_trivia_question(self, session_id, question_number, question_text,
+                              correct_answer, acceptable_answers, difficulty):
+        """Store trivia question"""
+        with self.get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO trivia_questions
+                    (session_id, question_number, question_text, correct_answer,
+                     acceptable_answers, difficulty)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    RETURNING id
+                """, (session_id, question_number, question_text, correct_answer,
+                      acceptable_answers, difficulty))
+                return cur.fetchone()[0]
+
+    def get_trivia_question_id(self, session_id, question_number):
+        """Get question ID"""
+        with self.get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT id FROM trivia_questions
+                    WHERE session_id = %s AND question_number = %s
+                """, (session_id, question_number))
+                row = cur.fetchone()
+                return row[0] if row else None
+
+    def store_trivia_answer(self, session_id, question_id, user_id, username,
+                           answer_text, is_correct, similarity, time_taken, points):
+        """Store trivia answer"""
+        with self.get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO trivia_answers
+                    (session_id, question_id, user_id, username, answer_text,
+                     is_correct, similarity_score, time_taken, points_earned)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (session_id, question_id, user_id, username, answer_text,
+                      is_correct, similarity, time_taken, points))
+
+    def end_trivia_session(self, session_id):
+        """Mark session as completed"""
+        with self.get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    UPDATE trivia_sessions
+                    SET ended_at = CURRENT_TIMESTAMP, status = 'completed'
+                    WHERE id = %s
+                """, (session_id,))
+
+    def get_trivia_user_stats(self, guild_id, user_id):
+        """Get user trivia stats"""
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    SELECT * FROM trivia_stats
+                    WHERE guild_id = %s AND user_id = %s
+                """, (guild_id, user_id))
+                return cur.fetchone()
+
+    def update_trivia_user_stats(self, guild_id, user_id, username,
+                                 questions_answered, correct_answers, points,
+                                 avg_time, streak, topic, is_winner):
+        """Update or create user stats"""
+        with self.get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO trivia_stats
+                    (guild_id, user_id, username, total_sessions, total_questions_answered,
+                     total_correct, total_points, avg_time_per_question, best_streak,
+                     favorite_topic, wins)
+                    VALUES (%s, %s, %s, 1, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (guild_id, user_id) DO UPDATE SET
+                        username = EXCLUDED.username,
+                        total_sessions = trivia_stats.total_sessions + 1,
+                        total_questions_answered = trivia_stats.total_questions_answered + EXCLUDED.total_questions_answered,
+                        total_correct = trivia_stats.total_correct + EXCLUDED.total_correct,
+                        total_points = trivia_stats.total_points + EXCLUDED.total_points,
+                        avg_time_per_question = (trivia_stats.avg_time_per_question * trivia_stats.total_questions_answered +
+                                                 EXCLUDED.avg_time_per_question * EXCLUDED.total_questions_answered) /
+                                                NULLIF(trivia_stats.total_questions_answered + EXCLUDED.total_questions_answered, 0),
+                        best_streak = GREATEST(trivia_stats.best_streak, EXCLUDED.best_streak),
+                        wins = trivia_stats.wins + EXCLUDED.wins
+                """, (guild_id, user_id, username, questions_answered, correct_answers,
+                      points, avg_time, streak, topic, 1 if is_winner else 0))
+
+    def get_trivia_leaderboard(self, guild_id, days=30, limit=10):
+        """Get trivia leaderboard"""
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    SELECT ts.user_id, ts.username, ts.total_points,
+                           ts.total_questions_answered, ts.total_correct, ts.wins
+                    FROM trivia_stats ts
+                    WHERE ts.guild_id = %s
+                      AND ts.updated_at > (NOW() - INTERVAL '%s days')
+                    ORDER BY ts.total_points DESC
+                    LIMIT %s
+                """, (guild_id, days, limit))
+                return cur.fetchall()
+
     def close(self):
         """Close database connection pool"""
         if self.pool:

@@ -16,7 +16,7 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                             hot_takes_tracker, reminder_system, event_system,
                             debate_scorekeeper, yearly_wrapped, qotd, iracing,
                             iracing_viz, iracing_team_manager, help_system,
-                            wompie_user_id, series_autocomplete_cache):
+                            wompie_user_id, series_autocomplete_cache, trivia):
     """
     Register all slash commands with the bot.
 
@@ -39,6 +39,7 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
         help_system: Help system instance
         wompie_user_id: Wompie's Discord user ID (list ref)
         series_autocomplete_cache: iRacing series cache dict (mutable ref)
+        trivia: Trivia system instance
     """
 
     # Unpack Wompie user ID
@@ -4253,5 +4254,193 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                 ephemeral=True
             )
 
+    # =============== TRIVIA COMMANDS ===============
 
+    @bot.tree.command(name="trivia_start", description="Start a trivia session")
+    @app_commands.describe(
+        topic="Topic for trivia questions (e.g., 'science', 'history', 'gaming')",
+        difficulty="Difficulty level",
+        questions="Number of questions (1-20)",
+        time_per_question="Seconds per question (10-60)"
+    )
+    @app_commands.choices(difficulty=[
+        app_commands.Choice(name="Easy", value="easy"),
+        app_commands.Choice(name="Medium", value="medium"),
+        app_commands.Choice(name="Hard", value="hard")
+    ])
+    async def trivia_start(
+        interaction: discord.Interaction,
+        topic: str,
+        difficulty: app_commands.Choice[str] = None,
+        questions: int = 10,
+        time_per_question: int = 30
+    ):
+        """Start a new trivia session"""
+        await interaction.response.defer()
+
+        try:
+            # Validate parameters
+            if questions < 1 or questions > 20:
+                await interaction.followup.send("❌ Questions must be between 1 and 20")
+                return
+
+            if time_per_question < 10 or time_per_question > 60:
+                await interaction.followup.send("❌ Time per question must be between 10 and 60 seconds")
+                return
+
+            diff_value = difficulty.value if difficulty else 'medium'
+
+            # Check if session already active
+            if trivia.is_session_active(interaction.channel_id):
+                await interaction.followup.send("❌ A trivia session is already active in this channel")
+                return
+
+            # Start session (generates questions)
+            await interaction.followup.send(f"🎲 Generating {questions} {diff_value} trivia questions about **{topic}**...")
+
+            session_id = await trivia.start_session(
+                interaction.guild_id,
+                interaction.channel_id,
+                interaction.user.id,
+                str(interaction.user),
+                topic,
+                diff_value,
+                questions,
+                time_per_question
+            )
+
+            # Send start message
+            embed = discord.Embed(
+                title=f"🎲 Trivia: {topic.title()}",
+                description=f"**{questions} questions** | **{diff_value.title()}** difficulty | **{time_per_question}s** per question",
+                color=discord.Color.blue()
+            )
+            embed.add_field(name="How to Play", value="Type your answer in the chat when a question appears. First correct answer gets full points!", inline=False)
+            embed.set_footer(text=f"Started by {interaction.user.display_name}")
+
+            await interaction.channel.send(embed=embed)
+
+            # Ask first question
+            await asyncio.sleep(3)
+            question = await trivia.ask_next_question(
+                interaction.channel_id,
+                lambda: trivia.handle_timeout(interaction.channel)
+            )
+
+            if question:
+                embed = discord.Embed(
+                    title=f"Question 1/{questions}",
+                    description=question['question'],
+                    color=discord.Color.green()
+                )
+                embed.set_footer(text=f"You have {time_per_question} seconds to answer")
+                await interaction.channel.send(embed=embed)
+
+        except Exception as e:
+            await interaction.followup.send(f"❌ Error starting trivia: {str(e)}")
+            print(f"❌ Trivia start error: {e}")
+            import traceback
+            traceback.print_exc()
+
+    @bot.tree.command(name="trivia_stop", description="Stop the current trivia session")
+    async def trivia_stop(interaction: discord.Interaction):
+        """Stop active trivia session"""
+        await interaction.response.defer()
+
+        try:
+            if not trivia.is_session_active(interaction.channel_id):
+                await interaction.followup.send("❌ No active trivia session in this channel")
+                return
+
+            # End session
+            result = await trivia.end_session(interaction.channel_id)
+
+            if result:
+                # Show final scores
+                embed = discord.Embed(
+                    title="🏁 Trivia Ended",
+                    description=f"**{result['topic'].title()}** - {result['difficulty'].title()} - {result['question_count']} questions",
+                    color=discord.Color.red()
+                )
+
+                if result['leaderboard']:
+                    leaderboard_text = ""
+                    for i, (user_id, data) in enumerate(result['leaderboard'][:10]):
+                        rank_emoji = ["🥇", "🥈", "🥉"][i] if i < 3 else f"{i+1}."
+                        leaderboard_text += f"{rank_emoji} **{data['username']}** - {data['score']} points\n"
+
+                    embed.add_field(name="Final Scores", value=leaderboard_text, inline=False)
+
+                await interaction.followup.send(embed=embed)
+
+        except Exception as e:
+            await interaction.followup.send(f"❌ Error stopping trivia: {str(e)}")
+
+    @bot.tree.command(name="trivia_stats", description="View your trivia statistics")
+    async def trivia_stats(interaction: discord.Interaction, user: discord.Member = None):
+        """View trivia stats for a user"""
+        await interaction.response.defer()
+
+        try:
+            target = user or interaction.user
+            stats = await trivia.get_user_stats(interaction.guild_id, target.id)
+
+            if not stats:
+                await interaction.followup.send(f"📊 {target.display_name} hasn't played trivia yet")
+                return
+
+            accuracy = (stats['total_correct'] / stats['total_questions_answered'] * 100) if stats['total_questions_answered'] > 0 else 0
+
+            embed = discord.Embed(
+                title=f"📊 Trivia Stats - {target.display_name}",
+                color=discord.Color.blue()
+            )
+            embed.add_field(name="Total Sessions", value=f"{stats['total_sessions']}", inline=True)
+            embed.add_field(name="Questions Answered", value=f"{stats['total_questions_answered']}", inline=True)
+            embed.add_field(name="Wins", value=f"🏆 {stats['wins']}", inline=True)
+            embed.add_field(name="Accuracy", value=f"{accuracy:.1f}%", inline=True)
+            embed.add_field(name="Total Points", value=f"{stats['total_points']:,}", inline=True)
+            embed.add_field(name="Avg Time/Question", value=f"{stats['avg_time_per_question']:.1f}s", inline=True)
+
+            if stats.get('favorite_topic'):
+                embed.add_field(name="Favorite Topic", value=stats['favorite_topic'], inline=False)
+
+            embed.add_field(name="Best Streak", value=f"🔥 {stats['best_streak']} correct in a row", inline=False)
+
+            await interaction.followup.send(embed=embed)
+
+        except Exception as e:
+            await interaction.followup.send(f"❌ Error fetching stats: {str(e)}")
+
+    @bot.tree.command(name="trivia_leaderboard", description="View server trivia leaderboard")
+    @app_commands.describe(days="Number of days to look back (default: 30)")
+    async def trivia_leaderboard(interaction: discord.Interaction, days: int = 30):
+        """View trivia leaderboard"""
+        await interaction.response.defer()
+
+        try:
+            leaderboard = await trivia.get_leaderboard(interaction.guild_id, days=days, limit=10)
+
+            if not leaderboard:
+                await interaction.followup.send("📊 No trivia stats available for this server yet")
+                return
+
+            embed = discord.Embed(
+                title=f"🏆 Trivia Leaderboard (Last {days} days)",
+                color=discord.Color.gold()
+            )
+
+            leaderboard_text = ""
+            for i, entry in enumerate(leaderboard):
+                rank_emoji = ["🥇", "🥈", "🥉"][i] if i < 3 else f"{i+1}."
+                leaderboard_text += f"{rank_emoji} **{entry['username']}** - {entry['total_points']:,} pts ({entry['total_correct']}/{entry['total_questions_answered']} correct)\n"
+
+            embed.description = leaderboard_text
+
+            await interaction.followup.send(embed=embed)
+
+        except Exception as e:
+            await interaction.followup.send(f"❌ Error fetching leaderboard: {str(e)}")
+
+    print("✅ Trivia commands registered")
     print("✅ Slash commands registered")
