@@ -37,6 +37,7 @@ from features.quote_of_the_day import QuoteOfTheDay
 from features.debate_scorekeeper import DebateScorekeeper
 from features.iracing import iRacingIntegration
 from features.iracing_teams import iRacingTeamManager
+from features.trivia import TriviaSystem
 from credential_manager import CredentialManager
 from iracing_graphics import iRacingGraphics
 from self_knowledge import SelfKnowledge
@@ -99,6 +100,8 @@ event_system = EventSystem(db)
 yearly_wrapped = YearlyWrapped(db)
 qotd = QuoteOfTheDay(db)
 debate_scorekeeper = DebateScorekeeper(db, llm, search)
+trivia = TriviaSystem(db, llm)
+print("✅ Trivia system loaded")
 
 # GDPR Privacy Compliance (mandatory per EU regulations)
 from features.gdpr_privacy import GDPRPrivacyManager
@@ -196,7 +199,8 @@ register_events(
     self_knowledge=self_knowledge,
     wolfram=wolfram,
     weather=weather,
-    series_cache=series_autocomplete_cache
+    series_cache=series_autocomplete_cache,
+    trivia=trivia
 )
 
 # Register prefix commands
@@ -230,7 +234,8 @@ register_slash_commands(
     iracing_team_manager=iracing_team_manager,
     help_system=help_system,
     wompie_user_id=WOMPIE_USER_ID,
-    series_autocomplete_cache=series_autocomplete_cache
+    series_autocomplete_cache=series_autocomplete_cache,
+    trivia=trivia
 )
 
 print("\n✅ All modules registered successfully!\n")

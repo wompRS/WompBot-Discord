@@ -250,6 +250,59 @@ class HelpSystem:
                     "/weather_set New York imperial",
                     "/weather_set Tokyo metric"
                 ]
+            },
+            "trivia_start": {
+                "usage": "/trivia_start <topic> [difficulty] [questions] [time_per_question]",
+                "description": "Start a multiplayer trivia session with LLM-generated questions",
+                "details": [
+                    "LLM generates fresh questions every time based on your topic",
+                    "Multiplayer competitive - race to answer in the chat",
+                    "Fuzzy matching accepts spelling variations and typos",
+                    "Points based on speed, difficulty, and streak bonuses",
+                    "Difficulty levels: Easy, Medium, Hard",
+                    "Questions: 1-20 per session",
+                    "Time: 10-60 seconds per question"
+                ],
+                "examples": [
+                    "/trivia_start science - 10 medium science questions",
+                    "/trivia_start gaming difficulty:easy questions:5 time_per_question:20",
+                    "/trivia_start history difficulty:hard questions:15"
+                ]
+            },
+            "trivia_stop": {
+                "usage": "/trivia_stop",
+                "description": "Stop the current trivia session and show final scores",
+                "examples": [
+                    "/trivia_stop - End the active trivia session"
+                ]
+            },
+            "trivia_stats": {
+                "usage": "/trivia_stats [@user]",
+                "description": "View trivia statistics for yourself or another user",
+                "details": [
+                    "Shows total sessions, questions answered, and wins",
+                    "Displays accuracy percentage and total points",
+                    "Average time per question",
+                    "Best streak and favorite topic"
+                ],
+                "examples": [
+                    "/trivia_stats - View your stats",
+                    "/trivia_stats @user - View another user's stats"
+                ]
+            },
+            "trivia_leaderboard": {
+                "usage": "/trivia_leaderboard [days]",
+                "description": "View server trivia leaderboard",
+                "details": [
+                    "Shows top 10 players by total points",
+                    "Filter by time period (default: 30 days)",
+                    "Displays accuracy and total questions answered"
+                ],
+                "examples": [
+                    "/trivia_leaderboard - Last 30 days",
+                    "/trivia_leaderboard 7 - Last week",
+                    "/trivia_leaderboard 365 - All time"
+                ]
             }
         }
 
@@ -334,6 +387,18 @@ class HelpSystem:
                 "`/debate_stats` - Your debate stats\n"
                 "`/debate_leaderboard` - Top debaters\n"
                 "`/debate_review` - Analyze debate file"
+            ),
+            inline=False
+        )
+
+        embed.add_field(
+            name="Trivia (4 commands)",
+            value=(
+                "`/trivia_start` - Start multiplayer trivia session\n"
+                "`/trivia_stop` - Stop active trivia session\n"
+                "`/trivia_stats` - View your trivia statistics\n"
+                "`/trivia_leaderboard` - Server trivia rankings\n"
+                "LLM-generated questions • Fuzzy answer matching • Speed & streak bonuses"
             ),
             inline=False
         )
