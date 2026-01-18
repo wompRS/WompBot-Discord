@@ -267,7 +267,7 @@ class RAGSystem:
             # Perform vector similarity search
             with self.db.get_connection() as conn:
                 register_vector(conn)
-                with conn.cursor() as cur:
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
                     # Use cosine similarity - cast parameters to vector type
                     cur.execute(f"""
                         SELECT
