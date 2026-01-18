@@ -471,11 +471,6 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
 
                     db.store_search_log(content, len(search_results_raw), message.author.id, message.channel.id)
                     db.record_feature_usage(message.author.id, 'search')
-            elif placeholder_msg:
-                # We sent a placeholder but ended up not searching (maybe bot_docs was loaded)
-                # Delete the placeholder
-                await placeholder_msg.delete()
-                placeholder_msg = None
 
             # Get server personality setting
             server_id = message.guild.id if message.guild else None
