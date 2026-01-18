@@ -29,6 +29,16 @@ SEARCH_STATUS_MESSAGES = [
     "🔍 Let me look into that...",
 ]
 
+# Rotating thinking/processing messages (when not searching)
+THINKING_STATUS_MESSAGES = [
+    "🤔 Thinking...",
+    "💭 Let me think about that...",
+    "⏳ One moment...",
+    "🧠 Processing...",
+    "💬 Working on it...",
+    "✨ Give me a sec...",
+]
+
 
 # Rate limiting state for mention handling
 MENTION_RATE_STATE = {}
@@ -387,13 +397,15 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
             print(f"   First message: {conversation_history[0].get('username')}: {conversation_history[0].get('content', '')[:50]}")
             print(f"   Last message: {conversation_history[-1].get('username')}: {conversation_history[-1].get('content', '')[:50]}")
 
-        # Check if search is likely needed and send placeholder early (before typing indicator)
-        # This makes the bot feel more responsive
-        search_msg = None
+        # Always send a placeholder message immediately for better UX
+        # Use search message if search is likely needed, otherwise use thinking message
+        placeholder_msg = None
         if search and llm.should_search(content, conversation_history):
-            search_msg = await message.channel.send(random.choice(SEARCH_STATUS_MESSAGES))
+            placeholder_msg = await message.channel.send(random.choice(SEARCH_STATUS_MESSAGES))
+        else:
+            placeholder_msg = await message.channel.send(random.choice(THINKING_STATUS_MESSAGES))
 
-        # Start typing indicator (will be invisible if search_msg was sent, but keeps connection alive)
+        # Start typing indicator (will be invisible if placeholder_msg was sent, but keeps connection alive)
         async with message.channel.typing():
 
             # Clean Discord mentions from conversation history
@@ -439,9 +451,9 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
 
                 if not search_rate_check['allowed']:
                     # Delete the placeholder if rate limited
-                    if search_msg:
-                        await search_msg.delete()
-                        search_msg = None
+                    if placeholder_msg:
+                        await placeholder_msg.delete()
+                        placeholder_msg = None
 
                     if search_rate_check['reason'] == 'hourly_limit':
                         await message.channel.send(
@@ -459,11 +471,11 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
 
                     db.store_search_log(content, len(search_results_raw), message.author.id, message.channel.id)
                     db.record_feature_usage(message.author.id, 'search')
-            elif search_msg:
+            elif placeholder_msg:
                 # We sent a placeholder but ended up not searching (maybe bot_docs was loaded)
                 # Delete the placeholder
-                await search_msg.delete()
-                search_msg = None
+                await placeholder_msg.delete()
+                placeholder_msg = None
 
             # Get server personality setting
             server_id = message.guild.id if message.guild else None
@@ -663,10 +675,10 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                     )
 
                 if search_rate_check['allowed']:
-                    if not search_msg:
-                        search_msg = await message.channel.send("🔍 Let me search for that...")
+                    if not placeholder_msg:
+                        placeholder_msg = await message.channel.send("🔍 Let me search for that...")
                     else:
-                        await search_msg.edit(content="🔍 Let me search for that...")
+                        await placeholder_msg.edit(content="🔍 Let me search for that...")
 
                     search_results_raw = await asyncio.to_thread(search.search, content)
                     search_results = search.format_results_for_llm(search_results_raw)
@@ -816,13 +828,13 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                 print(f"📝 Final response prepared ({len(response)} chars)")
 
             # Send or edit response
-            if response is not None and search_msg:
+            if response is not None and placeholder_msg:
                 print(f"📤 Editing search message with final response")
                 # Edit the search message with the response
                 if len(response) > 2000:
-                    await search_msg.edit(content=response[:2000])
+                    await placeholder_msg.edit(content=response[:2000])
                     # Store the edited response in database (edit doesn't trigger on_message)
-                    db.store_message(search_msg, opted_out=False, content_override=response[:2000])
+                    db.store_message(placeholder_msg, opted_out=False, content_override=response[:2000])
                     # Send remaining chunks as new messages
                     remaining = response[2000:]
                     chunks = [remaining[i:i+2000] for i in range(0, len(remaining), 2000)]
@@ -831,9 +843,9 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                             await message.channel.send(chunk)
                     print(f"✅ Search message edited, sent {len(chunks)} additional chunks")
                 else:
-                    await search_msg.edit(content=response)
+                    await placeholder_msg.edit(content=response)
                     # Store the edited response in database (edit doesn't trigger on_message)
-                    db.store_message(search_msg, opted_out=False, content_override=response)
+                    db.store_message(placeholder_msg, opted_out=False, content_override=response)
                     print(f"✅ Search message edited")
             elif response is not None:
                 print(f"📤 Sending final response as new message")

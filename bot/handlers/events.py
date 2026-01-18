@@ -213,8 +213,10 @@ def register_events(bot, db, privacy_manager, claims_tracker, debate_scorekeeper
             is_addressing_bot = True
 
         # 2. "wompbot" or "womp bot" mentioned in message (case insensitive)
+        # Use regex to match word boundaries, allowing punctuation like "wompbot," or "wompbot!"
+        import re
         message_lower = message.content.lower()
-        if 'wompbot' in message_lower or 'womp bot' in message_lower:
+        if re.search(r'\bwompbot\b|\bwomp\s+bot\b', message_lower):
             should_respond = True
             is_addressing_bot = True
 
