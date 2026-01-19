@@ -4364,12 +4364,36 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                 )
 
                 if result['leaderboard']:
+                    # Winner announcement with overall stats
+                    winner_id, winner_data = result['leaderboard'][0]
+                    winner_stats = result.get('winner_overall_stats')
+
+                    if winner_stats:
+                        accuracy = (winner_stats['total_correct'] / winner_stats['total_questions_answered'] * 100) if winner_stats['total_questions_answered'] > 0 else 0
+
+                        winner_text = (
+                            f"🏆 **{winner_data['username']}** wins with **{winner_data['score']} points** this session!\n\n"
+                            f"**Overall Stats:**\n"
+                            f"• Total Points: **{winner_stats['total_points']:,}** across all sessions\n"
+                            f"• Total Wins: **{winner_stats['wins']}** 🏆\n"
+                            f"• Accuracy: **{accuracy:.1f}%** ({winner_stats['total_correct']}/{winner_stats['total_questions_answered']} correct)\n"
+                            f"• Best Streak: **{winner_stats['best_streak']}** 🔥"
+                        )
+                        embed.add_field(name="👑 Champion", value=winner_text, inline=False)
+                    else:
+                        embed.add_field(
+                            name="👑 Champion",
+                            value=f"🏆 **{winner_data['username']}** wins with **{winner_data['score']} points**!",
+                            inline=False
+                        )
+
+                    # Session leaderboard
                     leaderboard_text = ""
                     for i, (user_id, data) in enumerate(result['leaderboard'][:10]):
                         rank_emoji = ["🥇", "🥈", "🥉"][i] if i < 3 else f"{i+1}."
                         leaderboard_text += f"{rank_emoji} **{data['username']}** - {data['score']} points\n"
 
-                    embed.add_field(name="Final Scores", value=leaderboard_text, inline=False)
+                    embed.add_field(name="Session Leaderboard", value=leaderboard_text, inline=False)
 
                 await interaction.followup.send(embed=embed)
 
