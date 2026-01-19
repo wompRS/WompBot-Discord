@@ -122,12 +122,19 @@ class TriviaSystem:
                 is_winner
             )
 
+        # Fetch winner's overall stats
+        winner_overall_stats = None
+        if leaderboard:
+            winner_id = leaderboard[0][0]
+            winner_overall_stats = await self.get_user_stats(session['guild_id'], winner_id)
+
         # Clean up in-memory session
         result = {
             'leaderboard': leaderboard,
             'question_count': session['current_question_num'],
             'topic': session['topic'],
-            'difficulty': session['difficulty']
+            'difficulty': session['difficulty'],
+            'winner_overall_stats': winner_overall_stats
         }
 
         del self.active_sessions[channel_id]
@@ -259,7 +266,7 @@ Generate {count} questions now:"""
         """
         Ask next question and set timer
 
-        Returns: question dict or None if session ended
+        Returns: question dict, session end result dict (with 'leaderboard' key), or None
         """
         session = self.active_sessions.get(channel_id)
         if not session:
@@ -267,8 +274,8 @@ Generate {count} questions now:"""
 
         # Check if more questions
         if session['current_question_num'] >= len(session['questions']):
-            await self.end_session(channel_id)
-            return None
+            result = await self.end_session(channel_id)
+            return result  # Return session end result for display
 
         # Get current question
         q = session['questions'][session['current_question_num']]
@@ -304,21 +311,65 @@ Generate {count} questions now:"""
 
         # Move to next question
         session['current_question_num'] += 1
-        next_question = await self.ask_next_question(
+        result = await self.ask_next_question(
             channel.id,
             lambda: self.handle_timeout(channel)
         )
 
-        if next_question:
-            q_num = session['current_question_num'] + 1
-            total = session['question_count']
-            embed = discord.Embed(
-                title=f"Question {q_num}/{total}",
-                description=next_question['question'],
-                color=discord.Color.green()
-            )
-            embed.set_footer(text=f"You have {session['time_per_question']} seconds to answer")
-            await channel.send(embed=embed)
+        if result:
+            # Check if this is a session end result (has 'leaderboard' key)
+            if 'leaderboard' in result:
+                # Display session end results
+                embed = discord.Embed(
+                    title="🏁 Trivia Complete!",
+                    description=f"**{result['topic'].title()}** - {result['difficulty'].title()} - {result['question_count']} questions",
+                    color=discord.Color.gold()
+                )
+
+                if result['leaderboard']:
+                    # Winner announcement with overall stats
+                    winner_id, winner_data = result['leaderboard'][0]
+                    winner_stats = result.get('winner_overall_stats')
+
+                    if winner_stats:
+                        accuracy = (winner_stats['total_correct'] / winner_stats['total_questions_answered'] * 100) if winner_stats['total_questions_answered'] > 0 else 0
+
+                        winner_text = (
+                            f"🏆 **{winner_data['username']}** wins with **{winner_data['score']} points** this session!\n\n"
+                            f"**Overall Stats:**\n"
+                            f"• Total Points: **{winner_stats['total_points']:,}** across all sessions\n"
+                            f"• Total Wins: **{winner_stats['wins']}** 🏆\n"
+                            f"• Accuracy: **{accuracy:.1f}%** ({winner_stats['total_correct']}/{winner_stats['total_questions_answered']} correct)\n"
+                            f"• Best Streak: **{winner_stats['best_streak']}** 🔥"
+                        )
+                        embed.add_field(name="👑 Champion", value=winner_text, inline=False)
+                    else:
+                        embed.add_field(
+                            name="👑 Champion",
+                            value=f"🏆 **{winner_data['username']}** wins with **{winner_data['score']} points**!",
+                            inline=False
+                        )
+
+                    # Session leaderboard
+                    leaderboard_text = ""
+                    for i, (user_id, data) in enumerate(result['leaderboard'][:10]):
+                        rank_emoji = ["🥇", "🥈", "🥉"][i] if i < 3 else f"{i+1}."
+                        leaderboard_text += f"{rank_emoji} **{data['username']}** - {data['score']} points\n"
+
+                    embed.add_field(name="Session Leaderboard", value=leaderboard_text, inline=False)
+
+                await channel.send(embed=embed)
+            else:
+                # It's a question - display it
+                q_num = session['current_question_num'] + 1
+                total = session['question_count']
+                embed = discord.Embed(
+                    title=f"Question {q_num}/{total}",
+                    description=result['question'],
+                    color=discord.Color.green()
+                )
+                embed.set_footer(text=f"You have {session['time_per_question']} seconds to answer")
+                await channel.send(embed=embed)
 
     # ===== ANSWER PROCESSING =====
 
