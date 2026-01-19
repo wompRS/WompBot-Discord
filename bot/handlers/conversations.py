@@ -512,6 +512,11 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
 
             # Check if LLM wants to use tools
             if isinstance(response, dict) and response.get("type") == "tool_calls":
+                # Delete the placeholder message before showing tool-specific status
+                if placeholder_msg:
+                    await placeholder_msg.delete()
+                    placeholder_msg = None
+
                 # Determine what kind of tools are being called
                 tool_names = [tc.get("function", {}).get("name", "") for tc in response["tool_calls"]]
                 has_search = "web_search" in tool_names
@@ -703,6 +708,11 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
 
                 # Check for tool calls on retry
                 if isinstance(response, dict) and response.get("type") == "tool_calls":
+                    # Delete the placeholder message before showing tool-specific status
+                    if placeholder_msg:
+                        await placeholder_msg.delete()
+                        placeholder_msg = None
+
                     # Determine what kind of tools are being called
                     tool_names = [tc.get("function", {}).get("name", "") for tc in response["tool_calls"]]
                     has_search = "web_search" in tool_names
