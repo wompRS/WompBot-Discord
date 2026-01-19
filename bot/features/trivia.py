@@ -217,23 +217,40 @@ Generate {count} questions now:"""
 
     def _parse_questions_from_llm(self, llm_response):
         """Extract JSON array from LLM response"""
-        # Try to find JSON array in response
-        json_match = re.search(r'\[.*\]', llm_response, re.DOTALL)
+        # Try to find JSON array in response (non-greedy match)
+        json_match = re.search(r'\[.*?\]', llm_response, re.DOTALL)
         if not json_match:
-            raise Exception("Could not find JSON array in LLM response")
+            # Try to extract JSON from code blocks
+            code_block_match = re.search(r'```(?:json)?\s*(\[.*?\])\s*```', llm_response, re.DOTALL)
+            if code_block_match:
+                json_match = code_block_match
+                json_str = code_block_match.group(1)
+            else:
+                print(f"❌ Could not find JSON in LLM response: {llm_response[:200]}")
+                raise Exception("Could not find JSON array in LLM response")
+        else:
+            json_str = json_match.group()
 
         try:
-            questions = json.loads(json_match.group())
+            questions = json.loads(json_str)
 
             # Validate structure
-            for q in questions:
+            for i, q in enumerate(questions):
                 if 'question' not in q or 'answer' not in q:
-                    raise Exception("Invalid question format")
+                    print(f"❌ Question {i+1} missing required fields: {q}")
+                    raise Exception(f"Invalid question format at index {i+1}")
                 if 'alternatives' not in q:
                     q['alternatives'] = []
+                # Ensure alternatives is a list
+                elif not isinstance(q['alternatives'], list):
+                    print(f"⚠️ Alternatives is not a list for question {i+1}, converting: {q['alternatives']}")
+                    q['alternatives'] = [q['alternatives']] if q['alternatives'] else []
 
+            print(f"✅ Parsed {len(questions)} questions successfully")
             return questions
         except json.JSONDecodeError as e:
+            print(f"❌ JSON decode error: {e}")
+            print(f"❌ Attempted to parse: {json_str[:500]}")
             raise Exception(f"Failed to parse LLM JSON: {e}")
 
     # ===== QUESTION FLOW =====
@@ -419,6 +436,7 @@ Generate {count} questions now:"""
         # Use SequenceMatcher for ratio
         ratio = SequenceMatcher(None, norm1, norm2).ratio()
 
+        print(f"      Comparing: '{norm1}' vs '{norm2}' = {ratio:.2f}")
         return ratio
 
     def validate_answer(self, user_answer, correct_answer, acceptable_answers):
@@ -427,26 +445,38 @@ Generate {count} questions now:"""
 
         Returns: (is_correct: bool, best_similarity: float)
         """
-        # Similarity threshold
-        THRESHOLD = 0.85  # 85% similarity required
+        # Similarity threshold (lower for very short answers)
+        answer_length = len(self._normalize_answer(correct_answer))
+        THRESHOLD = 0.75 if answer_length <= 5 else 0.85
+
+        # Debug logging
+        print(f"🔍 Validating answer: '{user_answer}' vs '{correct_answer}'")
+        print(f"   Alternatives: {acceptable_answers}")
+        print(f"   Threshold: {THRESHOLD}")
 
         # Check against primary answer
         similarity = self._calculate_similarity(user_answer, correct_answer)
+        print(f"   Primary similarity: {similarity:.2f}")
 
         if similarity >= THRESHOLD:
+            print(f"   ✅ Match! (primary answer)")
             return (True, similarity)
 
         # Check against alternatives
         best_alt_similarity = 0.0
-        for alt in acceptable_answers:
-            alt_similarity = self._calculate_similarity(user_answer, alt)
-            best_alt_similarity = max(best_alt_similarity, alt_similarity)
+        if acceptable_answers:
+            for i, alt in enumerate(acceptable_answers):
+                alt_similarity = self._calculate_similarity(user_answer, alt)
+                print(f"   Alternative {i+1} '{alt}' similarity: {alt_similarity:.2f}")
+                best_alt_similarity = max(best_alt_similarity, alt_similarity)
 
-            if alt_similarity >= THRESHOLD:
-                return (True, alt_similarity)
+                if alt_similarity >= THRESHOLD:
+                    print(f"   ✅ Match! (alternative {i+1})")
+                    return (True, alt_similarity)
 
         # Not correct, but return best similarity for stats
         best_overall = max(similarity, best_alt_similarity)
+        print(f"   ❌ No match. Best similarity: {best_overall:.2f}")
         return (False, best_overall)
 
     # ===== SCORING =====
