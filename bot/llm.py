@@ -319,6 +319,15 @@ SEARCH RESULTS:
 
             retry_text = f" (retry {retry_count + 1}/3)" if retry_count > 0 else ""
             print(f"🤖 Sending to {self.model}{retry_text}")
+            print(f"   📊 Messages in context: {len(messages)}")
+            print(f"   📝 Estimated tokens: ~{estimated_tokens}")
+            # Debug: Print last few messages to verify history is included
+            if len(messages) > 1:
+                print(f"   💬 Recent context messages:")
+                for i, msg in enumerate(messages[-4:]):  # Show last 4 messages
+                    role = msg['role']
+                    content_preview = msg['content'][:80].replace('\n', ' ')
+                    print(f"      [{i}] {role}: {content_preview}...")
 
             headers = {
                 "Authorization": f"Bearer {self.api_key}",
