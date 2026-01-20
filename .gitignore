@@ -60,3 +60,14 @@ cron.log
 
 # Internal debugging guide (not for public repo)
 DEBUGGING_GUIDE.md
+
+# Backup system scripts (local deployment only)
+backup_to_external.ps1
+backup_to_external.bat
+backup_to_external_incremental.ps1
+setup_backup_task.ps1
+setup_automatic_backups.ps1
+setup_automatic_backups.bat
+BACKUP_PIPELINE_SETUP.md
+backup_sync.log
+backup_incremental.log
