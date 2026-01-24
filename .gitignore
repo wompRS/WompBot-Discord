@@ -53,10 +53,13 @@ bot/prompts/system_prompt.txt
 monitor-bot.sh
 start-bot.sh
 setup-wsl-autostart.ps1
+setup-wsl-autostart-task.ps1
+start-wsl-bot.bat
 AUTO-START-SETUP.md
 startup.log
 monitor.log
 cron.log
+.bot_monitor_state.json
 
 # Internal debugging guide (not for public repo)
 DEBUGGING_GUIDE.md

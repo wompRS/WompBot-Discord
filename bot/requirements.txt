@@ -3,7 +3,7 @@ psycopg2-binary==2.9.9
 python-dotenv==1.0.1
 python-dateutil==2.9.0  # Natural language date parsing for event scheduling
 dateparser==1.2.0  # Advanced date parsing for visualizations
-aiohttp==3.13.2  # SECURITY: Updated from 3.9.5 for CVE fixes (HTTP request smuggling, etc.)
+aiohttp==3.13.3  # SECURITY: Updated from 3.9.5 for CVE fixes (HTTP request smuggling, etc.)
 tavily-python==0.3.9  # Updated for latest features
 requests==2.32.5  # SECURITY: Updated from 2.32.3 for latest CVE patches
 httpx==0.28.1  # SECURITY: Updated from 0.24.1 for security fixes
