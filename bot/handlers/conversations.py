@@ -43,6 +43,30 @@ THINKING_STATUS_MESSAGES = [
 # Rate limiting state for mention handling
 MENTION_RATE_STATE = {}
 USER_CONCURRENT_REQUESTS = {}
+_LAST_CLEANUP_TIME = 0
+
+def cleanup_stale_rate_state():
+    """Remove stale entries from rate limiting dictionaries to prevent memory leak"""
+    global _LAST_CLEANUP_TIME
+    now_ts = datetime.now(timezone.utc).timestamp()
+
+    # Only run cleanup every 5 minutes
+    if now_ts - _LAST_CLEANUP_TIME < 300:
+        return
+
+    _LAST_CLEANUP_TIME = now_ts
+    stale_window = 3600  # Remove entries older than 1 hour
+
+    # Cleanup MENTION_RATE_STATE
+    stale_users = [
+        uid for uid, bucket in MENTION_RATE_STATE.items()
+        if now_ts - bucket["window_start"] > stale_window
+    ]
+    for uid in stale_users:
+        del MENTION_RATE_STATE[uid]
+
+    if stale_users:
+        print(f"🧹 Cleaned up {len(stale_users)} stale rate limit entries")
 
 # Initialize visualization tools (module-level, reused across calls)
 _visualizer = None
@@ -191,6 +215,9 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                              self_knowledge=None, rag=None, wolfram=None, weather=None):
     """Handle when bot is mentioned/tagged"""
     try:
+        # Periodic cleanup of stale rate limiting state
+        cleanup_stale_rate_state()
+
         # Check if user is admin (bypass all rate limits)
         is_admin = str(message.author).lower() == 'wompie__' or message.author.id == YOUR_ADMIN_USER_ID
 
