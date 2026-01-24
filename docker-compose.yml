@@ -82,14 +82,14 @@ services:
       - ./bot:/app
       - ./README.md:/README.md          # Self-knowledge system needs README
       - ./docs:/docs                    # Self-knowledge system needs docs
-    # SECURITY: Resource limits
+    # Resource limits (increased for LLM context + RAG embeddings)
     deploy:
       resources:
         limits:
-          cpus: '0.5'
-          memory: 512M
+          cpus: '1.0'
+          memory: 2G
         reservations:
-          memory: 256M
+          memory: 512M
 
   # Automated database backups
   postgres-backup:
