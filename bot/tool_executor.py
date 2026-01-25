@@ -280,10 +280,16 @@ class ToolExecutor:
                 low_c, low_f = round((low - 32) * 5/9, 1), low
                 wind_ms, wind_mph = round(result["wind_speed"] / 2.237, 1), result["wind_speed"]
 
+            # Get state/region from reverse geocoding if coordinates available
+            state = None
+            if result.get("latitude") and result.get("longitude"):
+                state = self.weather.reverse_geocode(result["latitude"], result["longitude"])
+
             # Create weather card visualization with icon
             image_buffer = self.viz.create_weather_card(
                 location=result["location"],
                 country=result["country"],
+                state=state,
                 latitude=result.get("latitude"),
                 longitude=result.get("longitude"),
                 station_id=result.get("station_id"),
