@@ -27,6 +27,34 @@ class Weather:
             raise ValueError("OpenWeatherMap API key not configured. Set OPENWEATHER_API_KEY environment variable.")
 
         self.base_url = "http://api.openweathermap.org/data/2.5"
+        self.geo_url = "http://api.openweathermap.org/geo/1.0"
+
+    def reverse_geocode(self, lat: float, lon: float) -> Optional[str]:
+        """
+        Get state/region name from coordinates using OpenWeatherMap reverse geocoding.
+
+        Args:
+            lat: Latitude
+            lon: Longitude
+
+        Returns:
+            State/region name or None if not available
+        """
+        try:
+            params = {
+                'lat': lat,
+                'lon': lon,
+                'limit': 1,
+                'appid': self.api_key
+            }
+            response = requests.get(f"{self.geo_url}/reverse", params=params, timeout=5)
+            if response.status_code == 200:
+                data = response.json()
+                if data and len(data) > 0:
+                    return data[0].get('state')
+            return None
+        except Exception:
+            return None
 
     def get_current_weather(self, location: str, units: str = "imperial") -> Dict[str, Any]:
         """

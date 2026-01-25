@@ -331,6 +331,7 @@ class GeneralVisualizer:
         self,
         location: str,
         country: str,
+        state: str = None,
         latitude: float = None,
         longitude: float = None,
         station_id: int = None,
@@ -350,206 +351,118 @@ class GeneralVisualizer:
         clouds: int = 0
     ) -> BytesIO:
         """
-        Create a professional weather card with modern design and weather icon.
-
-        Args:
-            location: City name
-            country: Country code
-            description: Weather description
-            temp_c/temp_f: Current temperature in C and F
-            feels_c/feels_f: Feels like temperature in C and F
-            high_c/high_f: High temperature in C and F
-            low_c/low_f: Low temperature in C and F
-            humidity: Humidity percentage
-            wind_ms/wind_mph: Wind speed in m/s and mph
-            clouds: Cloud cover percentage
+        Create a clean, modern weather card.
 
         Returns:
             BytesIO buffer containing the image
         """
-        from matplotlib.patches import FancyBboxPatch, Rectangle, Circle
-        from matplotlib import patheffects
+        from matplotlib.patches import FancyBboxPatch
         from matplotlib.colors import LinearSegmentedColormap
         import requests
         from PIL import Image
 
-        # Set better fonts
         plt.rcParams['font.family'] = 'sans-serif'
         plt.rcParams['font.sans-serif'] = ['Helvetica', 'Arial', 'DejaVu Sans']
 
-        # Create figure with proper dimensions
-        fig = plt.figure(figsize=(14, 7), facecolor='none')
-        ax = fig.add_subplot(111)
-        ax.set_xlim(0, 100)
+        # Create figure with fixed pixel dimensions
+        fig = plt.figure(figsize=(10, 5), dpi=120)
+        ax = fig.add_axes([0, 0, 1, 1])  # Full figure
+        ax.set_xlim(0, 200)
         ax.set_ylim(0, 100)
         ax.axis('off')
 
-        # Determine gradient colors based on conditions
+        # Background color based on weather
         desc_lower = description.lower()
         if 'clear' in desc_lower or 'sunny' in desc_lower:
-            gradient_top = '#56CCF2'
-            gradient_bottom = '#2F80ED'
-            condition = 'Clear'
+            bg_color = '#3B82F6'  # Blue
         elif 'cloud' in desc_lower and 'rain' not in desc_lower:
-            gradient_top = '#A8B5D6'
-            gradient_bottom = '#667EEA'
-            condition = 'Cloudy'
+            bg_color = '#64748B'  # Slate
         elif 'rain' in desc_lower or 'drizzle' in desc_lower:
-            gradient_top = '#4A5568'
-            gradient_bottom = '#2D3748'
-            condition = 'Rainy'
+            bg_color = '#475569'  # Dark slate
         elif 'snow' in desc_lower:
-            gradient_top = '#D4E4F7'
-            gradient_bottom = '#99B2D6'
-            condition = 'Snowy'
+            bg_color = '#6B7280'  # Gray
         elif 'thunder' in desc_lower or 'storm' in desc_lower:
-            gradient_top = '#4B5563'
-            gradient_bottom = '#1F2937'
-            condition = 'Stormy'
+            bg_color = '#374151'  # Dark gray
         else:
-            gradient_top = '#56CCF2'
-            gradient_bottom = '#2F80ED'
-            condition = 'Partly Cloudy'
+            bg_color = '#3B82F6'  # Default blue
 
-        # Download weather icon from OpenWeatherMap
+        # Draw rounded rectangle background
+        main_card = FancyBboxPatch((2, 2), 196, 96,
+                                   boxstyle="round,pad=0,rounding_size=8",
+                                   facecolor=bg_color,
+                                   edgecolor='none', zorder=1)
+        ax.add_patch(main_card)
+
+        # Weather icon - fetch and display
         weather_icon = None
         try:
-            icon_url = f"https://openweathermap.org/img/wn/{icon_code}@4x.png"
+            icon_url = f"https://openweathermap.org/img/wn/{icon_code}@2x.png"
             response = requests.get(icon_url, timeout=5)
             if response.status_code == 200:
                 weather_icon = Image.open(BytesIO(response.content))
-        except Exception as e:
-            # If icon download fails, continue without it
-            print(f"Failed to download weather icon: {e}")
+        except:
+            pass
 
-        # Create smooth gradient background with rounded corners
-        gradient = np.linspace(0, 1, 512).reshape(512, 1)
-        gradient = np.hstack([gradient] * 512)
+        # === LEFT SIDE ===
+        # Location header
+        if state:
+            location_text = f"{location}, {state}, {country}"
+        else:
+            location_text = f"{location}, {country}"
+        ax.text(12, 85, location_text,
+                fontsize=22, fontweight='bold', color='white',
+                va='top', ha='left', zorder=10)
 
-        cmap = LinearSegmentedColormap.from_list('weather', [gradient_bottom, gradient_top], N=512)
+        # Weather description
+        ax.text(12, 72, description.title(),
+                fontsize=14, color='white', alpha=0.85,
+                va='top', ha='left', zorder=10)
 
-        # Main card background with heavy rounded corners
-        main_card = FancyBboxPatch((5, 5), 90, 90,
-                                   boxstyle="round,pad=0,rounding_size=8",
-                                   facecolor=gradient_bottom,
-                                   edgecolor='none',
-                                   zorder=1)
-        ax.add_patch(main_card)
+        # Main temperature
+        ax.text(12, 45, f"{int(temp_f)}°F",
+                fontsize=52, fontweight='bold', color='white',
+                va='center', ha='left', zorder=10)
 
-        # Gradient overlay on card - clipped to rounded corners
-        gradient_img = ax.imshow(gradient.T, extent=[5, 95, 5, 95], aspect='auto',
-                 cmap=cmap, alpha=1.0, zorder=2, interpolation='bicubic')
-        gradient_img.set_clip_path(main_card)
+        # Celsius below
+        ax.text(12, 18, f"{int(temp_c)}°C",
+                fontsize=20, color='white', alpha=0.75,
+                va='center', ha='left', zorder=10)
 
-        # Subtle white overlay for depth
-        overlay = FancyBboxPatch((5, 5), 90, 90,
-                                boxstyle="round,pad=0,rounding_size=8",
-                                facecolor='white',
-                                edgecolor='none',
-                                alpha=0.05,
-                                zorder=3)
-        ax.add_patch(overlay)
-
-        # Text shadow effect for better readability on light backgrounds
-        shadow = [patheffects.withStroke(linewidth=4, foreground='#00000040')]
-
-        # Location at top with clean typography - full details
-        location_full = f"{location}, {country}".upper()
-        ax.text(15, 85, location_full,
-                fontsize=22, fontweight='600', color='white',
-                va='top', ha='left', alpha=0.95, zorder=10,
-                family='sans-serif', path_effects=shadow)
-
-        # Condition description below location
-        ax.text(15, 78, condition,
-                fontsize=16, fontweight='300', color='white',
-                va='top', ha='left', alpha=0.85, zorder=10, path_effects=shadow)
-
-        # Display weather icon if available
+        # === CENTER - Weather Icon ===
         if weather_icon:
-            # Position icon on the left side above temperature
-            icon_box = [12, 38, 18, 18]  # [x, y, width, height]
-            ax.imshow(weather_icon, extent=icon_box, aspect='auto', zorder=11, interpolation='bilinear')
+            # Place icon in center area
+            ax.imshow(weather_icon, extent=[75, 115, 30, 70], zorder=10)
 
-        # Giant temperature display - LEFT ALIGNED with UNIT LABEL (Fahrenheit primary)
-        ax.text(30, 50, f"{int(temp_f)}°F",
-                fontsize=110, fontweight='200', color='white',
-                ha='center', va='center', alpha=1.0, zorder=10,
-                family='sans-serif', path_effects=shadow)
+        # === RIGHT SIDE ===
+        rx = 160
 
-        # Secondary temperature unit below main temp (Celsius)
-        ax.text(30, 33, f"{int(temp_c)}°C",
-                fontsize=28, fontweight='300', color='white',
-                ha='center', va='center', alpha=0.9, zorder=10,
-                path_effects=shadow)
+        # Feels like
+        ax.text(rx, 85, "Feels like", fontsize=12, color='white', alpha=0.7,
+                ha='center', va='top', zorder=10)
+        ax.text(rx, 72, f"{int(feels_f)}°F", fontsize=20, fontweight='bold', color='white',
+                ha='center', va='top', zorder=10)
 
-        # Right side info panel - detailed weather data
-        right_x = 70
+        # High / Low
+        ax.text(rx, 58, "High / Low", fontsize=12, color='white', alpha=0.7,
+                ha='center', va='top', zorder=10)
+        ax.text(rx, 45, f"{int(high_f)}° / {int(low_f)}°", fontsize=18, fontweight='bold', color='white',
+                ha='center', va='top', zorder=10)
 
-        # Feels like section with UNIT LABEL (Fahrenheit primary)
-        ax.text(right_x, 70, "FEELS LIKE",
-                fontsize=11, fontweight='300', color='white',
-                ha='center', va='top', alpha=0.7, zorder=10, path_effects=shadow)
-        ax.text(right_x, 63, f"{int(feels_f)}°F",
-                fontsize=32, fontweight='600', color='white',
-                ha='center', va='top', alpha=1.0, zorder=10, path_effects=shadow)
-        ax.text(right_x, 56, f"({int(feels_c)}°C)",
-                fontsize=14, fontweight='300', color='white',
-                ha='center', va='top', alpha=0.85, zorder=10, path_effects=shadow)
+        # Stats
+        ax.text(rx, 32, f"Humidity: {humidity}%", fontsize=13, color='white', alpha=0.85,
+                ha='center', va='top', zorder=10)
+        ax.text(rx, 20, f"Wind: {wind_mph} mph", fontsize=13, color='white', alpha=0.85,
+                ha='center', va='top', zorder=10)
 
-        # High/Low on right panel with UNIT LABELS (Fahrenheit primary)
-        ax.text(right_x, 48, "HIGH / LOW",
-                fontsize=11, fontweight='300', color='white',
-                ha='center', va='top', alpha=0.7, zorder=10, path_effects=shadow)
-        ax.text(right_x, 41, f"{int(high_f)}°F / {int(low_f)}°F",
-                fontsize=24, fontweight='600', color='white',
-                ha='center', va='top', alpha=1.0, zorder=10, path_effects=shadow)
-        ax.text(right_x, 35, f"({int(high_c)}°C / {int(low_c)}°C)",
-                fontsize=13, fontweight='300', color='white',
-                ha='center', va='top', alpha=0.85, zorder=10, path_effects=shadow)
-
-        # Additional details
-        detail_start_y = 29
-        line_spacing = 5
-
-        ax.text(right_x, detail_start_y, f"Humidity: {humidity}%",
-                fontsize=13, fontweight='400', color='white',
-                ha='center', va='top', alpha=0.9, zorder=10, path_effects=shadow)
-
-        ax.text(right_x, detail_start_y - line_spacing, f"Wind: {wind_mph} mph",
-                fontsize=13, fontweight='400', color='white',
-                ha='center', va='top', alpha=0.9, zorder=10, path_effects=shadow)
-
-        ax.text(right_x, detail_start_y - line_spacing * 2, f"({wind_ms} m/s)",
-                fontsize=11, fontweight='300', color='white',
-                ha='center', va='top', alpha=0.75, zorder=10, path_effects=shadow)
-
-        ax.text(right_x, detail_start_y - line_spacing * 3, f"Clouds: {clouds}%",
-                fontsize=13, fontweight='400', color='white',
-                ha='center', va='top', alpha=0.9, zorder=10, path_effects=shadow)
-
-        # Location details footer at bottom
+        # Coordinates footer
         if latitude is not None and longitude is not None:
-            footer_y = 12
+            ax.text(100, 6, f"{latitude}°, {longitude}°",
+                    fontsize=9, color='white', alpha=0.4,
+                    ha='center', va='center', zorder=10)
 
-            # Coordinate text
-            coord_text = f"Coordinates: {latitude}°, {longitude}°"
-            ax.text(50, footer_y, coord_text,
-                    fontsize=10, fontweight='300', color='white',
-                    ha='center', va='center', alpha=0.7, zorder=10,
-                    family='monospace')
-
-            # Station ID if available
-            if station_id:
-                ax.text(50, footer_y - 3.5, f"Station ID: {station_id}",
-                        fontsize=9, fontweight='300', color='white',
-                        ha='center', va='center', alpha=0.6, zorder=10,
-                        family='monospace')
-
-        # Save with transparent background
         buf = BytesIO()
-        plt.savefig(buf, format='png', dpi=200, bbox_inches='tight',
-                   facecolor='none', edgecolor='none', pad_inches=0.2)
+        plt.savefig(buf, format='png', bbox_inches='tight',
+                    facecolor='none', edgecolor='none', pad_inches=0.05)
         buf.seek(0)
         plt.close()
 
