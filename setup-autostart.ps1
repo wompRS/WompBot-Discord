@@ -1,25 +1,31 @@
 # Run this script as Administrator to set up auto-start for the Discord bot
+# Uses Docker Desktop (WSL2 backend) instead of Docker in WSL
 
-$taskName = "WSL Discord Bot"
-$batPath = "E:\discord-bot\start-wsl-bot.bat"
+$taskName = "Discord Bot Autostart"
+$batPath = "E:\discord-bot\start-bot.bat"
 
-# Remove existing task if present
+# Remove existing tasks if present
 Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
+Unregister-ScheduledTask -TaskName "WSL Discord Bot" -Confirm:$false -ErrorAction SilentlyContinue
 
-# Create trigger for system startup
-$trigger = New-ScheduledTaskTrigger -AtStartup
+# Create trigger for user logon (Docker Desktop runs as user, not SYSTEM)
+$trigger = New-ScheduledTaskTrigger -AtLogon
 
 # Create action to run the batch file
-$action = New-ScheduledTaskAction -Execute $batPath
+$action = New-ScheduledTaskAction -Execute $batPath -WorkingDirectory "E:\discord-bot"
 
-# Create principal to run as SYSTEM with highest privileges
-$principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
+# Create settings - with delay to let Docker Desktop start first
+$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 10)
 
-# Create settings
-$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
+# Register the task for current user
+Register-ScheduledTask -TaskName $taskName -Trigger $trigger -Action $action -Settings $settings -Description "Starts Discord bot containers after Docker Desktop is ready"
 
-# Register the task
-Register-ScheduledTask -TaskName $taskName -Trigger $trigger -Action $action -Principal $principal -Settings $settings -Description "Starts Discord bot in WSL Debian at system startup"
-
+Write-Host ""
 Write-Host "Task '$taskName' created successfully!" -ForegroundColor Green
-Write-Host "The bot will now start automatically when Windows boots." -ForegroundColor Cyan
+Write-Host ""
+Write-Host "Auto-start flow:" -ForegroundColor Cyan
+Write-Host "  1. Windows boots" -ForegroundColor White
+Write-Host "  2. Docker Desktop starts (AutoStart enabled)" -ForegroundColor White
+Write-Host "  3. Task runs start-bot.bat at logon" -ForegroundColor White
+Write-Host "  4. Script waits for Docker to be ready, then starts containers" -ForegroundColor White
+Write-Host ""
