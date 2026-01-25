@@ -450,17 +450,20 @@ class GeneralVisualizer:
                                 zorder=3)
         ax.add_patch(overlay)
 
+        # Text shadow effect for better readability on light backgrounds
+        shadow = [patheffects.withStroke(linewidth=4, foreground='#00000040')]
+
         # Location at top with clean typography - full details
         location_full = f"{location}, {country}".upper()
         ax.text(15, 85, location_full,
                 fontsize=22, fontweight='600', color='white',
                 va='top', ha='left', alpha=0.95, zorder=10,
-                family='sans-serif')
+                family='sans-serif', path_effects=shadow)
 
         # Condition description below location
         ax.text(15, 78, condition,
                 fontsize=16, fontweight='300', color='white',
-                va='top', ha='left', alpha=0.85, zorder=10)
+                va='top', ha='left', alpha=0.85, zorder=10, path_effects=shadow)
 
         # Display weather icon if available
         if weather_icon:
@@ -468,41 +471,42 @@ class GeneralVisualizer:
             icon_box = [12, 38, 18, 18]  # [x, y, width, height]
             ax.imshow(weather_icon, extent=icon_box, aspect='auto', zorder=11, interpolation='bilinear')
 
-        # Giant temperature display - LEFT ALIGNED with UNIT LABEL
-        ax.text(30, 50, f"{int(temp_c)}°C",
+        # Giant temperature display - LEFT ALIGNED with UNIT LABEL (Fahrenheit primary)
+        ax.text(30, 50, f"{int(temp_f)}°F",
                 fontsize=110, fontweight='200', color='white',
                 ha='center', va='center', alpha=1.0, zorder=10,
-                family='sans-serif')
+                family='sans-serif', path_effects=shadow)
 
-        # Secondary temperature unit below main temp
-        ax.text(30, 33, f"{int(temp_f)}°F",
+        # Secondary temperature unit below main temp (Celsius)
+        ax.text(30, 33, f"{int(temp_c)}°C",
                 fontsize=28, fontweight='300', color='white',
-                ha='center', va='center', alpha=0.9, zorder=10)
+                ha='center', va='center', alpha=0.9, zorder=10,
+                path_effects=shadow)
 
         # Right side info panel - detailed weather data
         right_x = 70
 
-        # Feels like section with UNIT LABEL
+        # Feels like section with UNIT LABEL (Fahrenheit primary)
         ax.text(right_x, 70, "FEELS LIKE",
                 fontsize=11, fontweight='300', color='white',
-                ha='center', va='top', alpha=0.7, zorder=10)
-        ax.text(right_x, 63, f"{int(feels_c)}°C",
+                ha='center', va='top', alpha=0.7, zorder=10, path_effects=shadow)
+        ax.text(right_x, 63, f"{int(feels_f)}°F",
                 fontsize=32, fontweight='600', color='white',
-                ha='center', va='top', alpha=1.0, zorder=10)
-        ax.text(right_x, 56, f"({int(feels_f)}°F)",
+                ha='center', va='top', alpha=1.0, zorder=10, path_effects=shadow)
+        ax.text(right_x, 56, f"({int(feels_c)}°C)",
                 fontsize=14, fontweight='300', color='white',
-                ha='center', va='top', alpha=0.85, zorder=10)
+                ha='center', va='top', alpha=0.85, zorder=10, path_effects=shadow)
 
-        # High/Low on right panel with UNIT LABELS
+        # High/Low on right panel with UNIT LABELS (Fahrenheit primary)
         ax.text(right_x, 48, "HIGH / LOW",
                 fontsize=11, fontweight='300', color='white',
-                ha='center', va='top', alpha=0.7, zorder=10)
-        ax.text(right_x, 41, f"{int(high_c)}°C / {int(low_c)}°C",
+                ha='center', va='top', alpha=0.7, zorder=10, path_effects=shadow)
+        ax.text(right_x, 41, f"{int(high_f)}°F / {int(low_f)}°F",
                 fontsize=24, fontweight='600', color='white',
-                ha='center', va='top', alpha=1.0, zorder=10)
-        ax.text(right_x, 35, f"({int(high_f)}°F / {int(low_f)}°F)",
+                ha='center', va='top', alpha=1.0, zorder=10, path_effects=shadow)
+        ax.text(right_x, 35, f"({int(high_c)}°C / {int(low_c)}°C)",
                 fontsize=13, fontweight='300', color='white',
-                ha='center', va='top', alpha=0.85, zorder=10)
+                ha='center', va='top', alpha=0.85, zorder=10, path_effects=shadow)
 
         # Additional details
         detail_start_y = 29
@@ -510,19 +514,19 @@ class GeneralVisualizer:
 
         ax.text(right_x, detail_start_y, f"Humidity: {humidity}%",
                 fontsize=13, fontweight='400', color='white',
-                ha='center', va='top', alpha=0.9, zorder=10)
+                ha='center', va='top', alpha=0.9, zorder=10, path_effects=shadow)
 
         ax.text(right_x, detail_start_y - line_spacing, f"Wind: {wind_mph} mph",
                 fontsize=13, fontweight='400', color='white',
-                ha='center', va='top', alpha=0.9, zorder=10)
+                ha='center', va='top', alpha=0.9, zorder=10, path_effects=shadow)
 
         ax.text(right_x, detail_start_y - line_spacing * 2, f"({wind_ms} m/s)",
                 fontsize=11, fontweight='300', color='white',
-                ha='center', va='top', alpha=0.75, zorder=10)
+                ha='center', va='top', alpha=0.75, zorder=10, path_effects=shadow)
 
         ax.text(right_x, detail_start_y - line_spacing * 3, f"Clouds: {clouds}%",
                 fontsize=13, fontweight='400', color='white',
-                ha='center', va='top', alpha=0.9, zorder=10)
+                ha='center', va='top', alpha=0.9, zorder=10, path_effects=shadow)
 
         # Location details footer at bottom
         if latitude is not None and longitude is not None:
