@@ -110,5 +110,17 @@ services:
       - postgres
     restart: always
 
+  # Portainer - Web UI for Docker management
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: portainer
+    ports:
+      - "9443:9443"  # HTTPS web UI
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_data:/data
+    restart: always
+
 volumes:
   postgres_data:
+  portainer_data:
