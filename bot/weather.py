@@ -28,7 +28,7 @@ class Weather:
 
         self.base_url = "http://api.openweathermap.org/data/2.5"
 
-    def get_current_weather(self, location: str, units: str = "metric") -> Dict[str, Any]:
+    def get_current_weather(self, location: str, units: str = "imperial") -> Dict[str, Any]:
         """
         Get current weather for a location.
 
@@ -166,7 +166,7 @@ class Weather:
                 'location': location
             }
 
-    def get_forecast(self, location: str, units: str = "metric", days: int = 5) -> Dict[str, Any]:
+    def get_forecast(self, location: str, units: str = "imperial", days: int = 5) -> Dict[str, Any]:
         """
         Get weather forecast for a location.
 

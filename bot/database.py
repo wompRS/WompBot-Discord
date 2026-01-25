@@ -1223,7 +1223,7 @@ class Database:
         finally:
             self.pool.putconn(conn)
 
-    def set_weather_preference(self, user_id: int, location: str, units: str = 'metric'):
+    def set_weather_preference(self, user_id: int, location: str, units: str = 'imperial'):
         """Set user's default weather location"""
         conn = self.pool.getconn()
         try:
