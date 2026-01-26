@@ -13,13 +13,13 @@ VISUALIZATION_TOOLS = [
         "type": "function",
         "function": {
             "name": "create_bar_chart",
-            "description": "Create a bar chart to visualize data. Use this when users ask to see, show, visualize, or chart data in bar format.",
+            "description": "Create a bar chart for INTERNAL BOT DATA ONLY (Discord message stats, user activity). Do NOT use for external web search data.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "data_query": {
                         "type": "string",
-                        "description": "What data to visualize (e.g., 'top 10 users by message count last 7 days', 'message distribution by hour')",
+                        "description": "INTERNAL data only: 'top 10 users by messages', 'messages by hour'. NOT for external data.",
                     },
                     "title": {
                         "type": "string",
@@ -47,13 +47,13 @@ VISUALIZATION_TOOLS = [
         "type": "function",
         "function": {
             "name": "create_line_chart",
-            "description": "Create a line chart to show trends over time. Use this for time series data or trends.",
+            "description": "Create a line chart for INTERNAL BOT DATA trends. Do NOT use for external web search data.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "data_query": {
                         "type": "string",
-                        "description": "What data to visualize (e.g., 'messages per day last 30 days', 'user activity trend')",
+                        "description": "INTERNAL data only: 'messages per day', 'user activity trend'. NOT for external data.",
                     },
                     "title": {
                         "type": "string",
@@ -76,13 +76,13 @@ VISUALIZATION_TOOLS = [
         "type": "function",
         "function": {
             "name": "create_pie_chart",
-            "description": "Create a pie chart to show proportions or distributions. Use this for percentage breakdowns.",
+            "description": "Create a pie chart for INTERNAL BOT DATA distributions. Do NOT use for external web search data.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "data_query": {
                         "type": "string",
-                        "description": "What data to visualize (e.g., 'message distribution by user', 'personality breakdown')",
+                        "description": "INTERNAL data only: 'message distribution by user', 'personality breakdown'. NOT for external data.",
                     },
                     "title": {
                         "type": "string",
@@ -102,13 +102,13 @@ VISUALIZATION_TOOLS = [
         "type": "function",
         "function": {
             "name": "create_table",
-            "description": "Create a formatted table to display structured data. Use this for detailed comparisons or lists.",
+            "description": "Create a formatted table for INTERNAL BOT DATA ONLY (Discord message stats, user activity). Do NOT use for external data from web searches - present that as text instead.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "data_query": {
                         "type": "string",
-                        "description": "What data to display (e.g., 'top 20 users with message count and rank', 'user stats comparison')",
+                        "description": "INTERNAL bot data only: 'top users by messages', 'user stats', 'activity by day'. NOT for external web data.",
                     },
                     "title": {
                         "type": "string",
@@ -128,13 +128,13 @@ VISUALIZATION_TOOLS = [
         "type": "function",
         "function": {
             "name": "create_comparison_chart",
-            "description": "Create a grouped bar chart to compare multiple datasets side by side.",
+            "description": "Create a comparison chart for INTERNAL BOT DATA ONLY. Do NOT use for external web search data.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "data_query": {
                         "type": "string",
-                        "description": "What data to compare (e.g., 'compare message counts between users over time', 'compare activity by day of week')",
+                        "description": "INTERNAL data only: 'compare messages between users', 'activity by day'. NOT for external data.",
                     },
                     "title": {
                         "type": "string",
