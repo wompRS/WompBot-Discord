@@ -24,6 +24,7 @@ from local_llm import LocalLLMClient
 from cost_tracker import CostTracker
 from search import SearchEngine
 from rag import RAGSystem
+from redis_cache import get_cache
 from wolfram import WolframAlpha
 from weather import Weather
 from features.claims import ClaimsTracker
@@ -67,6 +68,7 @@ bot = commands.Bot(command_prefix='!', intents=intents, help_command=None)  # Di
 
 # Initialize components
 db = Database()
+cache = get_cache()  # Redis cache for faster access to hot data
 cost_tracker = None  # Will be initialized in on_ready when bot is available
 llm = LLMClient(cost_tracker=None)  # Cost tracker will be set in on_ready
 local_llm = LocalLLMClient()  # Local uncensored LLM (optional)

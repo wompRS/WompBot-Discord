@@ -47,7 +47,7 @@ class RAGSystem:
         # Configuration
         self.embedding_model = os.getenv('EMBEDDING_MODEL', 'text-embedding-3-small')
         self.embedding_dimension = 1536  # text-embedding-3-small dimension
-        self.max_embedding_batch_size = 100
+        self.max_embedding_batch_size = 200  # Increased for dedicated server (was 100)
         self.similarity_threshold = float(os.getenv('RAG_SIMILARITY_THRESHOLD', '0.7'))
 
         print(f"✅ RAG system initialized (model: {self.embedding_model})")

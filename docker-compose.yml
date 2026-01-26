@@ -6,6 +6,18 @@ services:
       POSTGRES_DB: discord_bot
       POSTGRES_USER: botuser
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    # PostgreSQL tuning for dedicated server
+    command: >
+      postgres
+      -c shared_buffers=1GB
+      -c effective_cache_size=3GB
+      -c maintenance_work_mem=256MB
+      -c work_mem=64MB
+      -c max_connections=100
+      -c random_page_cost=1.1
+      -c checkpoint_completion_target=0.9
+      -c wal_buffers=64MB
+      -c default_statistics_target=100
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./sql/init.sql:/docker-entrypoint-initdb.d/01_init.sql
@@ -29,14 +41,14 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-    # SECURITY: Resource limits to prevent DoS
+    # Resource limits for dedicated server (increased from 1 CPU / 1GB)
     deploy:
       resources:
         limits:
-          cpus: '1.0'
-          memory: 1G
+          cpus: '2.0'
+          memory: 4G
         reservations:
-          memory: 512M
+          memory: 1G
     # Disable swap for database performance and security
     mem_swappiness: 0
 
@@ -69,27 +81,39 @@ services:
       MAX_CONCURRENT_REQUESTS: ${MAX_CONCURRENT_REQUESTS}
       WRAPPED_COOLDOWN: ${WRAPPED_COOLDOWN}
       IRACING_LEADERBOARD_COOLDOWN: ${IRACING_LEADERBOARD_COOLDOWN}
+      # Compression settings
+      ENABLE_COMPRESSION: ${ENABLE_COMPRESSION:-true}
+      COMPRESSION_RATE: ${COMPRESSION_RATE:-0.6}
+      MIN_MESSAGES_TO_COMPRESS: ${MIN_MESSAGES_TO_COMPRESS:-12}
+      # Database settings
       DB_HOST: postgres
       DB_PORT: 5432
       DB_NAME: discord_bot
       DB_USER: botuser
       DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_POOL_MIN: ${DB_POOL_MIN:-5}
+      DB_POOL_MAX: ${DB_POOL_MAX:-25}
+      # Redis for caching
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     restart: always
     volumes:
       - ./bot:/app
       - ./README.md:/README.md          # Self-knowledge system needs README
       - ./docs:/docs                    # Self-knowledge system needs docs
-    # Resource limits (increased for LLM context + RAG embeddings)
+    # Resource limits for dedicated server (increased from 1 CPU / 2GB)
     deploy:
       resources:
         limits:
-          cpus: '1.0'
-          memory: 2G
+          cpus: '4.0'
+          memory: 8G
         reservations:
-          memory: 512M
+          memory: 2G
 
   # Automated database backups
   postgres-backup:
@@ -110,6 +134,27 @@ services:
       - postgres
     restart: always
 
+  # Redis - In-memory caching for faster access to hot data
+  redis:
+    image: redis:7-alpine
+    container_name: discord_bot_redis
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    restart: always
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 768M
+        reservations:
+          memory: 256M
+
   # Portainer - Web UI for Docker management
   portainer:
     image: portainer/portainer-ce:latest
@@ -123,4 +168,5 @@ services:
 
 volumes:
   postgres_data:
+  redis_data:
   portainer_data:
