@@ -18,3 +18,4 @@ Pillow==11.0.0  # SECURITY: Updated from 10.3.0, staying on 11.x for compatibili
 matplotlib==3.9.0  # Visualization library for charts and tables
 seaborn==0.13.2  # Statistical visualizations built on matplotlib
 llmlingua==0.2.2  # Prompt compression for reducing context token usage
+redis==5.0.1  # Redis client for in-memory caching
