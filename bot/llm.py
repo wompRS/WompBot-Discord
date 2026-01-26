@@ -270,8 +270,8 @@ Be useful and real. That's the balance."""
                     recent_messages,
                     keep_recent=3  # Keep last 3 messages verbatim
                 )
-                # Add as a single user message block
-                messages.append({"role": "user", "content": f"[Conversation History]:\n{compressed_history}"})
+                # Add as a single user message block with clear instruction
+                messages.append({"role": "user", "content": f"[CONVERSATION HISTORY - Read this carefully before responding. This shows what you and users actually said.]\n{compressed_history}"})
             else:
                 # Fallback to standard message-by-message format for short conversations
                 for msg in recent_messages:
@@ -292,15 +292,15 @@ Be useful and real. That's the balance."""
 
             # Add search results to user message with conversational framing
             if search_results:
-                user_message_with_context = f"""User's current question: {user_message}
+                user_message_with_context = f"""[LATEST MESSAGE - respond to this, but consider the conversation history above]
+{user_message}
 
-[Context: Here's what I found from a quick web search. Use this info naturally in your response - don't just regurgitate facts, work it into a conversational reply. If they're wrong about something, call it out with your usual wit.]
-
-SEARCH RESULTS:
+[Web search results - use naturally in your response:]
 {search_results}"""
                 messages.append({"role": "user", "content": user_message_with_context})
             else:
-                messages.append({"role": "user", "content": f"User's current question: {user_message}"})
+                # Frame the message to remind LLM to consider full context
+                messages.append({"role": "user", "content": f"[LATEST MESSAGE - respond to this, but consider the conversation history above]\n{user_message}"})
 
             # Enforce context token limits to prevent excessive usage
             max_context_tokens = int(os.getenv('MAX_CONTEXT_TOKENS', '4000'))
