@@ -222,21 +222,50 @@ Generate {count} questions now:"""
 
         return questions[:count]
 
+    def _extract_json_array(self, text):
+        """Extract JSON array from text by finding matching brackets"""
+        # Find the first '[' that starts a JSON array
+        start = text.find('[')
+        if start == -1:
+            return None
+
+        # Track bracket depth to find matching ']'
+        depth = 0
+        in_string = False
+        escape_next = False
+
+        for i, char in enumerate(text[start:], start):
+            if escape_next:
+                escape_next = False
+                continue
+            if char == '\\':
+                escape_next = True
+                continue
+            if char == '"' and not escape_next:
+                in_string = not in_string
+                continue
+            if in_string:
+                continue
+            if char == '[':
+                depth += 1
+            elif char == ']':
+                depth -= 1
+                if depth == 0:
+                    return text[start:i+1]
+        return None
+
     def _parse_questions_from_llm(self, llm_response):
         """Extract JSON array from LLM response"""
-        # Try to find JSON array in response (non-greedy match)
-        json_match = re.search(r'\[.*?\]', llm_response, re.DOTALL)
-        if not json_match:
-            # Try to extract JSON from code blocks
-            code_block_match = re.search(r'```(?:json)?\s*(\[.*?\])\s*```', llm_response, re.DOTALL)
-            if code_block_match:
-                json_match = code_block_match
-                json_str = code_block_match.group(1)
-            else:
-                print(f"❌ Could not find JSON in LLM response: {llm_response[:200]}")
-                raise Exception("Could not find JSON array in LLM response")
+        # Try to extract JSON from code blocks first
+        code_block_match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', llm_response)
+        if code_block_match:
+            json_str = self._extract_json_array(code_block_match.group(1))
         else:
-            json_str = json_match.group()
+            json_str = self._extract_json_array(llm_response)
+
+        if not json_str:
+            print(f"❌ Could not find JSON in LLM response: {llm_response[:500]}")
+            raise Exception("Could not find JSON array in LLM response")
 
         try:
             questions = json.loads(json_str)
