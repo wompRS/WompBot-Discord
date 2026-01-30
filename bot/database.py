@@ -1209,62 +1209,52 @@ class Database:
 
     def get_weather_preference(self, user_id: int):
         """Get user's saved weather location preference"""
-        conn = self.pool.getconn()
         try:
-            with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                cur.execute(
-                    "SELECT location, units FROM weather_preferences WHERE user_id = %s",
-                    (user_id,)
-                )
-                return cur.fetchone()
+            with self.get_connection() as conn:
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    cur.execute(
+                        "SELECT location, units FROM weather_preferences WHERE user_id = %s",
+                        (user_id,)
+                    )
+                    return cur.fetchone()
         except Exception as e:
             print(f"Error getting weather preference: {e}")
             return None
-        finally:
-            self.pool.putconn(conn)
 
     def set_weather_preference(self, user_id: int, location: str, units: str = 'imperial'):
         """Set user's default weather location"""
-        conn = self.pool.getconn()
         try:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    INSERT INTO weather_preferences (user_id, location, units)
-                    VALUES (%s, %s, %s)
-                    ON CONFLICT (user_id)
-                    DO UPDATE SET location = EXCLUDED.location,
-                                  units = EXCLUDED.units,
-                                  updated_at = CURRENT_TIMESTAMP
-                    """,
-                    (user_id, location, units)
-                )
-                conn.commit()
-                return True
+            with self.get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """
+                        INSERT INTO weather_preferences (user_id, location, units)
+                        VALUES (%s, %s, %s)
+                        ON CONFLICT (user_id)
+                        DO UPDATE SET location = EXCLUDED.location,
+                                      units = EXCLUDED.units,
+                                      updated_at = CURRENT_TIMESTAMP
+                        """,
+                        (user_id, location, units)
+                    )
+                    return True
         except Exception as e:
             print(f"Error setting weather preference: {e}")
-            conn.rollback()
             return False
-        finally:
-            self.pool.putconn(conn)
 
     def delete_weather_preference(self, user_id: int):
         """Remove user's weather location preference"""
-        conn = self.pool.getconn()
         try:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "DELETE FROM weather_preferences WHERE user_id = %s",
-                    (user_id,)
-                )
-                conn.commit()
-                return cur.rowcount > 0
+            with self.get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "DELETE FROM weather_preferences WHERE user_id = %s",
+                        (user_id,)
+                    )
+                    return cur.rowcount > 0
         except Exception as e:
             print(f"Error deleting weather preference: {e}")
-            conn.rollback()
             return False
-        finally:
-            self.pool.putconn(conn)
 
     # ===== TRIVIA SYSTEM METHODS =====
 

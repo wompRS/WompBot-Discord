@@ -268,12 +268,24 @@ Be useful and real. That's the balance."""
                 # Use compression for longer conversations
                 compressed_history = self.compressor.compress_history(
                     recent_messages,
-                    keep_recent=3  # Keep last 3 messages verbatim
+                    keep_recent=5,  # Keep last 5 messages verbatim for better context
+                    bot_user_id=bot_user_id  # Pass bot ID to identify bot messages
                 )
                 # Add as a single user message block with clear instruction
-                messages.append({"role": "user", "content": f"[CONVERSATION HISTORY - Read this carefully before responding. This shows what you and users actually said.]\n{compressed_history}"})
+                history_intro = """[CONVERSATION HISTORY - READ CAREFULLY]
+Messages marked [YOU/WompBot] are YOUR previous responses - things YOU said.
+Messages marked [Username] are what USERS said to you.
+Use this history to maintain conversation continuity and remember what was discussed.
+
+"""
+                messages.append({"role": "user", "content": f"{history_intro}{compressed_history}"})
             else:
                 # Fallback to standard message-by-message format for short conversations
+                # This preserves proper assistant/user role assignments
+                if recent_messages:
+                    # Add header explaining the history format
+                    messages.append({"role": "user", "content": "[CONVERSATION HISTORY - The following messages show the recent conversation. Your previous responses appear as 'assistant' messages.]"})
+
                 for msg in recent_messages:
                     if not msg.get("content"):
                         continue
@@ -359,7 +371,39 @@ Be useful and real. That's the balance."""
                 payload["tools"] = tools
                 payload["tool_choice"] = "auto"  # Let LLM decide when to use tools
 
-            response = requests.post(self.base_url, headers=headers, json=payload, timeout=60)
+            # Make API request with rate limit handling
+            max_rate_limit_retries = 3
+            rate_limit_retry = 0
+            response = None
+
+            while rate_limit_retry <= max_rate_limit_retries:
+                response = requests.post(self.base_url, headers=headers, json=payload, timeout=60)
+
+                # Handle 429 rate limiting specifically
+                if response.status_code == 429:
+                    rate_limit_retry += 1
+                    if rate_limit_retry > max_rate_limit_retries:
+                        print(f"❌ Rate limited by API after {max_rate_limit_retries} retries")
+                        raise requests.HTTPError(f"Rate limited after {max_rate_limit_retries} retries", response=response)
+
+                    # Check for Retry-After header
+                    retry_after = response.headers.get('Retry-After')
+                    if retry_after:
+                        try:
+                            wait_time = int(retry_after)
+                        except ValueError:
+                            wait_time = 5 * rate_limit_retry  # Exponential backoff
+                    else:
+                        # Exponential backoff: 2, 4, 8 seconds
+                        wait_time = 2 ** rate_limit_retry
+
+                    print(f"⏱️ Rate limited by API. Waiting {wait_time}s (attempt {rate_limit_retry}/{max_rate_limit_retries})")
+                    time.sleep(wait_time)
+                    continue
+
+                # Not rate limited, break out of retry loop
+                break
+
             try:
                 response.raise_for_status()
             except requests.HTTPError as http_err:

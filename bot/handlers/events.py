@@ -86,11 +86,14 @@ def register_events(bot, db, privacy_manager, claims_tracker, debate_scorekeeper
 
         # Sync slash commands with Discord (guild-specific for instant updates)
         try:
-            # Guild-specific sync for instant command updates
-            guild = discord.Object(id=YOUR_GUILD_ID)  # Your server ID
-            bot.tree.copy_global_to(guild=guild)
-            synced = await bot.tree.sync(guild=guild)
-            print(f"✅ Synced {len(synced)} slash commands to guild (instant)")
+            # Check for primary guild ID in environment (for instant sync)
+            primary_guild_id = os.getenv('PRIMARY_GUILD_ID')
+            if primary_guild_id and primary_guild_id.strip().isdigit():
+                # Guild-specific sync for instant command updates
+                guild = discord.Object(id=int(primary_guild_id))
+                bot.tree.copy_global_to(guild=guild)
+                synced = await bot.tree.sync(guild=guild)
+                print(f"✅ Synced {len(synced)} slash commands to guild (instant)")
 
             # Also sync globally for other servers (takes up to 1 hour)
             await bot.tree.sync()

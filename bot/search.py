@@ -95,6 +95,235 @@ class SearchEngine:
             print(f"❌ Tavily search error: {type(e).__name__}: {e}")
             return []
 
+    def build_contextual_query(self, user_message, conversation_history=None, max_context_msgs=5):
+        """
+        Build a better search query by incorporating conversation context.
+
+        For follow-up questions like "when is iracings?" after asking about VLN,
+        this will produce "iRacing VLN schedule 2026" instead of just "when is iracings".
+
+        Args:
+            user_message: The current user message
+            conversation_history: Recent conversation messages (list of dicts with 'content')
+            max_context_msgs: Max recent messages to consider for context
+
+        Returns:
+            Enhanced search query string
+        """
+        import re
+
+        # Start with the user's message, cleaned up
+        query = user_message.strip()
+
+        # Remove common filler words/phrases for better search
+        filler_patterns = [
+            r"^wompbot\s+", r"^womp bot\s+", r"^hey\s+", r"^hi\s+", r"^yo\s+",
+            r"^can you\s+", r"^could you\s+", r"^please\s+", r"^tell me\s+",
+            r"^what about\s+", r"^how about\s+", r"^do you know\s+",
+            r"^i want to know\s+", r"^i need to know\s+", r"^find out\s+",
+        ]
+        query_lower = query.lower()
+        for pattern in filler_patterns:
+            query = re.sub(pattern, '', query, flags=re.IGNORECASE)
+        query = query.strip()
+        query_lower = query.lower()
+
+        # Detect if this is likely a follow-up question that needs context
+        needs_context = self._is_followup_question(query_lower)
+
+        # Also trigger context enhancement for short queries
+        if len(query) < 25:
+            needs_context = True
+
+        if not needs_context or not conversation_history:
+            return query
+
+        # Build context from recent messages (including bot responses!)
+        recent_context = []
+        for msg in conversation_history[-max_context_msgs:]:
+            content = msg.get('content', '')
+            if content:
+                recent_context.append(content.lower())
+
+        context_text = ' '.join(recent_context)
+
+        # Extract topic keywords from context
+        topic_keywords = self._extract_topic_keywords(context_text, query_lower)
+
+        # Add relevant context keywords to the query
+        if topic_keywords:
+            # Deduplicate while preserving order
+            seen = set()
+            unique_keywords = []
+            for kw in topic_keywords:
+                kw_lower = kw.lower()
+                if kw_lower not in seen and kw_lower not in query_lower:
+                    seen.add(kw_lower)
+                    unique_keywords.append(kw)
+
+            if unique_keywords:
+                # Prepend context keywords for better search relevance
+                enhanced_query = ' '.join(unique_keywords[:4]) + ' ' + query
+                print(f"🔍 Enhanced search query: '{query}' → '{enhanced_query}'")
+                return enhanced_query
+
+        return query
+
+    def _is_followup_question(self, query_lower):
+        """Detect if a query is likely a follow-up question needing context."""
+        import re
+
+        # Very short queries are almost always follow-ups
+        if len(query_lower) < 20:
+            return True
+
+        # Queries starting with pronouns or references to previous content
+        followup_starters = [
+            r"^(what|when|where|how|why|who)\s+(is|are|was|were|about)\s+(it|that|this|their|its|the)\b",
+            r"^(what|when|where|how|why|who)\s+(is|are|was|were)\s+\w+('s|s)\??$",  # "when is iracings?"
+            r"^and\s+",
+            r"^but\s+",
+            r"^also\s+",
+            r"^what about\s+",
+            r"^how about\s+",
+            r"^same\s+",
+            r"^(for|in|on|at)\s+(that|this|it|the)\b",
+        ]
+
+        for pattern in followup_starters:
+            if re.search(pattern, query_lower):
+                return True
+
+        # Queries with possessive references (e.g., "when is iracings" - missing apostrophe)
+        # or referencing something mentioned before
+        possessive_patterns = [
+            r"\b(their|its|his|her)\b",
+            r"\b\w+'s\b",  # possessives like "iracing's"
+            r"\b\w+s\?$",  # ends with "s?" like "iracings?"
+        ]
+
+        for pattern in possessive_patterns:
+            if re.search(pattern, query_lower):
+                return True
+
+        return False
+
+    def _extract_topic_keywords(self, context_text, query_lower):
+        """Extract relevant topic keywords from conversation context."""
+        import re
+
+        topic_keywords = []
+
+        # Static topic patterns - common subjects that should carry forward
+        static_patterns = [
+            # Motorsport/Racing - expanded
+            ('vln', 'VLN'),
+            ('nls', 'NLS'),
+            ('nürburgring', 'Nürburgring'),
+            ('nurburgring', 'Nürburgring'),
+            ('nordschleife', 'Nordschleife'),
+            ('iracing', 'iRacing'),
+            ('i-racing', 'iRacing'),
+            ('gt3', 'GT3'),
+            ('gt4', 'GT4'),
+            ('gte', 'GTE'),
+            ('lmp', 'LMP'),
+            ('hypercar', 'Hypercar'),
+            ('imsa', 'IMSA'),
+            ('wec', 'WEC'),
+            ('elms', 'ELMS'),
+            ('f1', 'Formula 1'),
+            ('formula 1', 'Formula 1'),
+            ('formula one', 'Formula 1'),
+            ('indycar', 'IndyCar'),
+            ('indy 500', 'Indy 500'),
+            ('nascar', 'NASCAR'),
+            ('cup series', 'NASCAR Cup'),
+            ('xfinity', 'NASCAR Xfinity'),
+            ('le mans', 'Le Mans'),
+            ('24 hours', '24 Hours'),
+            ('daytona', 'Daytona'),
+            ('sebring', 'Sebring'),
+            ('spa', 'Spa'),
+            ('bathurst', 'Bathurst'),
+            ('suzuka', 'Suzuka'),
+            ('monza', 'Monza'),
+            ('silverstone', 'Silverstone'),
+            ('laguna seca', 'Laguna Seca'),
+            ('road america', 'Road America'),
+            ('watkins glen', 'Watkins Glen'),
+            ('v8 supercars', 'V8 Supercars'),
+            ('supercars', 'Supercars'),
+            ('dtm', 'DTM'),
+            ('btcc', 'BTCC'),
+            ('touring car', 'Touring Car'),
+            ('endurance', 'endurance'),
+            ('sprint', 'sprint race'),
+
+            # Sim racing specific
+            ('acc', 'ACC'),
+            ('assetto corsa', 'Assetto Corsa'),
+            ('rfactor', 'rFactor'),
+            ('automobilista', 'Automobilista'),
+            ('project cars', 'Project Cars'),
+
+            # Schedule/time related
+            ('schedule', 'schedule'),
+            ('race', 'race'),
+            ('season', 'season'),
+            ('calendar', 'calendar'),
+            ('round', 'round'),
+            ('week', 'week'),
+
+            # Years
+            ('2024', '2024'),
+            ('2025', '2025'),
+            ('2026', '2026'),
+            ('2027', '2027'),
+
+            # Tech
+            ('python', 'Python'),
+            ('javascript', 'JavaScript'),
+            ('typescript', 'TypeScript'),
+            ('react', 'React'),
+            ('node', 'Node.js'),
+            ('docker', 'Docker'),
+            ('kubernetes', 'Kubernetes'),
+            ('api', 'API'),
+            ('database', 'database'),
+            ('postgresql', 'PostgreSQL'),
+            ('mysql', 'MySQL'),
+            ('redis', 'Redis'),
+            ('aws', 'AWS'),
+            ('azure', 'Azure'),
+            ('gcp', 'GCP'),
+
+            # Gaming
+            ('playstation', 'PlayStation'),
+            ('xbox', 'Xbox'),
+            ('nintendo', 'Nintendo'),
+            ('steam', 'Steam'),
+            ('epic games', 'Epic Games'),
+        ]
+
+        for pattern, keyword in static_patterns:
+            if pattern in context_text and pattern not in query_lower:
+                topic_keywords.append(keyword)
+
+        # Dynamic extraction: Find capitalized proper nouns and technical terms
+        # from the context that might be relevant
+        words_in_context = re.findall(r'\b([A-Z][a-zA-Z]{2,}(?:\s+[A-Z][a-zA-Z]+)*)\b', context_text)
+        for word in words_in_context:
+            word_lower = word.lower()
+            if (len(word) > 3 and
+                word_lower not in query_lower and
+                word_lower not in ['the', 'and', 'for', 'that', 'this', 'with', 'from']):
+                # Avoid duplicates from static patterns
+                if not any(word_lower == kw.lower() for kw in topic_keywords):
+                    topic_keywords.append(word)
+
+        return topic_keywords
+
     def format_results_for_llm(self, results):
         """Format search results for inclusion in LLM prompt"""
         if not results:
