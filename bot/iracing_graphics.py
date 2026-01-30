@@ -15,34 +15,43 @@ import os
 class iRacingGraphics:
     """Generate iRacing-style graphics"""
 
-    # iRacing color scheme
+    # Modern iRacing color scheme
     COLORS = {
-        'bg_dark': (15, 23, 42),  # Dark blue background
-        'bg_card': (30, 41, 59),  # Card background
+        'bg_dark': (13, 17, 23),        # Deep dark background
+        'bg_gradient_top': (22, 27, 34),  # Gradient top
+        'bg_gradient_bottom': (13, 17, 23),  # Gradient bottom
+        'bg_card': (22, 27, 34),         # Card background
+        'bg_card_hover': (30, 37, 46),   # Slightly lighter card
+        'border': (48, 54, 61),          # Subtle borders
         'text_white': (255, 255, 255),
-        'text_gray': (148, 163, 184),
-        'accent_blue': (59, 130, 246),
-        'accent_red': (239, 68, 68),
-        'accent_green': (34, 197, 94),
-        'accent_yellow': (234, 179, 8),
+        'text_primary': (230, 237, 243),  # Slightly softer white
+        'text_secondary': (125, 133, 144),  # Muted text
+        'text_muted': (88, 96, 105),     # Very muted
+        'accent_blue': (56, 139, 253),   # GitHub-style blue
+        'accent_red': (248, 81, 73),
+        'accent_green': (63, 185, 80),
+        'accent_yellow': (210, 153, 34),
+        'accent_orange': (219, 109, 40),
+        'accent_purple': (163, 113, 247),
 
-        # License colors
-        'rookie': (252, 7, 6),
-        'class_d': (255, 140, 0),
-        'class_c': (0, 199, 2),
-        'class_b': (1, 83, 219),
-        'class_a': (1, 83, 219),
-        'pro': (0, 0, 0),
+        # License colors (official iRacing)
+        'rookie': (180, 30, 30),         # Darker red
+        'class_d': (204, 102, 0),        # Orange
+        'class_c': (40, 167, 69),        # Green
+        'class_b': (0, 102, 204),        # Blue
+        'class_a': (0, 71, 171),         # Darker blue
+        'pro': (20, 20, 20),             # Near black
     }
 
-    # License class colors from iRacing
+    # License class colors from iRacing (refined)
     LICENSE_COLORS = {
-        'Rookie': '#fc0706',
-        'Class D': '#ff8c00',
-        'Class C': '#00c702',
-        'Class B': '#0153db',
-        'Class A': '#0153db',
-        'Pro': '#000000',
+        'Rookie': '#b41e1e',
+        'Class D': '#cc6600',
+        'Class C': '#28a745',
+        'Class B': '#0066cc',
+        'Class A': '#0047ab',
+        'Pro': '#141414',
+        'Pro/WC': '#8b5cf6',
     }
 
     def __init__(self):
@@ -71,6 +80,57 @@ class iRacingGraphics:
         """Convert hex color to RGB tuple"""
         hex_color = hex_color.lstrip('#')
         return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+
+    def draw_rounded_rect(self, draw: ImageDraw, coords: List[int], radius: int,
+                          fill: Tuple = None, outline: Tuple = None, width: int = 1):
+        """Draw a rounded rectangle"""
+        x1, y1, x2, y2 = coords
+
+        if fill:
+            # Draw filled rounded rectangle
+            draw.rectangle([x1 + radius, y1, x2 - radius, y2], fill=fill)
+            draw.rectangle([x1, y1 + radius, x2, y2 - radius], fill=fill)
+            draw.pieslice([x1, y1, x1 + radius * 2, y1 + radius * 2], 180, 270, fill=fill)
+            draw.pieslice([x2 - radius * 2, y1, x2, y1 + radius * 2], 270, 360, fill=fill)
+            draw.pieslice([x1, y2 - radius * 2, x1 + radius * 2, y2], 90, 180, fill=fill)
+            draw.pieslice([x2 - radius * 2, y2 - radius * 2, x2, y2], 0, 90, fill=fill)
+
+        if outline:
+            # Draw outline
+            draw.arc([x1, y1, x1 + radius * 2, y1 + radius * 2], 180, 270, fill=outline, width=width)
+            draw.arc([x2 - radius * 2, y1, x2, y1 + radius * 2], 270, 360, fill=outline, width=width)
+            draw.arc([x1, y2 - radius * 2, x1 + radius * 2, y2], 90, 180, fill=outline, width=width)
+            draw.arc([x2 - radius * 2, y2 - radius * 2, x2, y2], 0, 90, fill=outline, width=width)
+            draw.line([x1 + radius, y1, x2 - radius, y1], fill=outline, width=width)
+            draw.line([x1 + radius, y2, x2 - radius, y2], fill=outline, width=width)
+            draw.line([x1, y1 + radius, x1, y2 - radius], fill=outline, width=width)
+            draw.line([x2, y1 + radius, x2, y2 - radius], fill=outline, width=width)
+
+    def create_gradient(self, width: int, height: int, color1: Tuple, color2: Tuple,
+                        vertical: bool = True) -> Image.Image:
+        """Create a gradient image"""
+        gradient = Image.new('RGB', (width, height))
+
+        for i in range(height if vertical else width):
+            ratio = i / (height if vertical else width)
+            r = int(color1[0] + (color2[0] - color1[0]) * ratio)
+            g = int(color1[1] + (color2[1] - color1[1]) * ratio)
+            b = int(color1[2] + (color2[2] - color1[2]) * ratio)
+
+            if vertical:
+                for j in range(width):
+                    gradient.putpixel((j, i), (r, g, b))
+            else:
+                for j in range(height):
+                    gradient.putpixel((i, j), (r, g, b))
+
+        return gradient
+
+    def format_irating(self, irating: int) -> str:
+        """Format iRating with K suffix for thousands"""
+        if irating >= 1000:
+            return f"{irating / 1000:.1f}k"
+        return str(irating)
 
     async def download_image(self, url: str, cache_name: str) -> Optional[Image.Image]:
         """
@@ -188,132 +248,171 @@ class iRacingGraphics:
         Returns:
             BytesIO object containing PNG image
         """
-        # Card dimensions - wider for better layout
-        width = 1400
-        height = 900
+        # Card dimensions - compact and modern
+        width = 900
+        height = 680
 
-        # Create image with gradient background
+        # Create image with subtle gradient background
         img = Image.new('RGB', (width, height), self.COLORS['bg_dark'])
         draw = ImageDraw.Draw(img)
+
+        # Draw subtle gradient overlay at top
+        for y in range(120):
+            alpha = 1 - (y / 120)
+            color = tuple(int(self.COLORS['bg_dark'][i] + (15 * alpha)) for i in range(3))
+            draw.line([(0, y), (width, y)], fill=color)
 
         # Extract data
         driver_name = profile_data.get('display_name', 'Unknown Driver')
         member_since = profile_data.get('member_since', '')
         licenses = profile_data.get('licenses', {})
 
-        # Header section with larger fonts
-        y_pos = 50
-        draw.text((60, y_pos), driver_name, fill=self.COLORS['text_white'], font=self.font_title)
-        y_pos += 55
+        # ===== HEADER SECTION =====
+        header_y = 32
+        padding = 40
 
-        member_text = f"Member since {member_since}" if member_since else "iRacing Member"
-        draw.text((60, y_pos), member_text, fill=self.COLORS['text_gray'], font=self.font_medium)
+        # Driver name - large and prominent
+        draw.text((padding, header_y), driver_name,
+                  fill=self.COLORS['text_primary'], font=self.font_title)
 
-        # Draw divider line
-        y_pos += 40
-        draw.line([(60, y_pos), (width - 60, y_pos)], fill=self.COLORS['text_gray'], width=2)
+        # Member info line
+        header_y += 48
+        if member_since:
+            member_text = f"Member since {member_since}"
+        else:
+            member_text = "iRacing Member"
+        draw.text((padding, header_y), member_text,
+                  fill=self.COLORS['text_secondary'], font=self.font_small)
 
-        # License cards in a cleaner grid layout
-        y_pos += 40
-        card_height = 110
-        card_spacing = 15
-        left_margin = 60
-        right_margin = 60
+        # Subtle separator line
+        header_y += 36
+        draw.line([(padding, header_y), (width - padding, header_y)],
+                  fill=self.COLORS['border'], width=1)
+
+        # ===== LICENSE GRID =====
+        # 2-column layout for licenses
+        grid_start_y = header_y + 24
+        card_width = (width - padding * 2 - 16) // 2  # Two columns with gap
+        card_height = 100
+        card_gap = 16
 
         license_order = [
-            ('oval', 'OVAL', 'rookie'),
-            ('sports_car_road', 'SPORTS CAR',  'rookie'),
-            ('formula_car_road', 'FORMULA CAR', 'rookie'),
-            ('dirt_oval', 'DIRT OVAL', 'rookie'),
-            ('dirt_road', 'DIRT ROAD', 'rookie')
+            ('oval', 'Oval'),
+            ('sports_car_road', 'Sports Car'),
+            ('formula_car_road', 'Formula Car'),
+            ('dirt_oval', 'Dirt Oval'),
+            ('dirt_road', 'Dirt Road')
         ]
 
-        for idx, (category_key, category_name, default_class) in enumerate(license_order):
-            # Try multiple possible key names for licenses
-            lic = licenses.get(category_key) or licenses.get(f'{category_key}_license') or licenses.get(category_key.replace('_road', ''))
+        # Collect valid licenses
+        valid_licenses = []
+        for category_key, category_name in license_order:
+            lic = (licenses.get(category_key) or
+                   licenses.get(f'{category_key}_license') or
+                   licenses.get(category_key.replace('_road', '')))
+            if lic:
+                valid_licenses.append((category_key, category_name, lic))
 
-            if not lic:
-                continue
+        # Draw license cards in grid
+        for idx, (category_key, category_name, lic) in enumerate(valid_licenses):
+            col = idx % 2
+            row = idx // 2
 
-            # Get license data with safe defaults
+            card_x = padding + col * (card_width + card_gap)
+            card_y = grid_start_y + row * (card_height + card_gap)
+
+            # Get license data
             class_name = lic.get('group_name', 'Rookie')
             safety_rating = lic.get('safety_rating', 0.0)
             irating = lic.get('irating', 0)
-            tt_rating = lic.get('tt_rating', 0)
 
             # Get license color
-            color_hex = self.LICENSE_COLORS.get(class_name, '#fc0706')
+            color_hex = self.LICENSE_COLORS.get(class_name, '#b41e1e')
             license_color = self.hex_to_rgb(color_hex)
 
-            # Modern card design with rounded corners effect
-            card_rect = [left_margin, y_pos, width - right_margin, y_pos + card_height]
+            # Draw card background with rounded corners
+            self.draw_rounded_rect(draw,
+                                   [card_x, card_y, card_x + card_width, card_y + card_height],
+                                   radius=8,
+                                   fill=self.COLORS['bg_card'],
+                                   outline=self.COLORS['border'],
+                                   width=1)
 
-            # Draw card background with subtle shadow effect
-            shadow_offset = 3
-            shadow_rect = [r + shadow_offset for r in card_rect]
-            draw.rectangle(shadow_rect, fill=(10, 15, 30))  # Shadow
-            draw.rectangle(card_rect, fill=self.COLORS['bg_card'])
+            # Color accent strip on left
+            accent_width = 4
+            self.draw_rounded_rect(draw,
+                                   [card_x, card_y, card_x + accent_width + 8, card_y + card_height],
+                                   radius=8,
+                                   fill=license_color)
+            # Cover right side of accent to make it flat
+            draw.rectangle([card_x + accent_width, card_y, card_x + accent_width + 10, card_y + card_height],
+                          fill=self.COLORS['bg_card'])
 
-            # Left accent bar for color coding
-            accent_bar = [left_margin, y_pos, left_margin + 8, y_pos + card_height]
-            draw.rectangle(accent_bar, fill=license_color)
+            # License badge circle
+            badge_size = 44
+            badge_x = card_x + 20
+            badge_y = card_y + (card_height - badge_size) // 2
 
-            # Category badge on the left
-            badge_x = left_margin + 30
-            badge_y = y_pos + 20
-            badge_size = 70
-            badge_rect = [badge_x, badge_y, badge_x + badge_size, badge_y + badge_size]
-            draw.ellipse(badge_rect, fill=license_color, outline=self.COLORS['text_white'], width=2)
+            # Badge background
+            draw.ellipse([badge_x, badge_y, badge_x + badge_size, badge_y + badge_size],
+                        fill=license_color)
 
             # Class letter in badge
             class_letter = class_name.split()[-1][0] if class_name.split()[-1][0].isalpha() else 'R'
-            # Calculate text position to center it in circle
-            bbox = draw.textbbox((0, 0), class_letter, font=self.font_title)
-            text_width = bbox[2] - bbox[0]
-            text_height = bbox[3] - bbox[1]
-            text_x = badge_x + (badge_size - text_width) // 2
-            text_y = badge_y + (badge_size - text_height) // 2 - 5
-            draw.text((text_x, text_y), class_letter, fill=self.COLORS['text_white'], font=self.font_title)
-
-            # License info to the right of badge
-            info_x = badge_x + badge_size + 25
-
-            # Category name
-            draw.text((info_x, y_pos + 15), category_name,
-                     fill=self.COLORS['text_gray'], font=self.font_small)
-
-            # License class with safety rating
-            class_text = f"{class_name} {safety_rating:.2f}"
-            draw.text((info_x, y_pos + 38), class_text,
+            bbox = draw.textbbox((0, 0), class_letter, font=self.font_large)
+            text_w = bbox[2] - bbox[0]
+            text_h = bbox[3] - bbox[1]
+            text_x = badge_x + (badge_size - text_w) // 2
+            text_y = badge_y + (badge_size - text_h) // 2 - 2
+            draw.text((text_x, text_y), class_letter,
                      fill=self.COLORS['text_white'], font=self.font_large)
 
-            # Ratings in columns on the right side
-            ratings_x = width - right_margin - 350
+            # License info text
+            info_x = badge_x + badge_size + 16
+            info_y = card_y + 18
 
-            # iRating
-            draw.text((ratings_x, y_pos + 20), "iRating",
-                     fill=self.COLORS['text_gray'], font=self.font_small)
-            irating_color = self.COLORS['accent_green'] if irating >= 2000 else self.COLORS['accent_blue']
-            draw.text((ratings_x, y_pos + 45), str(irating),
-                     fill=irating_color, font=self.font_large)
+            # Category name (smaller, muted)
+            draw.text((info_x, info_y), category_name.upper(),
+                     fill=self.COLORS['text_muted'], font=self.font_small)
 
-            # ttRating
-            tt_x = ratings_x + 180
-            draw.text((tt_x, y_pos + 20), "ttRating",
-                     fill=self.COLORS['text_gray'], font=self.font_small)
-            draw.text((tt_x, y_pos + 45), str(tt_rating),
-                     fill=self.COLORS['text_white'], font=self.font_large)
+            # Safety rating
+            info_y += 22
+            sr_text = f"{safety_rating:.2f} SR"
+            draw.text((info_x, info_y), sr_text,
+                     fill=self.COLORS['text_primary'], font=self.font_medium)
 
-            y_pos += card_height + card_spacing
+            # iRating on right side of card
+            irating_x = card_x + card_width - 70
+            irating_y = card_y + 28
 
-        # Footer
-        footer_y = height - 50
-        draw.text((60, footer_y), "Generated by WompBot",
-                 fill=self.COLORS['text_gray'], font=self.font_small)
+            # iRating value
+            ir_display = self.format_irating(irating)
+            ir_color = self.COLORS['accent_green'] if irating >= 2000 else self.COLORS['accent_blue']
+            if irating < 1000:
+                ir_color = self.COLORS['text_secondary']
+
+            draw.text((irating_x, irating_y), ir_display,
+                     fill=ir_color, font=self.font_large)
+
+            # "iR" label below
+            draw.text((irating_x + 8, irating_y + 28), "iR",
+                     fill=self.COLORS['text_muted'], font=self.font_small)
+
+        # ===== FOOTER =====
+        footer_y = height - 36
+        draw.text((padding, footer_y), "WompBot",
+                 fill=self.COLORS['text_muted'], font=self.font_small)
+
+        # iRacing branding on right
+        iracing_text = "iRacing"
+        bbox = draw.textbbox((0, 0), iracing_text, font=self.font_small)
+        text_w = bbox[2] - bbox[0]
+        draw.text((width - padding - text_w, footer_y), iracing_text,
+                 fill=self.COLORS['text_muted'], font=self.font_small)
 
         # Convert to bytes
         buffer = BytesIO()
-        img.save(buffer, format='PNG')
+        img.save(buffer, format='PNG', optimize=True)
         buffer.seek(0)
 
         return buffer
@@ -330,77 +429,98 @@ class iRacingGraphics:
         Returns:
             BytesIO object containing PNG image
         """
-        width = 1400
-        height = 600 + (len(car_data) * 60)
+        padding = 40
+        row_height = 52
+        num_cars = min(len(car_data), 15)
+
+        width = 1000
+        height = 140 + (num_cars * row_height)
 
         img = Image.new('RGB', (width, height), self.COLORS['bg_dark'])
         draw = ImageDraw.Draw(img)
 
-        # Title
-        y_pos = 40
-        draw.text((50, y_pos), f"{series_name} - Meta Analysis",
-                 fill=self.COLORS['text_white'], font=self.font_title)
+        # Header section
+        y_pos = padding
+        draw.text((padding, y_pos), series_name,
+                 fill=self.COLORS['text_primary'], font=self.font_title)
 
-        y_pos += 80
+        y_pos += 36
+        draw.text((padding, y_pos), "Meta Analysis",
+                 fill=self.COLORS['text_secondary'], font=self.font_small)
 
-        # Header row
-        header_x = [50, 400, 700, 900, 1100]
-        headers = ["Car", "Best Lap", "Avg iRating", "Drivers", "Meta Score"]
+        y_pos += 32
+
+        # Separator
+        draw.line([(padding, y_pos), (width - padding, y_pos)],
+                  fill=self.COLORS['border'], width=1)
+        y_pos += 16
+
+        # Column headers
+        header_x = [padding, 340, 520, 680, 840]
+        headers = ["Car", "Best Lap", "Avg iR", "Drivers", "Score"]
 
         for i, header in enumerate(headers):
             draw.text((header_x[i], y_pos), header,
-                     fill=self.COLORS['text_gray'], font=self.font_medium)
+                     fill=self.COLORS['text_muted'], font=self.font_small)
 
-        y_pos += 50
+        y_pos += 32
 
         # Draw each car's data
-        for idx, car in enumerate(car_data[:15]):  # Top 15 cars
-            # Alternate row colors
+        for idx, car in enumerate(car_data[:num_cars]):
+            row_y = y_pos + (idx * row_height)
+
+            # Alternate row backgrounds
             if idx % 2 == 0:
-                row_rect = [40, y_pos - 5, width - 40, y_pos + 45]
-                draw.rectangle(row_rect, fill=self.COLORS['bg_card'])
+                self.draw_rounded_rect(draw,
+                    [padding - 8, row_y - 6, width - padding + 8, row_y + row_height - 14],
+                    radius=6, fill=self.COLORS['bg_card'])
 
-            # Try to load car logo
-            car_id = car.get('car_id')
-            if car_id:
-                car_logo = await self.get_car_logo(car_id)
-                if car_logo:
-                    # Resize logo to fit in row
-                    logo_size = (40, 40)
-                    car_logo = car_logo.resize(logo_size, Image.Resampling.LANCZOS)
-                    img.paste(car_logo, (50, y_pos - 2), car_logo if car_logo.mode == 'RGBA' else None)
+            # Rank indicator for top 3
+            if idx < 3:
+                rank_colors = [self.COLORS['accent_yellow'],
+                              (192, 192, 192),
+                              (205, 127, 50)]
+                draw.ellipse([padding, row_y + 4, padding + 24, row_y + 28],
+                            fill=rank_colors[idx])
+                rank_text = str(idx + 1)
+                bbox = draw.textbbox((0, 0), rank_text, font=self.font_small)
+                tw = bbox[2] - bbox[0]
+                draw.text((padding + 12 - tw // 2, row_y + 6), rank_text,
+                         fill=self.COLORS['bg_dark'], font=self.font_small)
+                name_offset = 36
+            else:
+                name_offset = 0
 
-            # Car name (offset if logo present)
+            # Car name
             car_name = car.get('car_name', 'Unknown')
-            name_x = header_x[0] + (50 if car_id else 0)
-            draw.text((name_x, y_pos), car_name,
-                     fill=self.COLORS['text_white'], font=self.font_medium)
+            if len(car_name) > 28:
+                car_name = car_name[:26] + "..."
+            draw.text((header_x[0] + name_offset, row_y + 4), car_name,
+                     fill=self.COLORS['text_primary'], font=self.font_medium)
 
             # Best lap time
-            lap_time = car.get('best_lap', '0:00.000')
-            draw.text((header_x[1], y_pos), lap_time,
+            lap_time = car.get('best_lap', '-')
+            draw.text((header_x[1], row_y + 4), lap_time,
                      fill=self.COLORS['accent_blue'], font=self.font_medium)
 
             # Average iRating
             avg_irating = car.get('avg_irating', 0)
-            draw.text((header_x[2], y_pos), str(avg_irating),
-                     fill=self.COLORS['text_white'], font=self.font_medium)
+            draw.text((header_x[2], row_y + 4), self.format_irating(avg_irating),
+                     fill=self.COLORS['text_secondary'], font=self.font_medium)
 
             # Number of drivers
             drivers = car.get('unique_drivers', 0)
-            draw.text((header_x[3], y_pos), str(drivers),
-                     fill=self.COLORS['text_white'], font=self.font_medium)
+            draw.text((header_x[3], row_y + 4), str(drivers),
+                     fill=self.COLORS['text_secondary'], font=self.font_medium)
 
-            # Meta score (combination of speed + skill)
+            # Meta score
             meta_score = car.get('meta_score', 0)
-            score_color = self.COLORS['accent_green'] if idx < 3 else self.COLORS['text_white']
-            draw.text((header_x[4], y_pos), f"{meta_score:.1f}",
+            score_color = self.COLORS['accent_green'] if idx < 3 else self.COLORS['text_primary']
+            draw.text((header_x[4], row_y + 4), f"{meta_score:.1f}",
                      fill=score_color, font=self.font_medium)
 
-            y_pos += 55
-
         buffer = BytesIO()
-        img.save(buffer, format='PNG')
+        img.save(buffer, format='PNG', optimize=True)
         buffer.seek(0)
 
         return buffer
@@ -416,86 +536,109 @@ class iRacingGraphics:
         Returns:
             BytesIO object containing PNG image
         """
-        width = 1400
-        height = 600 + (len(leaderboard_data) * 55)
+        padding = 40
+        row_height = 48
+        num_drivers = min(len(leaderboard_data), 20)
+
+        width = 1000
+        height = 140 + (num_drivers * row_height)
 
         img = Image.new('RGB', (width, height), self.COLORS['bg_dark'])
         draw = ImageDraw.Draw(img)
 
-        # Title
-        y_pos = 40
-        draw.text((50, y_pos), title,
-                 fill=self.COLORS['text_white'], font=self.font_title)
+        # Header section
+        y_pos = padding
+        draw.text((padding, y_pos), title,
+                 fill=self.COLORS['text_primary'], font=self.font_title)
 
-        y_pos += 80
+        y_pos += 36
+        draw.text((padding, y_pos), "Leaderboard",
+                 fill=self.COLORS['text_secondary'], font=self.font_small)
 
-        # Header row
-        header_x = [50, 150, 450, 700, 900, 1100]
-        headers = ["Pos", "Driver", "License", "iRating", "Lap Time", "Car"]
+        y_pos += 32
+
+        # Separator
+        draw.line([(padding, y_pos), (width - padding, y_pos)],
+                  fill=self.COLORS['border'], width=1)
+        y_pos += 16
+
+        # Column headers
+        header_x = [padding, padding + 50, 380, 520, 660, 800]
+        headers = ["#", "Driver", "License", "iRating", "Lap", "Car"]
 
         for i, header in enumerate(headers):
             draw.text((header_x[i], y_pos), header,
-                     fill=self.COLORS['text_gray'], font=self.font_medium)
+                     fill=self.COLORS['text_muted'], font=self.font_small)
 
-        y_pos += 50
+        y_pos += 28
 
         # Draw each driver
-        for idx, driver in enumerate(leaderboard_data[:20]):  # Top 20
-            # Highlight top 3
-            if idx < 3:
-                row_rect = [40, y_pos - 5, width - 40, y_pos + 45]
-                medal_colors = [self.COLORS['accent_yellow'], (192, 192, 192), (205, 127, 50)]
-                draw.rectangle(row_rect, fill=self.COLORS['bg_card'],
-                             outline=medal_colors[idx], width=2)
+        for idx, driver in enumerate(leaderboard_data[:num_drivers]):
+            row_y = y_pos + (idx * row_height)
 
-            # Position
-            pos_color = self.COLORS['accent_yellow'] if idx < 3 else self.COLORS['text_white']
-            draw.text((header_x[0], y_pos), f"{idx + 1}",
-                     fill=pos_color, font=self.font_medium)
+            # Highlight top 3 with accent border
+            if idx < 3:
+                medal_colors = [self.COLORS['accent_yellow'],
+                               (192, 192, 192),
+                               (205, 127, 50)]
+                self.draw_rounded_rect(draw,
+                    [padding - 8, row_y - 4, width - padding + 8, row_y + row_height - 12],
+                    radius=6, fill=self.COLORS['bg_card'], outline=medal_colors[idx], width=2)
+            elif idx % 2 == 0:
+                self.draw_rounded_rect(draw,
+                    [padding - 8, row_y - 4, width - padding + 8, row_y + row_height - 12],
+                    radius=6, fill=self.COLORS['bg_card'])
+
+            # Position with medal indicator
+            if idx < 3:
+                draw.ellipse([padding, row_y + 2, padding + 26, row_y + 28],
+                            fill=medal_colors[idx])
+                pos_text = str(idx + 1)
+                bbox = draw.textbbox((0, 0), pos_text, font=self.font_small)
+                tw = bbox[2] - bbox[0]
+                draw.text((padding + 13 - tw // 2, row_y + 5), pos_text,
+                         fill=self.COLORS['bg_dark'], font=self.font_small)
+            else:
+                draw.text((header_x[0], row_y + 4), str(idx + 1),
+                         fill=self.COLORS['text_secondary'], font=self.font_medium)
 
             # Driver name
             driver_name = driver.get('display_name', 'Unknown')
-            draw.text((header_x[1], y_pos), driver_name,
-                     fill=self.COLORS['text_white'], font=self.font_medium)
+            if len(driver_name) > 22:
+                driver_name = driver_name[:20] + "..."
+            draw.text((header_x[1], row_y + 4), driver_name,
+                     fill=self.COLORS['text_primary'], font=self.font_medium)
 
-            # License class
+            # License class with color
             license_class = driver.get('license_class', 'R')
             sr = driver.get('safety_rating', 0)
-            draw.text((header_x[2], y_pos), f"{license_class} {sr:.2f}",
-                     fill=self.COLORS['accent_blue'], font=self.font_medium)
+            license_text = f"{license_class} {sr:.2f}"
+            lic_color = self.LICENSE_COLORS.get(f'Class {license_class}',
+                        self.LICENSE_COLORS.get(license_class, '#b41e1e'))
+            draw.text((header_x[2], row_y + 4), license_text,
+                     fill=self.hex_to_rgb(lic_color) if isinstance(lic_color, str) else lic_color,
+                     font=self.font_medium)
 
             # iRating
             irating = driver.get('irating', 0)
-            draw.text((header_x[3], y_pos), str(irating),
-                     fill=self.COLORS['text_white'], font=self.font_medium)
+            ir_color = self.COLORS['accent_green'] if irating >= 2000 else self.COLORS['text_secondary']
+            draw.text((header_x[3], row_y + 4), self.format_irating(irating),
+                     fill=ir_color, font=self.font_medium)
 
             # Lap time
-            lap_time = driver.get('lap_time', '0:00.000')
-            draw.text((header_x[4], y_pos), lap_time,
-                     fill=self.COLORS['accent_green'], font=self.font_medium)
+            lap_time = driver.get('lap_time', '-')
+            draw.text((header_x[4], row_y + 4), lap_time,
+                     fill=self.COLORS['accent_blue'], font=self.font_medium)
 
-            # Car (with optional logo)
-            car_id = driver.get('car_id')
-            if car_id:
-                car_logo = await self.get_car_logo(car_id)
-                if car_logo:
-                    logo_size = (35, 35)
-                    car_logo = car_logo.resize(logo_size, Image.Resampling.LANCZOS)
-                    img.paste(car_logo, (header_x[5], y_pos - 5), car_logo if car_logo.mode == 'RGBA' else None)
-                    # Draw car name next to logo
-                    car_name = driver.get('car_name', 'Unknown')
-                    draw.text((header_x[5] + 45, y_pos), car_name,
-                             fill=self.COLORS['text_gray'], font=self.font_small)
-            else:
-                # No logo, just draw car name
-                car_name = driver.get('car_name', 'Unknown')
-                draw.text((header_x[5], y_pos), car_name,
-                         fill=self.COLORS['text_gray'], font=self.font_small)
-
-            y_pos += 52
+            # Car name (shortened)
+            car_name = driver.get('car_name', '')
+            if len(car_name) > 16:
+                car_name = car_name[:14] + "..."
+            draw.text((header_x[5], row_y + 4), car_name,
+                     fill=self.COLORS['text_muted'], font=self.font_small)
 
         buffer = BytesIO()
-        img.save(buffer, format='PNG')
+        img.save(buffer, format='PNG', optimize=True)
         buffer.seek(0)
 
         return buffer

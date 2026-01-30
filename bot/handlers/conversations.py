@@ -45,7 +45,11 @@ MENTION_RATE_STATE = {}
 USER_CONCURRENT_REQUESTS = {}
 _LAST_CLEANUP_TIME = 0
 
-def cleanup_stale_rate_state():
+# Locks for thread-safe access to rate limiting state
+_RATE_STATE_LOCK = asyncio.Lock()
+_CONCURRENT_REQUESTS_LOCK = asyncio.Lock()
+
+async def cleanup_stale_rate_state():
     """Remove stale entries from rate limiting dictionaries to prevent memory leak"""
     global _LAST_CLEANUP_TIME
     now_ts = datetime.now(timezone.utc).timestamp()
@@ -57,13 +61,14 @@ def cleanup_stale_rate_state():
     _LAST_CLEANUP_TIME = now_ts
     stale_window = 3600  # Remove entries older than 1 hour
 
-    # Cleanup MENTION_RATE_STATE
-    stale_users = [
-        uid for uid, bucket in MENTION_RATE_STATE.items()
-        if now_ts - bucket["window_start"] > stale_window
-    ]
-    for uid in stale_users:
-        del MENTION_RATE_STATE[uid]
+    # Cleanup MENTION_RATE_STATE with lock
+    async with _RATE_STATE_LOCK:
+        stale_users = [
+            uid for uid, bucket in MENTION_RATE_STATE.items()
+            if now_ts - bucket["window_start"] > stale_window
+        ]
+        for uid in stale_users:
+            del MENTION_RATE_STATE[uid]
 
     if stale_users:
         print(f"🧹 Cleaned up {len(stale_users)} stale rate limit entries")
@@ -214,12 +219,18 @@ async def generate_leaderboard_response(channel, stat_type, days, db, llm):
 async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, search=None,
                              self_knowledge=None, rag=None, wolfram=None, weather=None):
     """Handle when bot is mentioned/tagged"""
+    # Track placeholder message for cleanup on error
+    placeholder_msg = None
     try:
         # Periodic cleanup of stale rate limiting state
-        cleanup_stale_rate_state()
+        await cleanup_stale_rate_state()
 
         # Check if user is admin (bypass all rate limits)
-        is_admin = str(message.author).lower() == 'wompie__' or message.author.id == YOUR_ADMIN_USER_ID
+        # Admin IDs from env (comma-separated) or legacy username check
+        admin_ids_str = os.getenv('BOT_ADMIN_IDS', '')
+        admin_ids = set(int(x.strip()) for x in admin_ids_str.split(',') if x.strip().isdigit())
+        admin_username = os.getenv('BOT_ADMIN_USERNAME', '').lower()
+        is_admin = message.author.id in admin_ids or (admin_username and str(message.author).lower() == admin_username)
 
         # Check if this is a text mention ("wompbot") vs @mention only
         # Cost logging will only appear for text mentions to reduce log noise
@@ -342,19 +353,24 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
             max_per_window = int(os.getenv("MENTION_RATE_MAX_CALLS", "3"))
             if rate_window > 0 and max_per_window > 0:
                 now_ts = datetime.now(timezone.utc).timestamp()
-                user_bucket = MENTION_RATE_STATE.get(message.author.id)
-                if user_bucket and now_ts - user_bucket["window_start"] <= rate_window:
-                    if user_bucket["count"] >= max_per_window:
-                        await message.channel.send(
-                            "⏱️ Let's take a breather. Try again in a few seconds."
-                        )
-                        return
-                    user_bucket["count"] += 1
-                else:
-                    MENTION_RATE_STATE[message.author.id] = {
-                        "count": 1,
-                        "window_start": now_ts,
-                    }
+                rate_limited = False
+                async with _RATE_STATE_LOCK:
+                    user_bucket = MENTION_RATE_STATE.get(message.author.id)
+                    if user_bucket and now_ts - user_bucket["window_start"] <= rate_window:
+                        if user_bucket["count"] >= max_per_window:
+                            rate_limited = True
+                        else:
+                            user_bucket["count"] += 1
+                    else:
+                        MENTION_RATE_STATE[message.author.id] = {
+                            "count": 1,
+                            "window_start": now_ts,
+                        }
+                if rate_limited:
+                    await message.channel.send(
+                        "⏱️ Let's take a breather. Try again in a few seconds."
+                    )
+                    return
 
         # Token-based rate limiting check (skip for admin)
         if not is_admin:
@@ -395,18 +411,22 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                 )
                 return
 
-        # Concurrent request limiting
+        # Concurrent request limiting (with lock for thread safety)
         max_concurrent_requests = int(os.getenv('MAX_CONCURRENT_REQUESTS', '3'))
-        current_requests = USER_CONCURRENT_REQUESTS.get(message.author.id, 0)
+        concurrent_limited = False
+        async with _CONCURRENT_REQUESTS_LOCK:
+            current_requests = USER_CONCURRENT_REQUESTS.get(message.author.id, 0)
+            if current_requests >= max_concurrent_requests:
+                concurrent_limited = True
+            else:
+                # Increment concurrent request counter atomically
+                USER_CONCURRENT_REQUESTS[message.author.id] = current_requests + 1
 
-        if current_requests >= max_concurrent_requests:
+        if concurrent_limited:
             await message.channel.send(
                 f"⏱️ Too many requests at once! Please wait for your current request to finish."
             )
             return
-
-        # Increment concurrent request counter
-        USER_CONCURRENT_REQUESTS[message.author.id] = current_requests + 1
 
         # Get conversation context - use CONTEXT_WINDOW_MESSAGES env var
         context_window = int(os.getenv('CONTEXT_WINDOW_MESSAGES', '50'))
@@ -426,7 +446,6 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
 
         # Always send a placeholder message immediately for better UX
         # Use search message if search is likely needed, otherwise use thinking message
-        placeholder_msg = None
         if search and llm.should_search(content, conversation_history):
             placeholder_msg = await message.channel.send(random.choice(SEARCH_STATUS_MESSAGES))
         else:
@@ -493,10 +512,12 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                     # Skip search but continue with response
                 else:
                     # Placeholder already sent, now actually do the search
-                    search_results_raw = await asyncio.to_thread(search.search, content)
+                    # Build contextual query that considers recent conversation
+                    search_query = search.build_contextual_query(content, conversation_history)
+                    search_results_raw = await asyncio.to_thread(search.search, search_query)
                     search_results = search.format_results_for_llm(search_results_raw)
 
-                    db.store_search_log(content, len(search_results_raw), message.author.id, message.channel.id)
+                    db.store_search_log(search_query, len(search_results_raw), message.author.id, message.channel.id)
                     db.record_feature_usage(message.author.id, 'search')
 
             # Get server personality setting
@@ -707,10 +728,12 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                     else:
                         await placeholder_msg.edit(content="🔍 Let me search for that...")
 
-                    search_results_raw = await asyncio.to_thread(search.search, content)
+                    # Build contextual query that considers recent conversation
+                    search_query = search.build_contextual_query(content, conversation_history)
+                    search_results_raw = await asyncio.to_thread(search.search, search_query)
                     search_results = search.format_results_for_llm(search_results_raw)
 
-                    db.store_search_log(content, len(search_results_raw), message.author.id, message.channel.id)
+                    db.store_search_log(search_query, len(search_results_raw), message.author.id, message.channel.id)
                     db.record_feature_usage(message.author.id, 'search')
 
                 # Regenerate response with search results (or without if rate limited)
@@ -905,10 +928,22 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
         print(f"❌ Error handling message: {e}")
         import traceback
         traceback.print_exc()
+
+        # Clean up orphaned placeholder message if it exists
+        if placeholder_msg:
+            try:
+                await placeholder_msg.delete()
+            except Exception:
+                pass  # Ignore deletion errors (message may already be gone)
+
         await message.channel.send(f"Error processing request: {str(e)}")
     finally:
-        # Decrement concurrent request counter
-        if message.author.id in USER_CONCURRENT_REQUESTS:
-            USER_CONCURRENT_REQUESTS[message.author.id] -= 1
-            if USER_CONCURRENT_REQUESTS[message.author.id] <= 0:
-                del USER_CONCURRENT_REQUESTS[message.author.id]
+        # Decrement concurrent request counter (with lock for thread safety)
+        try:
+            async with _CONCURRENT_REQUESTS_LOCK:
+                if message.author.id in USER_CONCURRENT_REQUESTS:
+                    USER_CONCURRENT_REQUESTS[message.author.id] -= 1
+                    if USER_CONCURRENT_REQUESTS[message.author.id] <= 0:
+                        del USER_CONCURRENT_REQUESTS[message.author.id]
+        except Exception as cleanup_error:
+            print(f"⚠️ Error cleaning up concurrent request counter: {cleanup_error}")
