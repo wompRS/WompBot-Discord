@@ -19,3 +19,8 @@ matplotlib==3.9.0  # Visualization library for charts and tables
 seaborn==0.13.2  # Statistical visualizations built on matplotlib
 llmlingua==0.2.2  # Prompt compression for reducing context token usage
 redis==5.0.1  # Redis client for in-memory caching
+yfinance==0.2.37  # Stock/crypto price lookups
+beautifulsoup4==4.12.3  # HTML parsing for URL previews
+pytz==2024.1  # Timezone handling
+yt-dlp==2024.12.6  # YouTube video downloading for frame extraction
+youtube-transcript-api==0.6.2  # YouTube captions/transcript extraction

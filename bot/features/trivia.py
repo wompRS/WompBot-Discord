@@ -301,6 +301,15 @@ Generate {count} questions now:"""
         if not session:
             return None
 
+        # Cancel any existing timeout task before creating a new one
+        if channel_id in self.timeout_tasks:
+            self.timeout_tasks[channel_id].cancel()
+            try:
+                await self.timeout_tasks[channel_id]
+            except asyncio.CancelledError:
+                pass
+            del self.timeout_tasks[channel_id]
+
         # Check if more questions
         if session['current_question_num'] >= len(session['questions']):
             result = await self.end_session(channel_id)
@@ -314,6 +323,7 @@ Generate {count} questions now:"""
 
         # Set timeout task
         timeout_seconds = session['time_per_question']
+        print(f"⏱️ Setting timeout for {timeout_seconds} seconds")
         async def timeout_handler():
             await asyncio.sleep(timeout_seconds)
             await timeout_callback()
@@ -412,11 +422,9 @@ Generate {count} questions now:"""
         if not session or session['status'] != 'active':
             return None
 
-        # Prevent duplicate answers
+        # Only block if user already answered correctly this round
         if user_id in session['answers_this_round']:
             return {'error': 'already_answered'}
-
-        session['answers_this_round'].add(user_id)
 
         # Get current question
         q_num = session['current_question_num']
@@ -443,9 +451,10 @@ Generate {count} questions now:"""
 
         participant = session['participants'][user_id]
 
-        # Update streak
+        # Update streak and mark as answered if correct
         if is_correct:
             participant['streak'] += 1
+            session['answers_this_round'].add(user_id)  # Block further answers only on correct
         else:
             participant['streak'] = 0
 
@@ -614,6 +623,15 @@ Generate {count} questions now:"""
             guild_id,
             days,
             limit
+        )
+
+    async def get_user_rank(self, guild_id, user_id, days=30):
+        """Get a user's rank on the trivia leaderboard"""
+        return await asyncio.to_thread(
+            self.db.get_trivia_user_rank,
+            guild_id,
+            user_id,
+            days
         )
 
     async def update_user_stats(self, guild_id, user_id, username, session, participant_data, is_winner):

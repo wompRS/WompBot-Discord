@@ -2138,15 +2138,36 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
     
             # Filter by current input
             current_lower = current.lower()
-    
+
+            def normalize_for_search(text):
+                """Normalize text for fuzzy matching (handle umlauts, etc.)"""
+                import unicodedata
+                # Normalize unicode and convert to ASCII-friendly form
+                normalized = unicodedata.normalize('NFKD', text.lower())
+                # Remove diacritics (accents, umlauts)
+                ascii_text = ''.join(c for c in normalized if not unicodedata.combining(c))
+                return ascii_text
+
             # If no input yet, return top 25 series
             if not current_lower:
                 matches = all_series[:25]
             else:
-                matches = [
-                    s for s in all_series
-                    if current_lower in s.get('series_name', '').lower()
-                ]
+                search_terms = current_lower.split()
+                normalized_search = normalize_for_search(current)
+
+                def series_matches(s):
+                    name = s.get('series_name', '')
+                    name_lower = name.lower()
+                    name_normalized = normalize_for_search(name)
+
+                    # Check if all search terms match (supports multi-word search)
+                    for term in search_terms:
+                        term_normalized = normalize_for_search(term)
+                        if term not in name_lower and term_normalized not in name_normalized:
+                            return False
+                    return True
+
+                matches = [s for s in all_series if series_matches(s)]
     
             # Return up to 25 choices (Discord limit)
             choices = [
@@ -2199,13 +2220,34 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
     
             # Handle series-based schedule (takes priority if both series and category are provided)
             if series:
-                # Find matching series (use partial match like meta command)
+                import unicodedata
+
+                def normalize_for_search(text):
+                    """Normalize text for fuzzy matching (handle umlauts, etc.)"""
+                    normalized = unicodedata.normalize('NFKD', text.lower())
+                    return ''.join(c for c in normalized if not unicodedata.combining(c))
+
+                # Find matching series (supports multi-word search and special chars)
+                search_terms = series.lower().split()
                 series_match = None
+
                 for s in all_series:
-                    if series.lower() in s.get('series_name', '').lower():
+                    name = s.get('series_name', '')
+                    name_lower = name.lower()
+                    name_normalized = normalize_for_search(name)
+
+                    # Check if all search terms match
+                    all_match = True
+                    for term in search_terms:
+                        term_normalized = normalize_for_search(term)
+                        if term not in name_lower and term_normalized not in name_normalized:
+                            all_match = False
+                            break
+
+                    if all_match:
                         series_match = s
                         break
-    
+
                 if not series_match:
                     await interaction.followup.send(f"❌ Series not found: '{series}'")
                     return
@@ -4400,7 +4442,7 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
         except Exception as e:
             await interaction.followup.send(f"❌ Error stopping trivia: {str(e)}")
 
-    @bot.tree.command(name="trivia_stats", description="View your trivia statistics")
+    @bot.tree.command(name="trivia_stats", description="View your trivia statistics and rank")
     async def trivia_stats(interaction: discord.Interaction, user: discord.Member = None):
         """View trivia stats for a user"""
         await interaction.response.defer()
@@ -4413,12 +4455,29 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                 await interaction.followup.send(f"📊 {target.display_name} hasn't played trivia yet")
                 return
 
+            # Get rank data
+            rank_data = await trivia.get_user_rank(interaction.guild_id, target.id)
+
             accuracy = (stats['total_correct'] / stats['total_questions_answered'] * 100) if stats['total_questions_answered'] > 0 else 0
 
-            embed = discord.Embed(
-                title=f"📊 Trivia Stats - {target.display_name}",
-                color=discord.Color.blue()
-            )
+            # Build title with rank if available
+            if rank_data:
+                rank = rank_data['rank']
+                if rank == 1:
+                    rank_display = "🥇 #1"
+                elif rank == 2:
+                    rank_display = "🥈 #2"
+                elif rank == 3:
+                    rank_display = "🥉 #3"
+                else:
+                    rank_display = f"#{rank}"
+                title = f"📊 {target.display_name} - {rank_display} of {rank_data['total_players']}"
+                color = discord.Color.gold() if rank <= 3 else discord.Color.blue()
+            else:
+                title = f"📊 Trivia Stats - {target.display_name}"
+                color = discord.Color.blue()
+
+            embed = discord.Embed(title=title, color=color)
             embed.add_field(name="Total Sessions", value=f"{stats['total_sessions']}", inline=True)
             embed.add_field(name="Questions Answered", value=f"{stats['total_questions_answered']}", inline=True)
             embed.add_field(name="Wins", value=f"🏆 {stats['wins']}", inline=True)

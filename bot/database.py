@@ -1367,11 +1367,29 @@ class Database:
                            ts.total_questions_answered, ts.total_correct, ts.wins
                     FROM trivia_stats ts
                     WHERE ts.guild_id = %s
-                      AND ts.updated_at > (NOW() - INTERVAL '%s days')
+                      AND ts.updated_at > (NOW() - make_interval(days := %s))
                     ORDER BY ts.total_points DESC
                     LIMIT %s
                 """, (guild_id, days, limit))
                 return cur.fetchall()
+
+    def get_trivia_user_rank(self, guild_id, user_id, days=30):
+        """Get a user's rank on the trivia leaderboard"""
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    WITH ranked AS (
+                        SELECT ts.user_id, ts.username, ts.total_points,
+                               ts.total_questions_answered, ts.total_correct, ts.wins,
+                               RANK() OVER (ORDER BY ts.total_points DESC) as rank,
+                               COUNT(*) OVER () as total_players
+                        FROM trivia_stats ts
+                        WHERE ts.guild_id = %s
+                          AND ts.updated_at > (NOW() - make_interval(days := %s))
+                    )
+                    SELECT * FROM ranked WHERE user_id = %s
+                """, (guild_id, days, user_id))
+                return cur.fetchone()
 
     def close(self):
         """Close database connection pool"""

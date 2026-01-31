@@ -9,12 +9,14 @@ import asyncio
 import discord
 from datetime import timedelta
 from cost_tracker import CostTracker
+from features.team_menu import show_team_menu
 
 
 def register_events(bot, db, privacy_manager, claims_tracker, debate_scorekeeper,
                     llm, cost_tracker, iracing, iracing_team_manager, rag,
                     hot_takes_tracker, fact_checker, wompie_user_id, wompie_username,
-                    tasks_dict, search, self_knowledge, wolfram=None, weather=None, series_cache=None, trivia=None):
+                    tasks_dict, search, self_knowledge, wolfram=None, weather=None,
+                    series_cache=None, trivia=None, reminder_system=None):
     """
     Register all Discord event handlers with the bot.
 
@@ -134,6 +136,10 @@ def register_events(bot, db, privacy_manager, claims_tracker, debate_scorekeeper
             if 'check_event_reminders' in tasks_dict and not tasks_dict['check_event_reminders'].is_running():
                 tasks_dict['check_event_reminders'].start()
                 print("📅 Event reminder checking enabled (runs every 5 minutes)")
+
+            if iracing_team_manager and 'check_team_event_reminders' in tasks_dict and not tasks_dict['check_team_event_reminders'].is_running():
+                tasks_dict['check_team_event_reminders'].start()
+                print("📅 Team event reminder checking enabled (runs every 15 minutes)")
 
         # Authenticate with iRacing on startup
         if iracing:
@@ -299,6 +305,19 @@ def register_events(bot, db, privacy_manager, claims_tracker, debate_scorekeeper
                 # Don't process command or bot mention if this was a trivia answer
                 return
 
+        # Handle DM commands for team management
+        if isinstance(message.channel, discord.DMChannel):
+            dm_content_lower = message.content.lower().strip()
+            if dm_content_lower == '!team' or dm_content_lower.startswith('!team '):
+                try:
+                    await show_team_menu(message, bot, iracing_team_manager)
+                except Exception as e:
+                    await message.channel.send(f"❌ Error opening team menu: {str(e)}")
+                    print(f"❌ Team menu error: {e}")
+                    import traceback
+                    traceback.print_exc()
+                return
+
         # Check if bot should respond first
         should_respond = False
         is_addressing_bot = False
@@ -367,7 +386,8 @@ def register_events(bot, db, privacy_manager, claims_tracker, debate_scorekeeper
             from handlers.conversations import handle_bot_mention
             await handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker,
                                     search=search, self_knowledge=self_knowledge, rag=rag,
-                                    wolfram=wolfram, weather=weather)
+                                    wolfram=wolfram, weather=weather,
+                                    iracing_manager=iracing, reminder_system=reminder_system)
             # Don't process as command if we already handled it as bot mention
             return
 

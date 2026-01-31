@@ -157,13 +157,13 @@ COMPUTATIONAL_TOOLS = [
         "type": "function",
         "function": {
             "name": "wolfram_query",
-            "description": "Query Wolfram Alpha for calculations, unit conversions, factual information, or computational knowledge. Use this for math problems, scientific questions, conversions, or any question requiring computational knowledge.",
+            "description": "Query Wolfram Alpha for calculations, unit conversions, factual information, computational knowledge, AND HISTORICAL WEATHER DATA. ALWAYS use this for: historical weather questions ('when did it last rain', 'weather history', 'past rainfall'), math problems, scientific questions, conversions, astronomy, or any question requiring computational/historical knowledge. PREFERRED over web_search for historical weather and scientific data.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "query": {
                         "type": "string",
-                        "description": "The question or calculation to ask Wolfram Alpha (e.g., 'what is 2^100', 'convert 100 USD to EUR', 'population of Tokyo', 'solve x^2 + 5x + 6 = 0')"
+                        "description": "The question to ask Wolfram Alpha (e.g., 'what is 2^100', 'convert 100 USD to EUR', 'population of Tokyo', 'when did it last rain in Aberdeen Scotland', 'weather history Aberdeen UK', 'rainfall Aberdeen January 2026', 'last dry day in London')"
                     },
                     "units": {
                         "type": "string",
@@ -173,6 +173,302 @@ COMPUTATIONAL_TOOLS = [
                     }
                 },
                 "required": ["query"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_time",
+            "description": "Get the current time in any timezone. Use this when users ask 'what time is it in Tokyo', 'current time in London', etc.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "timezone": {
+                        "type": "string",
+                        "description": "Timezone name (e.g., 'America/New_York', 'Europe/London', 'Asia/Tokyo', 'US/Pacific') or city name"
+                    }
+                },
+                "required": ["timezone"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "translate",
+            "description": "Translate text between languages. Use for 'translate X to Spanish', 'how do you say X in French', etc.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "text": {
+                        "type": "string",
+                        "description": "The text to translate"
+                    },
+                    "target_language": {
+                        "type": "string",
+                        "description": "Target language code (e.g., 'es' for Spanish, 'fr' for French, 'de' for German, 'ja' for Japanese, 'zh' for Chinese)"
+                    },
+                    "source_language": {
+                        "type": "string",
+                        "description": "Source language code (optional, auto-detected if not provided)"
+                    }
+                },
+                "required": ["text", "target_language"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "wikipedia",
+            "description": "Look up information on Wikipedia. Use for factual questions about people, places, events, concepts, etc.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "The topic to search for on Wikipedia"
+                    }
+                },
+                "required": ["query"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "youtube_search",
+            "description": "Search for YouTube videos. Use when users ask for video recommendations, tutorials, music videos, etc.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "The search query for YouTube"
+                    },
+                    "max_results": {
+                        "type": "integer",
+                        "description": "Maximum number of results to return (1-5)",
+                        "default": 3
+                    }
+                },
+                "required": ["query"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "random_choice",
+            "description": "Generate random outcomes: dice rolls, coin flips, random numbers, or pick from a list. Use for 'roll a d20', 'flip a coin', 'pick a random number', 'choose between X Y Z'.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "type": {
+                        "type": "string",
+                        "enum": ["dice", "coin", "number", "choice"],
+                        "description": "Type of random: 'dice' for dice rolls, 'coin' for coin flip, 'number' for random number, 'choice' for picking from options"
+                    },
+                    "dice_notation": {
+                        "type": "string",
+                        "description": "For dice: notation like '1d20', '2d6', '3d8+5'"
+                    },
+                    "min": {
+                        "type": "integer",
+                        "description": "For number: minimum value"
+                    },
+                    "max": {
+                        "type": "integer",
+                        "description": "For number: maximum value"
+                    },
+                    "options": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "For choice: list of options to pick from"
+                    }
+                },
+                "required": ["type"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "url_preview",
+            "description": "Fetch and summarize a webpage URL. Use when users share a link and ask 'what is this', 'summarize this article', etc.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "url": {
+                        "type": "string",
+                        "description": "The URL to fetch and summarize"
+                    }
+                },
+                "required": ["url"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "iracing_driver_stats",
+            "description": "Look up iRacing driver statistics. Use for 'what's my iRating', 'check driver stats for X', 'iRacing stats'.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "driver_name": {
+                        "type": "string",
+                        "description": "The iRacing driver name to look up (optional if user has linked account)"
+                    },
+                    "category": {
+                        "type": "string",
+                        "enum": ["road", "oval", "dirt_road", "dirt_oval"],
+                        "description": "Racing category to get stats for",
+                        "default": "road"
+                    }
+                },
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "iracing_series_info",
+            "description": "Get information about an iRacing series including schedule, participation, and current week details.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "series_name": {
+                        "type": "string",
+                        "description": "Name of the iRacing series to look up"
+                    }
+                },
+                "required": ["series_name"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "user_stats",
+            "description": "Get Discord activity statistics for a user in this server. Use for 'how many messages has X sent', 'user activity stats'.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "username": {
+                        "type": "string",
+                        "description": "Discord username to look up (optional, defaults to requesting user)"
+                    },
+                    "days": {
+                        "type": "integer",
+                        "description": "Number of days to look back",
+                        "default": 30
+                    }
+                },
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "create_reminder",
+            "description": "Set a reminder for the user. Use for 'remind me to X in 30 minutes', 'set a reminder for tomorrow at 5pm'.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "message": {
+                        "type": "string",
+                        "description": "What to remind the user about"
+                    },
+                    "time": {
+                        "type": "string",
+                        "description": "When to send the reminder (e.g., 'in 30 minutes', 'tomorrow at 5pm', 'in 2 hours')"
+                    }
+                },
+                "required": ["message", "time"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "stock_price",
+            "description": "Get current stock or cryptocurrency prices. Accepts ticker symbols (AAPL, TSLA) or company names (Microsoft, Apple, Bitcoin).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "symbol": {
+                        "type": "string",
+                        "description": "Stock ticker (AAPL, TSLA) or company/crypto name (Microsoft, Apple, Bitcoin, Ethereum)"
+                    }
+                },
+                "required": ["symbol"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "movie_info",
+            "description": "Get information about a movie or TV show including ratings, cast, plot. Use for 'tell me about the movie X', 'what's the rating of Y'.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "title": {
+                        "type": "string",
+                        "description": "Title of the movie or TV show"
+                    },
+                    "year": {
+                        "type": "integer",
+                        "description": "Release year (optional, helps with accuracy)"
+                    }
+                },
+                "required": ["title"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "define_word",
+            "description": "Get the dictionary definition of a word. Use for 'define X', 'what does X mean', 'definition of Y'.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "word": {
+                        "type": "string",
+                        "description": "The word to define"
+                    }
+                },
+                "required": ["word"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "currency_convert",
+            "description": "Convert between currencies. Use for 'convert 100 USD to EUR', 'how much is 50 pounds in dollars', 'exchange rate USD to JPY'.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "amount": {
+                        "type": "number",
+                        "description": "Amount to convert"
+                    },
+                    "from_currency": {
+                        "type": "string",
+                        "description": "Source currency code (e.g., 'USD', 'EUR', 'GBP', 'JPY')"
+                    },
+                    "to_currency": {
+                        "type": "string",
+                        "description": "Target currency code (e.g., 'USD', 'EUR', 'GBP', 'JPY')"
+                    }
+                },
+                "required": ["amount", "from_currency", "to_currency"]
             }
         }
     },
@@ -233,7 +529,7 @@ COMPUTATIONAL_TOOLS = [
         "type": "function",
         "function": {
             "name": "web_search",
-            "description": "Search the web for current information, news, facts, or any information not in your knowledge base. Use this when you need up-to-date information about current events, recent data, sports results, or anything you're not certain about.",
+            "description": "Search the web for current information, news, facts, or any information not in your knowledge base. Use for current events, news, sports results, product info. NOTE: For historical weather data, calculations, or scientific questions, use wolfram_query instead - it has better data for those.",
             "parameters": {
                 "type": "object",
                 "properties": {

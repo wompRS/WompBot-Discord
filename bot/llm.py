@@ -114,6 +114,8 @@ Be useful and real. That's the balance."""
     
     def should_search(self, message_content, conversation_context):
         """Determine if web search is needed - only for genuine factual queries"""
+        import re
+
         # Only trigger on explicit factual question patterns
         search_triggers = [
             'what is', 'what are', 'who is', 'who are', 'when did', 'when was', 'how many', 'how much',
@@ -136,7 +138,6 @@ Be useful and real. That's the balance."""
 
         # Only trigger on very specific factual question patterns
         # Avoid casual conversation like "did you see", "if you think", etc.
-        import re
         specific_factual_patterns = [
             r'\bwho (is|was|won|became|got|are)\s+\w+',  # "who is X", "who won X", "who are X"
             r'\bwhat (is|was|are|happened|caused)\s+(the|a)\s+\w+',  # "what is/are the X", "what happened"
@@ -145,6 +146,41 @@ Be useful and real. That's the balance."""
         for pattern in specific_factual_patterns:
             if re.search(pattern, message_lower):
                 return True
+
+        # Check if this is a short clarification following a search-worthy question
+        # e.g., "aberdeen in scotland" after "when did it last rain in aberdeen"
+        if len(message_lower) < 40 and conversation_context:
+            # Check if recent conversation contains a search-worthy question from user
+            # that the bot asked for clarification on
+            for msg in reversed(conversation_context[-6:]):
+                msg_content = msg.get('content', '').lower()
+                msg_username = msg.get('username', '').lower()
+
+                # Skip bot messages
+                if 'wompbot' in msg_username or 'womp bot' in msg_username:
+                    # Check if bot asked for clarification (which Aberdeen, which version, etc.)
+                    clarification_asks = [
+                        'which', 'could you clarify', 'could you specify', 'do you mean',
+                        'are you referring to', 'there are several', 'there are multiple',
+                        'need to know which', 'need to know what'
+                    ]
+                    if any(phrase in msg_content for phrase in clarification_asks):
+                        # Bot asked for clarification - current message is likely the answer
+                        # Look for the original question before this
+                        continue
+
+                # Check if this user message was a search-worthy question
+                if any(trigger in msg_content for trigger in search_triggers):
+                    # Found a search-worthy question in recent history
+                    # Current short message is likely a clarification, so trigger search
+                    print(f"🔍 Clarification detected - triggering search for follow-up to: '{msg_content[:50]}...'")
+                    return True
+
+                # Also check for specific patterns in user messages
+                for pattern in specific_factual_patterns:
+                    if re.search(pattern, msg_content):
+                        print(f"🔍 Clarification detected - triggering search for follow-up to: '{msg_content[:50]}...'")
+                        return True
 
         return False
     
@@ -175,6 +211,8 @@ Be useful and real. That's the balance."""
         max_tokens=None,
         personality='default',
         tools=None,
+        images=None,
+        base64_images=None,
     ):
         """Generate response using OpenRouter with automatic retry on empty responses
 
@@ -183,6 +221,8 @@ Be useful and real. That's the balance."""
             rag_context: RAG-retrieved context (semantic matches, facts, summaries)
             personality: 'default', 'bogan', or 'concise' - determines system prompt personality
             tools: List of tool definitions for function calling (enables LLM to call tools)
+            images: List of image URLs to include in the message (for vision models)
+            base64_images: List of base64-encoded images (for processed GIF frames, YouTube thumbnails)
         """
         import time
 
@@ -309,23 +349,63 @@ Use this history to maintain conversation continuity and remember what was discu
 
 [Web search results - use naturally in your response:]
 {search_results}"""
-                messages.append({"role": "user", "content": user_message_with_context})
             else:
                 # Frame the message to remind LLM to consider full context
-                messages.append({"role": "user", "content": f"[LATEST MESSAGE - respond to this, but consider the conversation history above]\n{user_message}"})
+                user_message_with_context = f"[LATEST MESSAGE - respond to this, but consider the conversation history above]\n{user_message}"
+
+            # Build user message content - use array format if images are included
+            has_images = (images and len(images) > 0) or (base64_images and len(base64_images) > 0)
+
+            if has_images:
+                # Vision model format: array of content objects
+                content_parts = [{"type": "text", "text": user_message_with_context}]
+
+                # Add image URLs
+                if images:
+                    for img_url in images:
+                        content_parts.append({
+                            "type": "image_url",
+                            "image_url": {"url": img_url}
+                        })
+
+                # Add base64-encoded images (GIF frames, YouTube thumbnails, etc.)
+                if base64_images:
+                    for b64_img in base64_images:
+                        content_parts.append({
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/jpeg;base64,{b64_img}"}
+                        })
+
+                messages.append({"role": "user", "content": content_parts})
+                url_count = len(images) if images else 0
+                b64_count = len(base64_images) if base64_images else 0
+                print(f"   🖼️ Including {url_count} image URL(s) and {b64_count} processed frame(s) in message")
+            else:
+                messages.append({"role": "user", "content": user_message_with_context})
 
             # Enforce context token limits to prevent excessive usage
             max_context_tokens = int(os.getenv('MAX_CONTEXT_TOKENS', '4000'))
 
+            # Helper to get content length (handles both string and array content)
+            def get_content_len(content):
+                if isinstance(content, str):
+                    return len(content)
+                elif isinstance(content, list):
+                    # For array content, sum text parts only (images counted separately)
+                    return sum(len(part.get("text", "")) for part in content if part.get("type") == "text")
+                return 0
+
             # Estimate tokens (approximately 1 token per 3.5 characters)
-            total_chars = sum(len(entry["content"]) for entry in messages)
-            estimated_tokens = int(total_chars / 3.5)
+            # Add ~1000 tokens per image for vision models
+            total_chars = sum(get_content_len(entry["content"]) for entry in messages)
+            image_token_estimate = (len(images or []) + len(base64_images or [])) * 1000
+            estimated_tokens = int(total_chars / 3.5) + image_token_estimate
 
             # Truncate old messages if we exceed token limit
             messages_removed = 0
             while estimated_tokens > max_context_tokens and len(messages) > 3:
                 removed = messages.pop(1)  # Remove oldest message after system prompt
-                total_chars -= len(removed["content"])
+                total_chars -= get_content_len(removed["content"])
                 estimated_tokens = int(total_chars / 3.5)
                 messages_removed += 1
 

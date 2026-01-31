@@ -1,6 +1,6 @@
 # WompBot - Discord Bot
 
-A Discord bot powered by Claude Sonnet through OpenRouter, featuring intelligent conversation memory (RAG), semantic search, web search integration, claims tracking, user behavior analysis, and iRacing integration.
+A Discord bot powered by Claude Sonnet through OpenRouter, featuring intelligent conversation memory (RAG), media analysis (images, GIFs, YouTube transcripts, video transcription), 18 LLM tools, web search integration, claims tracking, user behavior analysis, and iRacing integration.
 
 ## Core Features
 
@@ -58,6 +58,64 @@ The bot uses Retrieval Augmented Generation to remember conversations more effic
 - 40% token reduction compared to keeping full conversation history
 - Access to full message database without bloating context
 - Smarter context assembly means better responses
+
+### Media Analysis
+
+WompBot can analyze images, GIFs, YouTube videos, and video attachments using vision AI and audio transcription.
+
+**Supported Media:**
+- **Images:** PNG, JPG, WebP - describes content, reads text, identifies memes
+- **Animated GIFs:** Extracts 6 frames to capture full animation
+- **YouTube Videos:** Transcript-first approach - fetches captions instantly without downloading
+- **Video Attachments:** Transcribes audio using OpenAI Whisper API
+
+**How It Works:**
+- Share media with WompBot and ask "what's this?" or "what's happening?"
+- YouTube transcripts are fetched instantly via API (no video download required)
+- Video attachments are transcribed with timestamps
+- Falls back to visual frame extraction if no transcript available
+
+**Example Usage:**
+```
+@WompBot what's happening in this video?
+[YouTube link or video attachment]
+
+@WompBot describe this meme
+[Image attachment]
+```
+
+### LLM Tools (18 Available)
+
+WompBot can automatically invoke tools to provide real-time information:
+
+**Weather & Science:**
+- `get_weather` - Current weather conditions
+- `get_weather_forecast` - 5-day weather forecast
+- `wolfram_query` - Math, science, conversions, historical weather data
+
+**Search & Information:**
+- `web_search` - Current events and news
+- `wikipedia` - Factual information
+- `define_word` - Dictionary definitions
+- `url_preview` - Summarize webpages
+
+**Time, Translation & Currency:**
+- `get_time` - Current time in any timezone
+- `translate` - Translate between languages
+- `currency_convert` - Convert currencies (supports 30+ currencies and natural language like "100 bucks to euros")
+
+**Entertainment & Media:**
+- `youtube_search` - Search YouTube videos
+- `movie_info` - Movie/TV ratings and info
+- `stock_price` - Stock and crypto prices
+
+**Utility:**
+- `random_choice` - Dice rolls, coin flips, random picks
+- `create_reminder` - Set reminders
+
+**Visualization:**
+- `create_bar_chart`, `create_line_chart`, `create_pie_chart`, `create_table`
+- Natural language: "show me a chart of who talks the most"
 
 ### Weather and Computational Tools
 
@@ -316,6 +374,27 @@ docker-compose down
 - Mention @WompBot, say "wompbot", or use "!wb" to chat with the bot
 - !ping: Check bot latency
 - !wompbot help or /help: Show all commands
+- Share images, GIFs, or videos and ask "what's this?" for analysis
+
+### AI Tools (via natural language or prefix commands)
+
+Natural language (mention wompbot):
+- "wompbot convert 100 USD to EUR": Currency conversion
+- "wompbot what time is it in Tokyo?": Timezone lookup
+- "wompbot define serendipity": Dictionary definitions
+- "wompbot roll a d20": Random dice/coin
+- "wompbot what's the weather?": Weather lookup
+- "wompbot translate hello to Spanish": Translation
+
+Prefix commands (faster, no LLM cost):
+- `!convert 100 USD EUR`: Currency conversion
+- `!define serendipity`: Dictionary definition
+- `!weather London`: Current weather
+- `!time Tokyo`: Time in timezone
+- `!roll d20` or `!roll coin`: Dice/coin
+- `!movie Inception`: Movie/TV info
+- `!stock AAPL` or `!stock Microsoft`: Stock/crypto price
+- `!translate es Hello`: Translate text
 
 ### Weather and Computational
 
@@ -434,6 +513,19 @@ Add --limit N to test with a subset or --sleep 1.0 to slow requests.
 - !analyze [days]: (Admin) Analyze behavior patterns
 - !refreshstats: (Admin) Refresh stats cache
 
+### Tool Prefix Commands
+
+These commands work without LLM processing (faster and zero token cost):
+
+- !convert <amount> <from> <to>: Currency conversion (e.g., `!convert 100 USD EUR`)
+- !define <word>: Dictionary definition (e.g., `!define serendipity`)
+- !weather [location]: Current weather (e.g., `!weather London`)
+- !time [timezone]: Current time (e.g., `!time Tokyo`, `!time EST`)
+- !roll <dice>: Roll dice (e.g., `!roll d20`, `!roll 2d6+5`, `!roll coin`)
+- !movie <title>: Movie/TV info (e.g., `!movie Inception`)
+- !stock <symbol or name>: Stock/crypto price (e.g., `!stock AAPL`, `!stock Microsoft`, `!stock Bitcoin`)
+- !translate <lang> <text>: Translate text (e.g., `!translate es Hello world`)
+
 ## Privacy Features
 
 GDPR-compliant privacy controls using an opt-out model.
@@ -492,6 +584,8 @@ Comprehensive guides are available in the docs directory.
 
 **Feature Documentation:**
 - [Conversational AI](docs/features/CONVERSATIONAL_AI.md) - Personality modes, LLM configuration
+- [Media Analysis](docs/features/MEDIA_ANALYSIS.md) - Images, GIFs, YouTube, video transcription
+- [LLM Tools](docs/features/LLM_TOOLS.md) - 18 available tools, currency conversion, weather
 - [Claims Tracking](docs/features/CLAIMS_TRACKING.md) - Auto-detection, edit tracking
 - [Fact-Checking](docs/features/FACT_CHECK.md) - Web search, verdict system
 - [Quotes System](docs/features/QUOTES.md) - Emoji reactions, context
@@ -625,6 +719,14 @@ Comprehensive guides are available in the docs directory.
 - Yearly Wrapped (database aggregation)
 - Chat Statistics (network graphs, TF-IDF)
 - iRacing Integration (API calls only)
+- Currency Conversion (Frankfurter API - free)
+- YouTube Transcripts (YouTube API - free)
+
+**Media Analysis Costs:**
+- Images: Vision model tokens only (~$0.001-0.005 per image)
+- GIFs: Vision model tokens only
+- YouTube with transcript: Vision tokens + transcript (nearly free)
+- Video attachments: Whisper API (~$0.006/minute of audio) + vision tokens
 
 **Variable Cost Features:**
 - Debate Analysis: $0.01-0.05 per debate
@@ -781,6 +883,7 @@ discord-bot/
     ├── tool_executor.py         # LLM tool execution handler
     ├── llm_tools.py             # LLM tool definitions
     ├── data_retriever.py        # Database query engine
+    ├── media_processor.py       # Media analysis (images, GIFs, videos, YouTube)
     ├── iracing_client.py        # iRacing API client
     ├── iracing_viz.py           # iRacing visualizations
     ├── requirements.txt         # Python dependencies
