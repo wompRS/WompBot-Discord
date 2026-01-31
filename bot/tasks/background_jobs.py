@@ -12,7 +12,7 @@ import discord
 
 
 def register_tasks(bot, db, llm, rag, chat_stats, iracing, iracing_popularity_cache,
-                   reminder_system, event_system, privacy_manager):
+                   reminder_system, event_system, privacy_manager, iracing_team_manager=None):
     """
     Register all background tasks with the bot.
 
@@ -655,6 +655,114 @@ def register_tasks(bot, db, llm, rag, chat_stats, iracing, iracing_popularity_ca
         if rag.enabled:
             print("🧠 Message embedding task started (runs every 5 min)")
 
+    # Background task for team event reminders
+    @tasks.loop(minutes=15)
+    async def check_team_event_reminders():
+        """Check for team events that need reminder notifications"""
+        if not iracing_team_manager:
+            return
+
+        try:
+            events = iracing_team_manager.get_events_needing_reminders()
+
+            for event in events:
+                try:
+                    # Get team members
+                    members = iracing_team_manager.get_team_members(event['team_id'])
+
+                    # Get guild for context
+                    guild = bot.get_guild(event['guild_id'])
+                    guild_name = guild.name if guild else "Unknown Server"
+
+                    timestamp = int(event['event_start'].timestamp())
+                    reminder_type = event['reminder_type']
+
+                    # Determine reminder message
+                    if reminder_type == '24h':
+                        title = "Event Tomorrow!"
+                        time_text = "starting in approximately 24 hours"
+                    else:  # 1h
+                        title = "Event Starting Soon!"
+                        time_text = "starting in approximately 1 hour"
+
+                    tag_display = f" [{event['team_tag']}]" if event.get('team_tag') else ""
+
+                    for member_data in members:
+                        try:
+                            user = bot.get_user(member_data['discord_user_id'])
+                            if not user:
+                                user = await bot.fetch_user(member_data['discord_user_id'])
+
+                            if user:
+                                embed = discord.Embed(
+                                    title=f"Reminder: {title}",
+                                    description=f"**{event['event_name']}** is {time_text}!",
+                                    color=discord.Color.orange()
+                                )
+                                embed.add_field(
+                                    name="Team",
+                                    value=f"{event['team_name']}{tag_display}",
+                                    inline=True
+                                )
+                                embed.add_field(
+                                    name="Type",
+                                    value=event['event_type'].replace('_', ' ').title(),
+                                    inline=True
+                                )
+                                embed.add_field(
+                                    name="When",
+                                    value=f"<t:{timestamp}:F>\n<t:{timestamp}:R>",
+                                    inline=False
+                                )
+
+                                if event.get('series_name'):
+                                    embed.add_field(name="Series", value=event['series_name'], inline=True)
+                                if event.get('track_name'):
+                                    embed.add_field(name="Track", value=event['track_name'], inline=True)
+
+                                embed.set_footer(text=f"Server: {guild_name}")
+
+                                # Include availability buttons for 24h reminder
+                                if reminder_type == '24h':
+                                    from features.team_menu import EventResponseDMView
+                                    view = EventResponseDMView(
+                                        team_manager=iracing_team_manager,
+                                        event_id=event['id'],
+                                        event_name=event['event_name'],
+                                        team_name=f"{event['team_name']}{tag_display}",
+                                        guild_id=event['guild_id'],
+                                        guild_name=guild_name
+                                    )
+                                    await user.send(embed=embed, view=view)
+                                else:
+                                    await user.send(embed=embed)
+
+                        except discord.Forbidden:
+                            pass  # User has DMs disabled
+                        except Exception as e:
+                            print(f"❌ Error sending team event reminder to user: {e}")
+
+                    # Mark reminder as sent
+                    iracing_team_manager.mark_event_reminder_sent(event['id'], reminder_type)
+                    print(f"📅 Sent {reminder_type} reminder for team event '{event['event_name']}'")
+
+                except Exception as e:
+                    print(f"❌ Error processing team event reminder: {e}")
+                    import traceback
+                    traceback.print_exc()
+
+        except Exception as e:
+            print(f"❌ Error in team event reminder task: {e}")
+            import traceback
+            traceback.print_exc()
+
+    @check_team_event_reminders.before_loop
+    async def before_check_team_event_reminders():
+        """Wait for bot to be ready before starting team event reminder checker"""
+        await bot.wait_until_ready()
+        if iracing_team_manager:
+            print("📅 Team event reminder task started (runs every 15 min)")
+
     print("✅ Background tasks registered (will start in on_ready)")
 
     # Return task references - they will be started in on_ready event handler
@@ -664,6 +772,7 @@ def register_tasks(bot, db, llm, rag, chat_stats, iracing, iracing_popularity_ca
         'precompute_stats': precompute_stats,
         'check_reminders': check_reminders,
         'check_event_reminders': check_event_reminders,
+        'check_team_event_reminders': check_team_event_reminders,
         'gdpr_cleanup': gdpr_cleanup,
         'analyze_user_behavior': analyze_user_behavior,
         'process_embeddings': process_embeddings

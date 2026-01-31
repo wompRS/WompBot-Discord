@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 from viz_tools import GeneralVisualizer
 from llm_tools import VISUALIZATION_TOOLS, ALL_TOOLS, DataRetriever
 from tool_executor import ToolExecutor
+from media_processor import get_media_processor
 
 # Rotating search status messages
 SEARCH_STATUS_MESSAGES = [
@@ -84,13 +85,17 @@ def get_visualizer():
         _visualizer = GeneralVisualizer()
     return _visualizer
 
-def get_tool_executor(db, wolfram=None, weather=None, search=None):
+def get_tool_executor(db, wolfram=None, weather=None, search=None,
+                       iracing_manager=None, reminder_manager=None, bot=None):
     """Get or create tool executor instance"""
     global _tool_executor
     if _tool_executor is None:
         visualizer = get_visualizer()
         data_retriever = DataRetriever(db)
-        _tool_executor = ToolExecutor(db, visualizer, data_retriever, wolfram, weather, search)
+        _tool_executor = ToolExecutor(
+            db, visualizer, data_retriever, wolfram, weather, search,
+            iracing_manager, reminder_manager, bot
+        )
     return _tool_executor
 
 
@@ -217,7 +222,8 @@ async def generate_leaderboard_response(channel, stat_type, days, db, llm):
 
 
 async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, search=None,
-                             self_knowledge=None, rag=None, wolfram=None, weather=None):
+                             self_knowledge=None, rag=None, wolfram=None, weather=None,
+                             iracing_manager=None, reminder_system=None):
     """Handle when bot is mentioned/tagged"""
     # Track placeholder message for cleanup on error
     placeholder_msg = None
@@ -250,12 +256,218 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
         # Convert Discord mentions to readable usernames
         content = clean_discord_mentions(content, message)
 
-        if not content or len(content) < 2:
+        # Extract and process media for vision analysis
+        media_processor = get_media_processor()
+
+        # Collect raw media URLs and their types
+        raw_media = []  # List of (url, type) tuples
+        supported_image_types = {'image/png', 'image/jpeg', 'image/jpg', 'image/gif', 'image/webp'}
+        supported_video_types = {'video/mp4', 'video/webm', 'video/quicktime', 'video/mpeg', 'video/avi'}
+
+        # Check attachments
+        for attachment in message.attachments:
+            content_type = attachment.content_type or ''
+            filename_lower = attachment.filename.lower()
+
+            is_image = (
+                any(img_type in content_type for img_type in supported_image_types) or
+                filename_lower.endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp'))
+            )
+            is_video = (
+                any(vid_type in content_type for vid_type in supported_video_types) or
+                filename_lower.endswith(('.mp4', '.webm', '.mov', '.mpeg', '.avi', '.mkv'))
+            )
+
+            if is_image and attachment.url:
+                media_type = 'gif' if filename_lower.endswith('.gif') else 'image'
+                raw_media.append((attachment.url, media_type))
+                print(f"🖼️ Found {media_type} attachment: {attachment.filename}")
+            elif is_video and attachment.url:
+                raw_media.append((attachment.url, 'video'))
+                print(f"🎬 Found video attachment: {attachment.filename}")
+
+        # Check for embedded image URLs
+        image_url_pattern = r'https?://[^\s<>"]+?\.(?:png|jpg|jpeg|gif|webp)(?:\?[^\s<>"]*)?'
+        for url in re.findall(image_url_pattern, content, re.IGNORECASE):
+            if not any(url == m[0] for m in raw_media):
+                media_type = 'gif' if url.lower().endswith('.gif') else 'image'
+                raw_media.append((url, media_type))
+                print(f"🖼️ Found embedded {media_type}: {url[:50]}...")
+
+        # Check for YouTube URLs in message content
+        youtube_pattern = r'(?:https?://)?(?:www\.)?(?:youtube\.com/watch\?v=|youtu\.be/|youtube\.com/shorts/)([a-zA-Z0-9_-]{11})'
+        youtube_matches = re.findall(youtube_pattern, content)
+        for video_id in youtube_matches:
+            yt_url = f"https://www.youtube.com/watch?v={video_id}"
+            if not any(yt_url == m[0] for m in raw_media):
+                raw_media.append((yt_url, 'youtube'))
+                print(f"📺 Found YouTube video: {video_id}")
+
+        # Process media to extract frames/thumbnails
+        processed_images = []  # base64 encoded images
+        direct_image_urls = []  # URLs that can be passed directly
+        media_context_notes = []  # Notes about what media is being analyzed
+        transcript_text = None  # For YouTube transcripts
+
+        for url, media_type in raw_media:
+            if media_type == 'youtube':
+                # Process YouTube video - transcript first (instant), frames only if needed
+                video_id = media_processor.extract_youtube_id(url)
+                print(f"📺 Processing YouTube video: {video_id}")
+
+                # Send processing message (usually quick for transcript-only)
+                processing_msg = await message.channel.send("📝 Getting video transcript...")
+
+                yt_result = await media_processor.analyze_youtube_video(video_id, need_visuals=False)
+
+                # Delete processing message
+                try:
+                    await processing_msg.delete()
+                except:
+                    pass
+
+                if yt_result.get('success'):
+                    # Get video metadata
+                    duration = yt_result.get('duration', 0)
+                    duration_str = f"{duration // 60}:{duration % 60:02d}" if duration else "unknown"
+                    title = yt_result.get('title', 'Unknown')
+                    author = yt_result.get('author', 'Unknown')
+
+                    # Add transcript if available (primary source)
+                    if yt_result.get('transcript'):
+                        transcript_text = yt_result['transcript']
+                        # Truncate very long transcripts
+                        if len(transcript_text) > 4000:
+                            transcript_text = transcript_text[:4000] + "\n[...transcript truncated...]"
+                        media_context_notes.append(
+                            f"[YouTube Video: \"{title}\" by {author} ({duration_str}) - transcript available below]"
+                        )
+                        print(f"✅ Got video transcript ({len(transcript_text)} chars)")
+
+                    # Add thumbnail/frames for visual reference
+                    if yt_result.get('frames'):
+                        processed_images.extend(yt_result['frames'])
+                        frame_count = len(yt_result['frames'])
+                        timestamps = yt_result.get('frame_timestamps', [])
+                        if not yt_result.get('transcript'):
+                            # No transcript - rely on visual frames
+                            media_context_notes.append(
+                                f"[YouTube Video: \"{title}\" by {author} ({duration_str}) - "
+                                f"no transcript available, showing {frame_count} frames at: {', '.join(timestamps)}]"
+                            )
+                        print(f"✅ Got {frame_count} visual frames from video")
+                else:
+                    media_context_notes.append(f"[YouTube video processing failed: {yt_result.get('error', 'unknown error')}]")
+                    print(f"⚠️ YouTube processing failed: {yt_result.get('error')}")
+
+            elif media_type == 'gif':
+                # Process GIF - extract multiple frames
+                print(f"🎞️ Extracting frames from GIF...")
+                gif_result = await media_processor.extract_gif_frames(url, max_frames=6)
+                if gif_result.get('success'):
+                    if gif_result.get('is_animated'):
+                        processed_images.extend(gif_result['frames'])
+                        frame_count = len(gif_result['frames'])
+                        total_frames = gif_result.get('total_frames', 0)
+                        media_context_notes.append(
+                            f"[Animated GIF: showing {frame_count} frames from {total_frames} total frames to capture the full animation]"
+                        )
+                        print(f"✅ Extracted {frame_count} frames from animated GIF ({total_frames} total)")
+                    else:
+                        processed_images.extend(gif_result['frames'])
+                        print(f"✅ GIF is static, extracted single frame")
+                else:
+                    # Fallback: pass URL directly
+                    direct_image_urls.append(url)
+                    print(f"⚠️ GIF extraction failed, passing URL directly: {gif_result.get('error')}")
+
+            elif media_type == 'video':
+                # Process Discord/attached videos - transcription first, frames as fallback
+                print(f"🎬 Processing video attachment...")
+
+                processing_msg = await message.channel.send("🎤 Transcribing video audio...")
+
+                video_result = await media_processor.analyze_video_file(url, need_visuals=False)
+
+                try:
+                    await processing_msg.delete()
+                except:
+                    pass
+
+                if video_result.get('success'):
+                    duration = video_result.get('duration', 0)
+                    duration_str = f"{duration:.1f}s" if duration else "unknown"
+
+                    # Add transcript if available (primary source)
+                    if video_result.get('transcript'):
+                        transcript_text = video_result['transcript']
+                        if len(transcript_text) > 4000:
+                            transcript_text = transcript_text[:4000] + "\n[...transcript truncated...]"
+                        media_context_notes.append(f"[Video ({duration_str}) - transcript available below]")
+                        print(f"✅ Got video transcription ({len(transcript_text)} chars)")
+
+                    # Add frames for visual reference
+                    if video_result.get('frames'):
+                        processed_images.extend(video_result['frames'])
+                        frame_count = len(video_result['frames'])
+                        timestamps = video_result.get('frame_timestamps', [])
+                        if not video_result.get('transcript'):
+                            # No transcript - rely on visual frames
+                            media_context_notes.append(
+                                f"[Video ({duration_str}): no audio transcript, showing {frame_count} frames at: {', '.join(timestamps)}]"
+                            )
+                        print(f"✅ Got {frame_count} visual frames from video")
+                else:
+                    media_context_notes.append(f"[Video processing failed: {video_result.get('error', 'unknown')}]")
+                    print(f"⚠️ Video processing failed: {video_result.get('error')}")
+
+            else:
+                # Regular image - pass URL directly
+                direct_image_urls.append(url)
+
+        # Build final image_urls list for the LLM
+        # Combine direct URLs with base64 images
+        image_urls = direct_image_urls.copy()
+        base64_images = processed_images
+
+        # Track what we have
+        has_video = any(m[1] in ('video', 'youtube') for m in raw_media)
+        has_animated_gif = any(m[1] == 'gif' for m in raw_media)
+        has_media = len(raw_media) > 0
+
+        if has_media:
+            types_found = set(m[1] for m in raw_media)
+            print(f"📷 Total media to analyze: {len(raw_media)} ({', '.join(types_found)})")
+            if processed_images:
+                print(f"   📦 Processed {len(processed_images)} frames/thumbnails to base64")
+
+        # Allow media-only messages (no text but has images/videos)
+        if (not content or len(content) < 2) and not has_media:
             await message.channel.send("Yeah? What's up?")
             return
 
+        # If no text but has media, use an appropriate default prompt
+        if (not content or len(content) < 2) and has_media:
+            if has_video:
+                content = "What's happening in this video? Describe what you can see."
+            elif has_animated_gif:
+                content = "What's happening in this GIF? Describe the animation/action."
+            else:
+                content = "What's in this image?"
+
+        # Add specific context notes about the media being analyzed
+        if media_context_notes:
+            content = content + "\n\n" + "\n".join(media_context_notes)
+
+        # Add video transcript if available (YouTube videos)
+        if transcript_text:
+            content = content + "\n\n--- VIDEO TRANSCRIPT ---\n" + transcript_text + "\n--- END TRANSCRIPT ---"
+
         # Input sanitization - enforce max length
-        max_input_length = int(os.getenv('MAX_INPUT_LENGTH', '2000'))
+        # Use higher limit when we have media context (transcripts, etc.)
+        base_max_length = int(os.getenv('MAX_INPUT_LENGTH', '2000'))
+        max_input_length = base_max_length + 6000 if (transcript_text or media_context_notes) else base_max_length
+
         if len(content) > max_input_length:
             content = content[:max_input_length]
             await message.channel.send(
@@ -540,7 +752,8 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
             context_for_llm = bot_docs or search_results
 
             # Get tool executor for visualization and search
-            tool_executor = get_tool_executor(db, wolfram, weather, search)
+            tool_executor = get_tool_executor(db, wolfram, weather, search,
+                                              iracing_manager, reminder_system, bot)
 
             response = await asyncio.to_thread(
                 llm.generate_response,
@@ -556,6 +769,8 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                 None,  # max_tokens (use default)
                 personality,  # personality setting
                 ALL_TOOLS,  # Enable all tools (visualization + computational)
+                image_urls if image_urls else None,  # Direct image URLs
+                base64_images if base64_images else None,  # Processed frames (GIFs, YouTube thumbnails)
             )
 
             # Check if LLM wants to use tools
@@ -754,6 +969,8 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                     None,  # max_tokens (use default)
                     personality,  # personality setting
                     ALL_TOOLS,  # Enable all tools (visualization + computational) on retry
+                    image_urls if image_urls else None,  # Direct image URLs
+                    base64_images if base64_images else None,  # Processed frames
                 )
 
                 # Check for tool calls on retry

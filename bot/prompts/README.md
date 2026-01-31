@@ -61,6 +61,24 @@ docker-compose restart bot
 
 Your custom system_prompt.txt is gitignored, so your changes stay private.
 
+## Built-in Capabilities
+
+The system prompt includes documentation for:
+
+**18 LLM Tools:**
+- Weather: `get_weather`, `get_weather_forecast`
+- Search: `web_search`, `wikipedia`, `define_word`, `url_preview`
+- Utility: `currency_convert`, `get_time`, `translate`, `random_choice`
+- Media: `youtube_search`, `movie_info`, `stock_price`
+- iRacing: `iracing_driver_stats`, `iracing_series_info`
+- Discord: `user_stats`, `create_reminder`
+
+**Media Analysis:**
+- Images: Full vision analysis
+- Animated GIFs: 6-frame extraction
+- YouTube Videos: Transcript + thumbnail
+- Video Attachments: Whisper transcription + frames
+
 ## What You Can Customize
 
 The system prompt controls:

@@ -129,66 +129,7 @@ def setup_iracing_event_commands(bot, iracing_team_manager, iracing_client):
         else:
             await interaction.followup.send("❌ Failed to create event.", ephemeral=True)
 
-    @bot.tree.command(name="iracing_team_events", description="View upcoming team events")
-    @app_commands.describe(team_id="Team ID to view events for")
-    async def iracing_team_events(interaction: discord.Interaction, team_id: int):
-        """View upcoming events for a team"""
-        await interaction.response.defer()
-
-        # Get team info
-        team_info = iracing_team_manager.get_team_info(team_id)
-        if not team_info:
-            await interaction.followup.send("❌ Team not found.", ephemeral=True)
-            return
-
-        # Get events
-        events = iracing_team_manager.get_team_events(team_id, upcoming_only=True)
-
-        if not events:
-            await interaction.followup.send(
-                f"No upcoming events for **{team_info['name']}**. Create one with `/iracing_event_create`!"
-            )
-            return
-
-        embed = discord.Embed(
-            title=f"📅 Upcoming Events - {team_info['name']}",
-            description=f"Found {len(events)} upcoming event(s)",
-            color=discord.Color.blue()
-        )
-
-        type_emoji = {
-            'practice': '🏋️',
-            'qualifying': '⏱️',
-            'race': '🏁',
-            'endurance': '⏳'
-        }
-
-        for event in events[:10]:  # Limit to 10 events
-            emoji = type_emoji.get(event['type'], '📅')
-            timestamp = int(event['start'].timestamp())
-
-            value_parts = [f"<t:{timestamp}:F> (<t:{timestamp}:R>)"]
-
-            if event['duration_minutes']:
-                hours = event['duration_minutes'] // 60
-                mins = event['duration_minutes'] % 60
-                duration_str = f"{hours}h {mins}m" if hours else f"{mins}m"
-                value_parts.append(f"Duration: {duration_str}")
-
-            if event['series']:
-                value_parts.append(f"Series: {event['series']}")
-            if event['track']:
-                value_parts.append(f"Track: {event['track']}")
-
-            value_parts.append(f"Event ID: `{event['id']}`")
-
-            embed.add_field(
-                name=f"{emoji} {event['name']} - {event['type'].title()}",
-                value='\n'.join(value_parts),
-                inline=False
-            )
-
-        await interaction.followup.send(embed=embed)
+    # NOTE: /iracing_team_events is now defined in iracing_team_commands.py with team_name autocomplete
 
     # ==================== DRIVER AVAILABILITY ====================
 

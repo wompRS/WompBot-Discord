@@ -413,3 +413,332 @@ class iRacingTeamManager:
         except Exception as e:
             print(f"❌ Error getting stint schedule: {e}")
             return []
+
+    # ==================== INVITATION MANAGEMENT ====================
+
+    def create_invitation(self, team_id: int, discord_user_id: int, invited_by: int, role: str = 'driver') -> Optional[int]:
+        """
+        Create a pending team invitation
+
+        Returns:
+            Invitation ID if successful, None otherwise
+        """
+        try:
+            with self.db.get_connection() as conn:
+                with conn.cursor() as cur:
+                    # Check if user already has a pending invitation
+                    cur.execute("""
+                        SELECT id FROM iracing_team_invitations
+                        WHERE team_id = %s AND discord_user_id = %s AND status = 'pending'
+                    """, (team_id, discord_user_id))
+                    if cur.fetchone():
+                        print(f"⚠️ User {discord_user_id} already has pending invite to team {team_id}")
+                        return -1  # Already has pending invite
+
+                    # Check if user is already a member
+                    cur.execute("""
+                        SELECT id FROM iracing_team_members
+                        WHERE team_id = %s AND discord_user_id = %s AND is_active = TRUE
+                    """, (team_id, discord_user_id))
+                    if cur.fetchone():
+                        print(f"⚠️ User {discord_user_id} is already a member of team {team_id}")
+                        return -2  # Already a member
+
+                    cur.execute("""
+                        INSERT INTO iracing_team_invitations (team_id, discord_user_id, invited_by, role)
+                        VALUES (%s, %s, %s, %s)
+                        RETURNING id
+                    """, (team_id, discord_user_id, invited_by, role))
+
+                    result = cur.fetchone()
+                    if result:
+                        print(f"✅ Created invitation {result[0]} for user {discord_user_id} to team {team_id}")
+                        return result[0]
+                    return None
+        except Exception as e:
+            print(f"❌ Error creating invitation: {e}")
+            return None
+
+    def get_user_invitations(self, discord_user_id: int, guild_id: int) -> List[Dict]:
+        """Get all pending invitations for a user in a guild"""
+        try:
+            with self.db.get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT i.id, i.team_id, t.team_name, t.team_tag, i.role, i.invited_by, i.created_at
+                        FROM iracing_team_invitations i
+                        JOIN iracing_teams t ON i.team_id = t.id
+                        WHERE i.discord_user_id = %s
+                          AND t.guild_id = %s
+                          AND i.status = 'pending'
+                        ORDER BY i.created_at DESC
+                    """, (discord_user_id, guild_id))
+
+                    results = cur.fetchall()
+                    return [{
+                        'id': row[0],
+                        'team_id': row[1],
+                        'team_name': row[2],
+                        'team_tag': row[3],
+                        'role': row[4],
+                        'invited_by': row[5],
+                        'created_at': row[6]
+                    } for row in results]
+        except Exception as e:
+            print(f"❌ Error getting user invitations: {e}")
+            return []
+
+    def accept_invitation(self, invitation_id: int, discord_user_id: int) -> bool:
+        """Accept a team invitation"""
+        try:
+            with self.db.get_connection() as conn:
+                with conn.cursor() as cur:
+                    # Get invitation details
+                    cur.execute("""
+                        SELECT team_id, role FROM iracing_team_invitations
+                        WHERE id = %s AND discord_user_id = %s AND status = 'pending'
+                    """, (invitation_id, discord_user_id))
+
+                    result = cur.fetchone()
+                    if not result:
+                        return False
+
+                    team_id, role = result
+
+                    # Update invitation status
+                    cur.execute("""
+                        UPDATE iracing_team_invitations
+                        SET status = 'accepted', responded_at = CURRENT_TIMESTAMP
+                        WHERE id = %s
+                    """, (invitation_id,))
+
+                    # Add user to team
+                    cur.execute("""
+                        INSERT INTO iracing_team_members (team_id, discord_user_id, role)
+                        VALUES (%s, %s, %s)
+                        ON CONFLICT (team_id, discord_user_id)
+                        DO UPDATE SET role = EXCLUDED.role, is_active = TRUE
+                    """, (team_id, discord_user_id, role))
+
+                    print(f"✅ User {discord_user_id} accepted invitation to team {team_id}")
+                    return True
+        except Exception as e:
+            print(f"❌ Error accepting invitation: {e}")
+            return False
+
+    def decline_invitation(self, invitation_id: int, discord_user_id: int) -> bool:
+        """Decline a team invitation"""
+        try:
+            with self.db.get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        UPDATE iracing_team_invitations
+                        SET status = 'declined', responded_at = CURRENT_TIMESTAMP
+                        WHERE id = %s AND discord_user_id = %s AND status = 'pending'
+                        RETURNING id
+                    """, (invitation_id, discord_user_id))
+
+                    result = cur.fetchone()
+                    if result:
+                        print(f"✅ User {discord_user_id} declined invitation {invitation_id}")
+                        return True
+                    return False
+        except Exception as e:
+            print(f"❌ Error declining invitation: {e}")
+            return False
+
+    def get_team_by_name(self, guild_id: int, team_name: str) -> Optional[Dict]:
+        """Get team by name (case-insensitive partial match)"""
+        try:
+            with self.db.get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT id, team_name, team_tag, created_by, description
+                        FROM iracing_teams
+                        WHERE guild_id = %s AND LOWER(team_name) LIKE LOWER(%s) AND is_active = TRUE
+                        LIMIT 1
+                    """, (guild_id, f"%{team_name}%"))
+
+                    result = cur.fetchone()
+                    if result:
+                        return {
+                            'id': result[0],
+                            'name': result[1],
+                            'tag': result[2],
+                            'created_by': result[3],
+                            'description': result[4]
+                        }
+                    return None
+        except Exception as e:
+            print(f"❌ Error getting team by name: {e}")
+            return None
+
+    def update_member_role(self, team_id: int, discord_user_id: int, new_role: str) -> bool:
+        """Update a team member's role"""
+        try:
+            with self.db.get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        UPDATE iracing_team_members
+                        SET role = %s
+                        WHERE team_id = %s AND discord_user_id = %s AND is_active = TRUE
+                        RETURNING id
+                    """, (new_role, team_id, discord_user_id))
+
+                    result = cur.fetchone()
+                    if result:
+                        print(f"✅ Updated role for user {discord_user_id} in team {team_id} to {new_role}")
+                        return True
+                    return False
+        except Exception as e:
+            print(f"❌ Error updating member role: {e}")
+            return False
+
+    def get_managed_teams(self, user_id: int, guild_id: int) -> List[Dict]:
+        """Get teams where the user is a manager"""
+        try:
+            with self.db.get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT t.id, t.team_name, t.team_tag,
+                               (SELECT COUNT(*) FROM iracing_team_members m
+                                WHERE m.team_id = t.id AND m.is_active = TRUE) as member_count
+                        FROM iracing_teams t
+                        JOIN iracing_team_members tm ON t.id = tm.team_id
+                        WHERE tm.discord_user_id = %s
+                          AND t.guild_id = %s
+                          AND tm.role = 'manager'
+                          AND tm.is_active = TRUE
+                          AND t.is_active = TRUE
+                        ORDER BY t.team_name
+                    """, (user_id, guild_id))
+
+                    results = cur.fetchall()
+                    return [{
+                        'id': row[0],
+                        'name': row[1],
+                        'tag': row[2],
+                        'member_count': row[3]
+                    } for row in results]
+        except Exception as e:
+            print(f"❌ Error getting managed teams: {e}")
+            return []
+
+    # ==================== EVENT REMINDERS ====================
+
+    def get_events_needing_reminders(self) -> List[Dict]:
+        """Get events that need reminder notifications sent"""
+        try:
+            with self.db.get_connection() as conn:
+                with conn.cursor() as cur:
+                    now = datetime.now()
+
+                    # Events starting in next 24h that haven't had 24h reminder sent
+                    # OR events starting in next 1h that haven't had 1h reminder sent
+                    cur.execute("""
+                        SELECT e.id, e.team_id, e.guild_id, e.event_name, e.event_type,
+                               e.event_start, e.series_name, e.track_name,
+                               t.team_name, t.team_tag,
+                               CASE
+                                   WHEN e.reminder_24h_sent = FALSE
+                                        AND e.event_start > %s
+                                        AND e.event_start <= %s THEN '24h'
+                                   WHEN e.reminder_1h_sent = FALSE
+                                        AND e.event_start > %s
+                                        AND e.event_start <= %s THEN '1h'
+                               END as reminder_type
+                        FROM iracing_team_events e
+                        JOIN iracing_teams t ON e.team_id = t.id
+                        WHERE e.is_cancelled = FALSE
+                          AND (
+                              (e.reminder_24h_sent = FALSE AND e.event_start > %s AND e.event_start <= %s)
+                              OR
+                              (e.reminder_1h_sent = FALSE AND e.event_start > %s AND e.event_start <= %s)
+                          )
+                        ORDER BY e.event_start
+                    """, (
+                        now, now + timedelta(hours=24),  # 24h reminder window
+                        now, now + timedelta(hours=1),   # 1h reminder window
+                        now, now + timedelta(hours=24),  # 24h check
+                        now, now + timedelta(hours=1)    # 1h check
+                    ))
+
+                    results = cur.fetchall()
+                    return [{
+                        'id': row[0],
+                        'team_id': row[1],
+                        'guild_id': row[2],
+                        'event_name': row[3],
+                        'event_type': row[4],
+                        'event_start': row[5],
+                        'series_name': row[6],
+                        'track_name': row[7],
+                        'team_name': row[8],
+                        'team_tag': row[9],
+                        'reminder_type': row[10]
+                    } for row in results if row[10] is not None]
+        except Exception as e:
+            print(f"❌ Error getting events needing reminders: {e}")
+            return []
+
+    def mark_event_reminder_sent(self, event_id: int, reminder_type: str) -> bool:
+        """Mark that a reminder has been sent for an event"""
+        try:
+            with self.db.get_connection() as conn:
+                with conn.cursor() as cur:
+                    if reminder_type == '24h':
+                        cur.execute("""
+                            UPDATE iracing_team_events
+                            SET reminder_24h_sent = TRUE
+                            WHERE id = %s
+                        """, (event_id,))
+                    elif reminder_type == '1h':
+                        cur.execute("""
+                            UPDATE iracing_team_events
+                            SET reminder_1h_sent = TRUE
+                            WHERE id = %s
+                        """, (event_id,))
+                    else:
+                        return False
+                    print(f"✅ Marked {reminder_type} reminder sent for event {event_id}")
+                    return True
+        except Exception as e:
+            print(f"❌ Error marking reminder sent: {e}")
+            return False
+
+    def get_event_details(self, event_id: int) -> Optional[Dict]:
+        """Get full event details including team info"""
+        try:
+            with self.db.get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT e.id, e.team_id, e.guild_id, e.event_name, e.event_type,
+                               e.series_name, e.track_name, e.event_start,
+                               e.event_duration_minutes, e.notes, e.is_cancelled,
+                               t.team_name, t.team_tag
+                        FROM iracing_team_events e
+                        JOIN iracing_teams t ON e.team_id = t.id
+                        WHERE e.id = %s
+                    """, (event_id,))
+
+                    result = cur.fetchone()
+                    if result:
+                        return {
+                            'id': result[0],
+                            'team_id': result[1],
+                            'guild_id': result[2],
+                            'event_name': result[3],
+                            'event_type': result[4],
+                            'series_name': result[5],
+                            'track_name': result[6],
+                            'event_start': result[7],
+                            'duration_minutes': result[8],
+                            'notes': result[9],
+                            'is_cancelled': result[10],
+                            'team_name': result[11],
+                            'team_tag': result[12]
+                        }
+                    return None
+        except Exception as e:
+            print(f"❌ Error getting event details: {e}")
+            return None

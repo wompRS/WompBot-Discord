@@ -102,6 +102,9 @@ class SearchEngine:
         For follow-up questions like "when is iracings?" after asking about VLN,
         this will produce "iRacing VLN schedule 2026" instead of just "when is iracings".
 
+        For clarifications like "aberdeen in scotland" following "when did it last rain in aberdeen",
+        this will combine them into "when did it last rain aberdeen scotland".
+
         Args:
             user_message: The current user message
             conversation_history: Recent conversation messages (list of dicts with 'content')
@@ -121,6 +124,7 @@ class SearchEngine:
             r"^can you\s+", r"^could you\s+", r"^please\s+", r"^tell me\s+",
             r"^what about\s+", r"^how about\s+", r"^do you know\s+",
             r"^i want to know\s+", r"^i need to know\s+", r"^find out\s+",
+            r"^ok\s+wompbot\s+", r"^okay\s+wompbot\s+",
         ]
         query_lower = query.lower()
         for pattern in filler_patterns:
@@ -137,6 +141,20 @@ class SearchEngine:
 
         if not needs_context or not conversation_history:
             return query
+
+        # Check if this looks like a clarification/answer to a previous question
+        # (short message that doesn't contain a question word but may be answering one)
+        is_clarification = self._is_clarification(query_lower)
+
+        if is_clarification:
+            # Find the most recent question from conversation that this might be clarifying
+            original_question = self._find_original_question(conversation_history, query_lower)
+            if original_question:
+                # Combine the original question with the clarification
+                combined_query = self._merge_question_with_clarification(original_question, query)
+                if combined_query != query:
+                    print(f"🔍 Clarification detected: '{query}' → merged with original question → '{combined_query}'")
+                    return combined_query
 
         # Build context from recent messages (including bot responses!)
         recent_context = []
@@ -168,6 +186,148 @@ class SearchEngine:
                 return enhanced_query
 
         return query
+
+    def _is_clarification(self, query_lower):
+        """
+        Detect if a message looks like a clarification/answer to a previous question
+        rather than a new question itself.
+
+        Examples of clarifications:
+        - "aberdeen in scotland" (clarifying which Aberdeen)
+        - "the blue one" (clarifying which item)
+        - "last week" (clarifying a time)
+        - "python 3.11" (clarifying a version)
+        """
+        import re
+
+        # Very short messages are likely clarifications
+        if len(query_lower) < 30:
+            # Check if it lacks question words (what, when, where, how, why, who, which, is, are, do, does, can, will)
+            question_words = r'\b(what|when|where|how|why|who|which|is|are|do|does|did|can|will|would|should|could)\b'
+            if not re.search(question_words, query_lower):
+                return True
+
+        # Patterns that indicate clarifications
+        clarification_patterns = [
+            r'^(the|a|an)\s+\w+\s*(one|version|type|kind)?$',  # "the blue one", "a newer version"
+            r'^in\s+\w+',  # "in scotland", "in python"
+            r'^\w+\s+in\s+\w+$',  # "aberdeen in scotland"
+            r'^(last|next|this)\s+(week|month|year|time)',  # "last week"
+            r'^\d+(\.\d+)?$',  # version numbers like "3.11"
+            r'^(yes|no|yeah|nah|yep|nope)',  # confirmations
+        ]
+
+        for pattern in clarification_patterns:
+            if re.match(pattern, query_lower):
+                return True
+
+        return False
+
+    def _find_original_question(self, conversation_history, clarification_lower):
+        """
+        Find the most recent question from conversation history that the current
+        clarification might be answering.
+        """
+        import re
+
+        # Look through recent messages (reverse order - most recent first)
+        for msg in reversed(conversation_history[-10:]):
+            content = msg.get('content', '').lower()
+
+            # Skip bot messages and very short messages
+            username = msg.get('username', '').lower()
+            if 'wompbot' in username or 'womp bot' in username or len(content) < 10:
+                continue
+
+            # Check if this looks like a question that could have prompted the clarification
+            # Questions often contain: what, when, where, how, why, who, which, or end with ?
+            question_indicators = [
+                r'\b(what|when|where|how|why|who|which)\b',
+                r'\?$',
+                r'\b(is|are|was|were|do|does|did|can|could|will|would)\b.*\b(it|that|there)\b',
+            ]
+
+            is_question = any(re.search(pattern, content) for pattern in question_indicators)
+
+            if is_question:
+                # Check if the clarification could be answering this question
+                # by looking for overlapping topics or keywords
+                # Extract key nouns/topics from the question
+                question_words = set(re.findall(r'\b[a-z]{3,}\b', content))
+                clarification_words = set(re.findall(r'\b[a-z]{3,}\b', clarification_lower))
+
+                # If there's overlap or the clarification seems related, return this question
+                overlap = question_words & clarification_words
+                if overlap or self._topics_related(content, clarification_lower):
+                    return content
+
+        return None
+
+    def _topics_related(self, question, clarification):
+        """Check if a clarification seems related to a question."""
+        import re
+
+        # Check for location clarifications (e.g., "in scotland" clarifying "aberdeen")
+        location_patterns = [
+            (r'\b(in|at|from)\s+(\w+)', r'\b\2\b'),  # "in scotland" -> look for that place in question
+        ]
+
+        # Extract potential location from clarification
+        location_match = re.search(r'\b(in|at|from)\s+(\w+)', clarification)
+        if location_match:
+            # This is a location clarification - very likely related to any question
+            # that mentions places or asks "where" type questions
+            return True
+
+        # Check if question mentions something the clarification specifies
+        # e.g., question about "aberdeen" and clarification "scotland"
+        clarification_nouns = set(re.findall(r'\b[a-z]{4,}\b', clarification))
+        for noun in clarification_nouns:
+            # Skip common words
+            if noun in {'this', 'that', 'with', 'from', 'have', 'been', 'would', 'could', 'should'}:
+                continue
+            # If the noun could be clarifying something in the question
+            if any(word in question for word in [noun[:4]]):  # Partial match
+                return True
+
+        return False
+
+    def _merge_question_with_clarification(self, original_question, clarification):
+        """
+        Merge an original question with a clarification to create a better search query.
+
+        Example:
+        - original: "when did it last not rain in aberdeen"
+        - clarification: "aberdeen in scotland"
+        - result: "when did it last not rain aberdeen scotland"
+        """
+        import re
+
+        # Clean up the original question
+        question_clean = original_question.strip()
+        # Remove bot name mentions
+        question_clean = re.sub(r'\bwompbot\b|\bwomp bot\b', '', question_clean, flags=re.IGNORECASE).strip()
+        # Remove filler words
+        question_clean = re.sub(r'^(hey|hi|yo|ok|okay)\s+', '', question_clean, flags=re.IGNORECASE).strip()
+
+        # Extract the key info from clarification (remove "in", "at", "from" if just specifying location)
+        clarification_clean = clarification.strip()
+        clarification_clean = re.sub(r'^(it\'?s?|that\'?s?|the)\s+', '', clarification_clean, flags=re.IGNORECASE).strip()
+
+        # Build combined query
+        # Take the core question and append the clarification details
+        # But avoid duplicating words
+        question_words = set(question_clean.lower().split())
+        clarification_words = clarification_clean.lower().split()
+
+        # Find new info from clarification not in question
+        new_info = [w for w in clarification_words if w not in question_words and len(w) > 2]
+
+        if new_info:
+            combined = question_clean + ' ' + ' '.join(new_info)
+            return combined
+
+        return clarification
 
     def _is_followup_question(self, query_lower):
         """Detect if a query is likely a follow-up question needing context."""

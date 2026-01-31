@@ -176,7 +176,8 @@ tasks_dict = register_tasks(
     iracing_popularity_cache=iracing_popularity_cache,
     reminder_system=reminder_system,
     event_system=event_system,
-    privacy_manager=privacy_manager
+    privacy_manager=privacy_manager,
+    iracing_team_manager=iracing_team_manager
 )
 
 # Register event handlers
@@ -202,7 +203,8 @@ register_events(
     wolfram=wolfram,
     weather=weather,
     series_cache=series_autocomplete_cache,
-    trivia=trivia
+    trivia=trivia,
+    reminder_system=reminder_system
 )
 
 # Register prefix commands
@@ -213,7 +215,9 @@ register_prefix_commands(
     llm=llm,
     search=search,
     help_system=help_system,
-    tasks_dict=tasks_dict
+    tasks_dict=tasks_dict,
+    weather=weather,
+    wolfram=wolfram
 )
 
 # Register slash commands

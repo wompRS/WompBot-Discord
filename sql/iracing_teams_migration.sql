@@ -101,3 +101,33 @@ CREATE INDEX IF NOT EXISTS idx_driver_availability_event ON iracing_driver_avail
 CREATE INDEX IF NOT EXISTS idx_driver_availability_user ON iracing_driver_availability(discord_user_id);
 CREATE INDEX IF NOT EXISTS idx_stint_schedule_event ON iracing_stint_schedule(event_id);
 CREATE INDEX IF NOT EXISTS idx_special_events_start ON iracing_special_events(event_start);
+
+-- Team invitations (pending until accepted)
+CREATE TABLE IF NOT EXISTS iracing_team_invitations (
+    id SERIAL PRIMARY KEY,
+    team_id INT NOT NULL REFERENCES iracing_teams(id) ON DELETE CASCADE,
+    discord_user_id BIGINT NOT NULL,
+    invited_by BIGINT NOT NULL,
+    role VARCHAR(50) DEFAULT 'driver',
+    status VARCHAR(20) DEFAULT 'pending',  -- pending, accepted, declined, expired
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    responded_at TIMESTAMP,
+    UNIQUE(team_id, discord_user_id, status)
+);
+
+CREATE INDEX IF NOT EXISTS idx_team_invitations_user ON iracing_team_invitations(discord_user_id);
+CREATE INDEX IF NOT EXISTS idx_team_invitations_team ON iracing_team_invitations(team_id);
+CREATE INDEX IF NOT EXISTS idx_team_invitations_status ON iracing_team_invitations(status);
+
+-- Add reminder tracking columns for team events
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_name = 'iracing_team_events' AND column_name = 'reminder_24h_sent') THEN
+        ALTER TABLE iracing_team_events ADD COLUMN reminder_24h_sent BOOLEAN DEFAULT FALSE;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_name = 'iracing_team_events' AND column_name = 'reminder_1h_sent') THEN
+        ALTER TABLE iracing_team_events ADD COLUMN reminder_1h_sent BOOLEAN DEFAULT FALSE;
+    END IF;
+END $$;
