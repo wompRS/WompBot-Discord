@@ -150,101 +150,94 @@ class iRacingVisualizer:
         Returns:
             BytesIO containing the PNG image
         """
-        # License categories in order with type badges
+        # License categories in order
         license_categories = [
-            ('oval', 'OVAL', 'O', '#3b82f6'),
-            ('sports_car_road', 'SPORTS CAR', 'SC', '#22c55e'),
-            ('formula_car_road', 'FORMULA CAR', 'FC', '#ef4444'),
-            ('dirt_oval', 'DIRT OVAL', 'DO', '#eab308'),
-            ('dirt_road', 'DIRT ROAD', 'DR', '#a855f7')
+            ('oval', 'OVAL'),
+            ('sports_car_road', 'SPORTS CAR'),
+            ('formula_car_road', 'FORMULA CAR'),
+            ('dirt_oval', 'DIRT OVAL'),
+            ('dirt_road', 'DIRT ROAD')
         ]
 
         # Count valid licenses to calculate dynamic height
-        num_licenses = sum(1 for key, _, _, _ in license_categories if key in licenses_data)
+        num_licenses = sum(1 for key, _ in license_categories if key in licenses_data)
 
-        # Calculate dynamic height: title (1.5) + headers (1) + rows (num * 1) + footer (0.8) + padding (0.5)
-        content_height = 1.5 + 1 + num_licenses + 0.8 + 0.5
-        fig_height = max(4, content_height * 1.4)  # Scale for proper aspect ratio
+        # Tighter layout - reduced spacing
+        row_height = 0.7  # Tighter rows
+        content_height = 1.0 + 0.6 + (num_licenses * row_height) + 0.4  # title + headers + rows + footer
+        fig_height = max(3, content_height * 1.3)
 
-        fig = plt.figure(figsize=(14, fig_height), facecolor=self.COLORS['bg_dark'])
-        gs = fig.add_gridspec(1, 1, hspace=0.3)
-        ax = fig.add_subplot(gs[0])
+        # Narrower figure for tighter layout
+        fig = plt.figure(figsize=(10, fig_height), facecolor=self.COLORS['bg_dark'])
+        ax = fig.add_subplot(111)
 
         ax.axis('off')
         ax.set_xlim(0, 10)
         ax.set_ylim(0, content_height)
 
-        # Title
-        title_y = content_height - 0.5
-        ax.text(5, title_y, f"{driver_name} - License Overview",
-               ha='center', fontsize=24, fontweight='bold', color=self.COLORS['text_white'])
+        # Title - larger font
+        title_y = content_height - 0.35
+        ax.text(5, title_y, f"{driver_name}",
+               ha='center', fontsize=22, fontweight='bold', color=self.COLORS['text_white'])
 
-        # Headers
-        y_pos = title_y - 1.5
-        ax.text(0.7, y_pos, "Category", fontsize=11, color=self.COLORS['accent_blue'], fontweight='bold')
-        ax.text(2.7, y_pos, "License", fontsize=11, color=self.COLORS['accent_blue'], fontweight='bold')
-        ax.text(4.7, y_pos, "Safety Rating", fontsize=11, color=self.COLORS['accent_blue'], fontweight='bold')
-        ax.text(6.7, y_pos, "iRating", fontsize=11, color=self.COLORS['accent_blue'], fontweight='bold')
-        ax.text(8.5, y_pos, "ttRating", fontsize=11, color=self.COLORS['accent_blue'], fontweight='bold')
+        # Headers - tighter spacing
+        y_pos = title_y - 0.7
+        ax.text(0.3, y_pos, "Category", fontsize=12, color=self.COLORS['accent_blue'], fontweight='bold')
+        ax.text(2.6, y_pos, "License", fontsize=12, color=self.COLORS['accent_blue'], fontweight='bold')
+        ax.text(5.0, y_pos, "SR", fontsize=12, color=self.COLORS['accent_blue'], fontweight='bold')
+        ax.text(6.5, y_pos, "iRating", fontsize=12, color=self.COLORS['accent_blue'], fontweight='bold')
+        ax.text(8.5, y_pos, "ttRating", fontsize=12, color=self.COLORS['accent_blue'], fontweight='bold')
 
-        y_pos -= 1
-        for idx, (key, name, badge, badge_color) in enumerate(license_categories):
+        y_pos -= row_height
+        for idx, (key, name) in enumerate(license_categories):
             if key not in licenses_data:
                 continue
 
             lic = licenses_data[key]
 
-            # Category badge (colored square with letter)
-            ax.text(0.5, y_pos, badge,
-                   fontsize=11, color='white', fontweight='bold', va='center',
-                   bbox=dict(boxstyle='round,pad=0.3', facecolor=badge_color, edgecolor='white', linewidth=1))
-
-            # Category name
-            ax.text(1.2, y_pos, name,
-                   fontsize=13, color=self.COLORS['text_white'], va='center', fontweight='bold')
+            # Category name - larger font
+            ax.text(0.3, y_pos, name,
+                   fontsize=14, color=self.COLORS['text_white'], va='center', fontweight='bold')
 
             # License class with color
             class_name = lic.get('group_name', 'Unknown')
             license_color = self.LICENSE_COLORS.get(class_name, '#fc0706')
 
-            # Class letter in colored circle
+            # Class letter in colored circle - larger
             class_letter = class_name.split()[-1][0] if class_name.split()[-1][0].isalpha() else 'R'
-            ax.text(2.7, y_pos, class_letter,
-                   fontsize=14, color='white', fontweight='bold', va='center',
-                   bbox=dict(boxstyle='circle,pad=0.3', facecolor=license_color, edgecolor='white', linewidth=2))
+            ax.text(2.6, y_pos, class_letter,
+                   fontsize=16, color='white', fontweight='bold', va='center',
+                   bbox=dict(boxstyle='circle,pad=0.25', facecolor=license_color, edgecolor='white', linewidth=2))
 
-            ax.text(3.4, y_pos, class_name,
-                   fontsize=12, color=self.COLORS['text_white'], va='center')
+            ax.text(3.3, y_pos, class_name,
+                   fontsize=13, color=self.COLORS['text_white'], va='center')
 
-            # Safety Rating with color coding
+            # Safety Rating - larger
             sr = lic.get('safety_rating', 0.0)
             sr_color = self.COLORS['accent_green'] if sr >= 3.0 else self.COLORS['accent_yellow'] if sr >= 2.0 else self.COLORS['accent_red']
-            ax.text(4.7, y_pos, f"{sr:.2f}",
-                   fontsize=14, color=sr_color, fontweight='bold', va='center')
+            ax.text(5.0, y_pos, f"{sr:.2f}",
+                   fontsize=16, color=sr_color, fontweight='bold', va='center')
 
-            # iRating with badge
+            # iRating - larger
             irating = lic.get('irating', 0)
             ir_color = self.COLORS['accent_green'] if irating >= 2000 else self.COLORS['accent_blue']
-            ax.text(6.7, y_pos, str(irating),
-                   fontsize=14, color=ir_color, fontweight='bold', va='center',
-                   bbox=dict(boxstyle='round,pad=0.3', facecolor=ir_color, alpha=0.2))
+            ax.text(6.5, y_pos, str(irating),
+                   fontsize=16, color=ir_color, fontweight='bold', va='center')
 
-            # ttRating
+            # ttRating - larger
             tt_rating = lic.get('tt_rating', 0)
             ax.text(8.5, y_pos, str(tt_rating),
-                   fontsize=13, color=self.COLORS['text_gray'], va='center')
+                   fontsize=14, color=self.COLORS['text_gray'], va='center')
 
-            y_pos -= 1
+            y_pos -= row_height
 
-        # Footer - positioned dynamically based on last row
-        footer_y = max(0.3, y_pos + 0.3)
-        ax.text(5, footer_y, "Generated by WompBot • Data from iRacing",
-               ha='center', fontsize=10, color=self.COLORS['text_gray'], style='italic')
-
-        # No tight_layout - incompatible with add_axes
+        # Footer - smaller, at bottom
+        footer_y = 0.15
+        ax.text(5, footer_y, "WompBot • iRacing",
+               ha='center', fontsize=9, color=self.COLORS['text_gray'], style='italic')
 
         buffer = BytesIO()
-        plt.savefig(buffer, format='png', dpi=150, facecolor=self.COLORS['bg_dark'], bbox_inches='tight')
+        plt.savefig(buffer, format='png', dpi=150, facecolor=self.COLORS['bg_dark'], bbox_inches='tight', pad_inches=0.15)
         plt.close()
         buffer.seek(0)
 
