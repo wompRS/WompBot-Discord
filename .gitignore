@@ -52,6 +52,8 @@ bot/prompts/system_prompt.txt
 # Auto-start and monitoring scripts (local only)
 monitor-bot.sh
 start-bot.sh
+start-bot.bat
+setup-autostart.ps1
 setup-wsl-autostart.ps1
 setup-wsl-autostart-task.ps1
 start-wsl-bot.bat
