@@ -66,10 +66,38 @@ def setup_iracing_team_commands(bot, iracing_team_manager):
         """Create a new iRacing team"""
         await interaction.response.defer()
 
-        # Validate team tag length
+        # SECURITY: Input validation for team name
+        team_name = team_name.strip()
+        if not team_name or len(team_name) < 2:
+            await interaction.followup.send("❌ Team name must be at least 2 characters.", ephemeral=True)
+            return
+        if len(team_name) > 50:
+            await interaction.followup.send("❌ Team name must be 50 characters or less.", ephemeral=True)
+            return
+        # Allow alphanumeric, spaces, hyphens, underscores, and common punctuation
+        if not re.match(r'^[\w\s\-\'\.&]+$', team_name, re.UNICODE):
+            await interaction.followup.send("❌ Team name contains invalid characters. Use letters, numbers, spaces, hyphens, or underscores.", ephemeral=True)
+            return
+
+        # SECURITY: Input validation for team tag
+        team_tag = team_tag.strip().upper()
+        if len(team_tag) < 2:
+            await interaction.followup.send("❌ Team tag must be at least 2 characters.", ephemeral=True)
+            return
         if len(team_tag) > 10:
             await interaction.followup.send("❌ Team tag must be 10 characters or less.", ephemeral=True)
             return
+        # Team tags should be alphanumeric only
+        if not re.match(r'^[A-Z0-9]+$', team_tag):
+            await interaction.followup.send("❌ Team tag must contain only letters and numbers.", ephemeral=True)
+            return
+
+        # SECURITY: Input validation for description
+        if description:
+            description = description.strip()
+            if len(description) > 500:
+                await interaction.followup.send("❌ Description must be 500 characters or less.", ephemeral=True)
+                return
 
         # Create the team
         team_id = iracing_team_manager.create_team(

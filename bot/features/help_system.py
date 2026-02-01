@@ -1226,8 +1226,26 @@ class HelpSystem:
         """Generate detailed help for a specific command"""
         command = command.lower().strip().lstrip('/')
 
+        # SECURITY: Sanitize command to prevent path traversal attacks
+        # Only allow alphanumeric characters, underscores, and hyphens
+        import re
+        if not re.match(r'^[a-z0-9_-]+$', command):
+            return None  # Invalid command name, reject silently
+
+        # Additional safety: use basename and verify no path separators
+        command = os.path.basename(command)
+        if '..' in command or '/' in command or '\\' in command:
+            return None
+
         # Try to load from file first
         doc_file = os.path.join(self.docs_path, f"{command}.md")
+
+        # SECURITY: Verify the resolved path is within docs_path
+        real_doc_file = os.path.realpath(doc_file)
+        real_docs_path = os.path.realpath(self.docs_path)
+        if not real_doc_file.startswith(real_docs_path):
+            return None  # Path traversal attempt detected
+
         if os.path.exists(doc_file):
             try:
                 with open(doc_file, 'r', encoding='utf-8') as f:

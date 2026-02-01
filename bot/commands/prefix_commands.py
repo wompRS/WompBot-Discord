@@ -9,6 +9,7 @@ import discord
 import requests
 from discord.ext import commands
 from datetime import datetime, timedelta
+from urllib.parse import quote as url_quote
 
 
 def register_prefix_commands(bot, db, llm, search, help_system, tasks_dict,
@@ -338,7 +339,8 @@ def register_prefix_commands(bot, db, llm, search, help_system, tasks_dict,
         async with ctx.typing():
             try:
                 def fetch_definition():
-                    url = f"https://api.dictionaryapi.dev/api/v2/entries/en/{word}"
+                    # URL encode word to handle special characters safely
+                    url = f"https://api.dictionaryapi.dev/api/v2/entries/en/{url_quote(word, safe='')}"
                     return requests.get(url, timeout=10)
 
                 response = await asyncio.to_thread(fetch_definition)
@@ -529,7 +531,8 @@ def register_prefix_commands(bot, db, llm, search, help_system, tasks_dict,
         async with ctx.typing():
             try:
                 def fetch_movie():
-                    url = f"http://www.omdbapi.com/?t={title}&apikey={api_key}"
+                    # URL encode title to handle special characters safely
+                    url = f"http://www.omdbapi.com/?t={url_quote(title, safe='')}&apikey={api_key}"
                     return requests.get(url, timeout=10)
 
                 response = await asyncio.to_thread(fetch_movie)
