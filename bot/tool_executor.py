@@ -727,6 +727,44 @@ class ToolExecutor:
 
         return {"success": False, "error": f"Unknown random type: {choice_type}"}
 
+    def _is_internal_url(self, url: str) -> bool:
+        """Check if URL points to an internal/private IP address (SSRF protection)"""
+        from urllib.parse import urlparse
+        import ipaddress
+        import socket
+
+        try:
+            parsed = urlparse(url)
+            hostname = parsed.hostname
+
+            if not hostname:
+                return True  # No hostname = invalid
+
+            # Block obvious internal hostnames
+            if hostname.lower() in ['localhost', '127.0.0.1', '0.0.0.0', '::1']:
+                return True
+
+            # Try to resolve hostname and check if it's a private IP
+            try:
+                ip_str = socket.gethostbyname(hostname)
+                ip = ipaddress.ip_address(ip_str)
+
+                # Block private, loopback, link-local, and reserved addresses
+                if (ip.is_private or ip.is_loopback or ip.is_link_local or
+                    ip.is_reserved or ip.is_multicast):
+                    return True
+
+                # Block AWS metadata endpoint
+                if ip_str.startswith('169.254.'):
+                    return True
+
+            except (socket.gaierror, ValueError):
+                pass  # Can't resolve = probably external, allow it
+
+            return False
+        except Exception:
+            return True  # On error, assume it's internal for safety
+
     async def _url_preview(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Fetch and summarize a URL"""
         import asyncio
@@ -737,12 +775,16 @@ class ToolExecutor:
         if not url.startswith(('http://', 'https://')):
             url = 'https://' + url
 
+        # SECURITY: Check for SSRF - block internal/private URLs
+        if self._is_internal_url(url):
+            return {"success": False, "error": "Cannot fetch internal or private URLs"}
+
         try:
             def do_fetch():
                 headers = {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
                 }
-                resp = requests.get(url, headers=headers, timeout=15)
+                resp = requests.get(url, headers=headers, timeout=15, allow_redirects=False)
                 return resp
 
             response = await asyncio.to_thread(do_fetch)
@@ -1156,7 +1198,9 @@ class ToolExecutor:
 
         try:
             def do_fetch():
-                url = f"https://api.dictionaryapi.dev/api/v2/entries/en/{word}"
+                from urllib.parse import quote
+                # URL encode word to handle special characters safely
+                url = f"https://api.dictionaryapi.dev/api/v2/entries/en/{quote(word, safe='')}"
                 resp = requests.get(url, timeout=10)
                 return resp
 
