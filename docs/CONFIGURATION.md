@@ -22,8 +22,8 @@ OPENROUTER_API_KEY=your_openrouter_api_key_here
 TAVILY_API_KEY=your_tavily_api_key_here
 
 # Model Selection
-MODEL_NAME=anthropic/claude-3.7-sonnet           # High-quality model for general chat
-FACT_CHECK_MODEL=anthropic/claude-3.5-sonnet   # High-accuracy model for fact-checking
+MODEL_NAME=deepseek/deepseek-chat              # Cost-effective model for general chat
+FACT_CHECK_MODEL=deepseek/deepseek-chat        # Model for fact-checking
 
 # Conversation Context
 CONTEXT_WINDOW_MESSAGES=6
@@ -90,58 +90,41 @@ https://discord.com/api/oauth2/authorize?client_id=YOUR_BOT_CLIENT_ID&permission
    ```
 
 **Costs:**
-- Claude 3.7 Sonnet: ~$3 input / $15 output per 1M tokens
+- DeepSeek: Very cost-effective per 1M tokens
 - Pay only for what you use
-- Expected: ~$20-30/month for active Discord server
+- Expected: ~$5-15/month for active Discord server
 
 ---
 
 ### Model Selection
 
-**Dual-Model Architecture:**
+**Model Configuration:**
 
-WompBot uses two models optimized for different tasks:
-1. **General Chat Model** (`MODEL_NAME`) - Fast, conversational
-2. **Fact-Check Model** (`FACT_CHECK_MODEL`) - Slow, highly accurate
+WompBot uses configurable models via OpenRouter:
 
 ```bash
-# General Chat - Recommended (high quality, accurate)
-MODEL_NAME=anthropic/claude-3.7-sonnet
+# General Chat - Recommended (cost-effective, high quality)
+MODEL_NAME=deepseek/deepseek-chat
 
-# Fact-Checking - High accuracy (critical for zero hallucination)
-FACT_CHECK_MODEL=anthropic/claude-3.5-sonnet
+# Fact-Checking
+FACT_CHECK_MODEL=deepseek/deepseek-chat
 ```
 
-**Alternative General Chat Models:**
+**Alternative Models:**
 
 ```bash
 # High quality alternatives
-MODEL_NAME=anthropic/claude-3.5-sonnet  # Previous generation
-MODEL_NAME=deepseek/deepseek-chat-v3.1  # Cheaper, very good
+MODEL_NAME=anthropic/claude-3.5-sonnet  # More expensive, very accurate
+MODEL_NAME=google/gemini-2.0-flash-exp  # Fast alternative
 
 # Budget options
 MODEL_NAME=google/gemini-2.5-flash      # Very cheap
-MODEL_NAME=deepseek/deepseek-r1-distill-qwen-32b  # Reasoning model
-```
-
-**Alternative Fact-Check Models:**
-
-```bash
-# High accuracy (recommended, slower but reliable)
-FACT_CHECK_MODEL=anthropic/claude-3.5-sonnet
-
-# Medium accuracy (cheaper but more hallucination)
-FACT_CHECK_MODEL=meta-llama/llama-3.1-70b-instruct
-
-# Low accuracy (not recommended for fact-checking)
-FACT_CHECK_MODEL=nousresearch/hermes-3-llama-3.1-70b
 ```
 
 **Browse models:** [OpenRouter Models](https://openrouter.ai/models)
 
 **Filters:**
 - General chat: Look for "Uncensored" or "Dolphin" for no content filtering
-- Fact-checking: Look for high accuracy models (Claude, GPT-4, etc.)
 - Check pricing ($/1M tokens)
 - Check context length (longer = more conversation memory)
 
@@ -401,10 +384,8 @@ FACT_CHECK_DAILY_LIMIT=10
 ```
 
 **Why limit fact-checks:**
-- Fact-checking uses expensive model (Claude 3.5 Sonnet)
 - Web search costs (7 sources per check)
-- ~$0.018 per fact-check
-- Without limits: ~$180 per 10k fact-checks
+- Without limits: costs can add up quickly
 
 **User feedback:**
 ```
@@ -539,7 +520,7 @@ Cost tracking is **always enabled** and requires no configuration.
 
 **What gets tracked:**
 - Real-time token usage from API responses
-- Model-specific pricing (Claude 3.7 Sonnet, Claude 3.5 Sonnet, etc.)
+- Model-specific pricing
 - Input tokens vs. output tokens
 - Request type (chat, fact-check, etc.)
 - Per-user attribution
@@ -555,8 +536,7 @@ Cost tracking is **always enabled** and requires no configuration.
 
 Your bot has spent $3.00 total on LLM API calls.
 
-Claude 3.7 Sonnet: $2.45 (82%)
-Claude 3.5 Sonnet: $0.55 (18%)
+DeepSeek: $3.00 (100%)
 
 This is an automatic alert sent every $1.
 ```
@@ -846,7 +826,7 @@ logging.basicConfig(level=logging.WARNING)
 ```bash
 # .env
 CONTEXT_WINDOW_MESSAGES=6
-MODEL_NAME=anthropic/claude-3.7-sonnet
+MODEL_NAME=deepseek/deepseek-chat
 
 # main.py:36
 @tasks.loop(hours=1)  # Hourly stats updates

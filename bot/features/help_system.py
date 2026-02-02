@@ -998,7 +998,7 @@ class HelpSystem:
         """Generate general help embed with all commands"""
         embed = discord.Embed(
             title="WompBot Commands",
-            description="**62+ slash commands** and **18 AI tools** organized by category\n\nChat: @WompBot, 'wompbot', or '!wb' • Powered by Claude 3.7 Sonnet\nSupports images, GIFs, YouTube videos, and video attachments\nUse `/help <command>` for details",
+            description="**62+ slash commands** and **18 AI tools** organized by category\n\nChat: @WompBot, 'wompbot', or '!wb' • Powered by DeepSeek\nSupports images, GIFs, YouTube videos, and video attachments\nUse `/help <command>` for details",
             color=discord.Color.purple()
         )
 

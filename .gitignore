@@ -28,6 +28,9 @@ postgres_data/
 # Database backups
 backups/
 
+# Bug tracker data (private)
+data/bugs.json
+
 # VSCode
 .vscode/
 

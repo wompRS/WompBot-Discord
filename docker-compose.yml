@@ -63,6 +63,9 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       WOLFRAM_APP_ID: ${WOLFRAM_APP_ID}
       OPENWEATHER_API_KEY: ${OPENWEATHER_API_KEY}
+      OMDB_API_KEY: ${OMDB_API_KEY}
+      FINNHUB_API_KEY: ${FINNHUB_API_KEY}
+      ALPHA_VANTAGE_API_KEY: ${ALPHA_VANTAGE_API_KEY}
       MODEL_NAME: ${MODEL_NAME}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL}
       RAG_SIMILARITY_THRESHOLD: ${RAG_SIMILARITY_THRESHOLD}
@@ -106,6 +109,7 @@ services:
       - ./bot:/app
       - ./README.md:/README.md          # Self-knowledge system needs README
       - ./docs:/docs                    # Self-knowledge system needs docs
+      - ./data:/app/data                # Persistent data (bug tracker, etc.)
     # Resource limits for dedicated server (increased from 1 CPU / 2GB)
     deploy:
       resources:

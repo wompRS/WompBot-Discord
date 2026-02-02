@@ -5,11 +5,13 @@ This module contains traditional prefix commands (!command syntax).
 """
 
 import asyncio
+import json
 import discord
 import requests
 from discord.ext import commands
 from datetime import datetime, timedelta
 from urllib.parse import quote as url_quote
+import re
 
 
 def register_prefix_commands(bot, db, llm, search, help_system, tasks_dict,
@@ -191,7 +193,7 @@ def register_prefix_commands(bot, db, llm, search, help_system, tasks_dict,
 
         embed.add_field(
             name="Chat with WompBot",
-            value="Tag me with @WompBot, type 'wompbot', or use !wb shorthand. Powered by Claude 3.7 Sonnet for fast, conversational responses with automatic web search when needed.",
+            value="Tag me with @WompBot, type 'wompbot', or use !wb shorthand. Powered by DeepSeek for fast, conversational responses with automatic web search when needed.",
             inline=False
         )
 
@@ -214,7 +216,7 @@ def register_prefix_commands(bot, db, llm, search, help_system, tasks_dict,
 
         embed.add_field(
             name="Fact-Check",
-            value="React to any message with warning emoji to trigger high-accuracy fact-checking. Uses Claude 3.5 Sonnet, web search, and multi-source verification (requires 2+ sources). Rate limited: 5-minute cooldown, 10 per day per user.",
+            value="React to any message with warning emoji to trigger high-accuracy fact-checking. Uses DeepSeek, web search, and multi-source verification (requires 2+ sources). Rate limited: 5-minute cooldown, 10 per day per user.",
             inline=False
         )
 
@@ -251,6 +253,7 @@ def register_prefix_commands(bot, db, llm, search, help_system, tasks_dict,
                 "/receipts [@user] [keyword] - View tracked claims\n"
                 "/quotes [@user] - View saved quotes\n"
                 "!search <query> - Manually search the web\n"
+                "!yt <query> - Search YouTube and get video links\n"
                 "!analyze [days] - (Admin) Analyze user behavior patterns\n"
                 "!refreshstats - (Admin) Manually refresh stats cache\n"
                 "/ping - Check bot latency"
@@ -564,12 +567,8 @@ def register_prefix_commands(bot, db, llm, search, help_system, tasks_dict,
 
     @bot.command(name='stock', aliases=['price', 'crypto'])
     async def stock_price(ctx, *, query: str):
-        """Get stock/crypto price: !stock AAPL, !stock Microsoft, !stock BTC-USD"""
-        try:
-            import yfinance as yf
-        except ImportError:
-            await ctx.send("❌ Stock lookup not available (yfinance not installed).")
-            return
+        """Get stock/crypto price: !stock AAPL, !stock Microsoft, !stock BTC"""
+        import os
 
         query = query.strip()
 
@@ -590,7 +589,7 @@ def register_prefix_commands(bot, db, llm, search, help_system, tasks_dict,
             'BANK OF AMERICA': 'BAC', 'BOFA': 'BAC', 'WELLS FARGO': 'WFC',
             'GOLDMAN': 'GS', 'GOLDMAN SACHS': 'GS', 'MORGAN STANLEY': 'MS',
             'VISA': 'V', 'MASTERCARD': 'MA', 'AMEX': 'AXP', 'AMERICAN EXPRESS': 'AXP',
-            'BLACKROCK': 'BLK', 'BERKSHIRE': 'BRK-B', 'BERKSHIRE HATHAWAY': 'BRK-B',
+            'BLACKROCK': 'BLK', 'BERKSHIRE': 'BRK.A', 'BERKSHIRE HATHAWAY': 'BRK.A',
             # Retail & Consumer
             'WALMART': 'WMT', 'TARGET': 'TGT', 'COSTCO': 'COST', 'HOME DEPOT': 'HD',
             'LOWES': 'LOW', "LOWE'S": 'LOW', 'NIKE': 'NKE', 'STARBUCKS': 'SBUX',
@@ -604,58 +603,87 @@ def register_prefix_commands(bot, db, llm, search, help_system, tasks_dict,
             # Energy
             'EXXON': 'XOM', 'EXXONMOBIL': 'XOM', 'CHEVRON': 'CVX', 'SHELL': 'SHEL',
             'BP': 'BP', 'CONOCOPHILLIPS': 'COP',
-            # Crypto (with -USD suffix for yfinance)
-            'BITCOIN': 'BTC-USD', 'BTC': 'BTC-USD',
-            'ETHEREUM': 'ETH-USD', 'ETH': 'ETH-USD',
-            'DOGECOIN': 'DOGE-USD', 'DOGE': 'DOGE-USD',
-            'SOLANA': 'SOL-USD', 'SOL': 'SOL-USD',
-            'CARDANO': 'ADA-USD', 'ADA': 'ADA-USD',
-            'XRP': 'XRP-USD', 'RIPPLE': 'XRP-USD',
-            'LITECOIN': 'LTC-USD', 'LTC': 'LTC-USD',
-            'POLKADOT': 'DOT-USD', 'DOT': 'DOT-USD',
-            'AVALANCHE': 'AVAX-USD', 'AVAX': 'AVAX-USD',
-            'CHAINLINK': 'LINK-USD', 'LINK': 'LINK-USD',
-            'SHIBA': 'SHIB-USD', 'SHIB': 'SHIB-USD', 'SHIBA INU': 'SHIB-USD',
-            # Indices (for reference)
-            'S&P': '^GSPC', 'S&P 500': '^GSPC', 'SP500': '^GSPC',
-            'DOW': '^DJI', 'DOW JONES': '^DJI',
-            'NASDAQ': '^IXIC', 'NASDAQ COMPOSITE': '^IXIC',
         }
 
-        # Check if query matches a known name
-        symbol = name_to_ticker.get(query.upper(), query.upper())
+        # Crypto name to CoinGecko ID mapping
+        crypto_to_coingecko = {
+            'BITCOIN': 'bitcoin', 'BTC': 'bitcoin', 'BTC-USD': 'bitcoin',
+            'ETHEREUM': 'ethereum', 'ETH': 'ethereum', 'ETH-USD': 'ethereum',
+            'DOGECOIN': 'dogecoin', 'DOGE': 'dogecoin', 'DOGE-USD': 'dogecoin',
+            'SOLANA': 'solana', 'SOL': 'solana', 'SOL-USD': 'solana',
+            'CARDANO': 'cardano', 'ADA': 'cardano', 'ADA-USD': 'cardano',
+            'XRP': 'ripple', 'RIPPLE': 'ripple', 'XRP-USD': 'ripple',
+            'LITECOIN': 'litecoin', 'LTC': 'litecoin', 'LTC-USD': 'litecoin',
+            'POLKADOT': 'polkadot', 'DOT': 'polkadot', 'DOT-USD': 'polkadot',
+            'AVALANCHE': 'avalanche-2', 'AVAX': 'avalanche-2', 'AVAX-USD': 'avalanche-2',
+            'CHAINLINK': 'chainlink', 'LINK': 'chainlink', 'LINK-USD': 'chainlink',
+            'SHIBA': 'shiba-inu', 'SHIB': 'shiba-inu', 'SHIB-USD': 'shiba-inu', 'SHIBA INU': 'shiba-inu',
+            'MATIC': 'matic-network', 'POLYGON': 'matic-network',
+            'UNISWAP': 'uniswap', 'UNI': 'uniswap',
+        }
 
+        query_upper = query.upper()
+
+        # Check if it's a crypto
+        coingecko_id = crypto_to_coingecko.get(query_upper)
+        if coingecko_id:
+            await _fetch_crypto_price(ctx, coingecko_id, query_upper)
+            return
+
+        # Check if query matches a known stock name
+        symbol = name_to_ticker.get(query_upper, query_upper)
+
+        # Try Finnhub first (free, 60 calls/min)
+        finnhub_key = os.getenv('FINNHUB_API_KEY')
+        if finnhub_key:
+            result = await _fetch_finnhub_price(ctx, symbol, finnhub_key)
+            if result:
+                return
+
+        # Fallback: try as crypto on CoinGecko (maybe user typed a crypto symbol we don't have mapped)
+        await _fetch_crypto_price(ctx, query.lower(), query_upper, fallback_stock=symbol)
+
+    async def _fetch_finnhub_price(ctx, symbol: str, api_key: str) -> bool:
+        """Fetch stock price from Finnhub. Returns True if successful."""
         async with ctx.typing():
             try:
-                def fetch_price():
-                    ticker = yf.Ticker(symbol)
-                    info = ticker.info
-                    return info
+                def fetch():
+                    url = f"https://finnhub.io/api/v1/quote?symbol={symbol}&token={api_key}"
+                    resp = requests.get(url, timeout=10)
+                    return resp.json()
 
-                info = await asyncio.to_thread(fetch_price)
+                data = await asyncio.to_thread(fetch)
 
-                if not info or 'regularMarketPrice' not in info:
-                    await ctx.send(f"❌ Could not find price for: `{symbol}`")
-                    return
+                # Finnhub returns c=0 for invalid symbols
+                if not data or data.get('c', 0) == 0:
+                    return False
 
-                price = info.get('regularMarketPrice', 0)
-                prev_close = info.get('previousClose', price)
-                change = price - prev_close
-                change_pct = (change / prev_close * 100) if prev_close else 0
+                price = data['c']  # Current price
+                prev_close = data['pc']  # Previous close
+                change = data['d']  # Change
+                change_pct = data['dp']  # Change percent
 
-                # Determine color based on change
+                # Get company name
+                def fetch_profile():
+                    url = f"https://finnhub.io/api/v1/stock/profile2?symbol={symbol}&token={api_key}"
+                    resp = requests.get(url, timeout=10)
+                    return resp.json()
+
+                profile = await asyncio.to_thread(fetch_profile)
+                name = profile.get('name', symbol) if profile else symbol
+
                 color = discord.Color.green() if change >= 0 else discord.Color.red()
                 arrow = "📈" if change >= 0 else "📉"
 
                 embed = discord.Embed(
-                    title=f"{arrow} {info.get('shortName', symbol)} ({symbol})",
+                    title=f"{arrow} {name} ({symbol})",
                     color=color
                 )
                 embed.add_field(name="Price", value=f"${price:,.2f}", inline=True)
                 embed.add_field(name="Change", value=f"{change:+,.2f} ({change_pct:+.2f}%)", inline=True)
 
-                if info.get('marketCap'):
-                    cap = info['marketCap']
+                if profile and profile.get('marketCapitalization'):
+                    cap = profile['marketCapitalization'] * 1_000_000  # Finnhub returns in millions
                     if cap >= 1e12:
                         cap_str = f"${cap/1e12:.2f}T"
                     elif cap >= 1e9:
@@ -664,10 +692,128 @@ def register_prefix_commands(bot, db, llm, search, help_system, tasks_dict,
                         cap_str = f"${cap/1e6:.2f}M"
                     embed.add_field(name="Market Cap", value=cap_str, inline=True)
 
+                embed.set_footer(text="Data from Finnhub")
+                await ctx.send(embed=embed)
+                return True
+
+            except Exception as e:
+                print(f"Finnhub error for {symbol}: {e}")
+                return False
+
+    async def _fetch_crypto_price(ctx, coingecko_id: str, display_symbol: str, fallback_stock: str = None):
+        """Fetch crypto price from CoinGecko (free, no API key needed)."""
+        async with ctx.typing():
+            try:
+                def fetch():
+                    url = f"https://api.coingecko.com/api/v3/simple/price?ids={coingecko_id}&vs_currencies=usd&include_24hr_change=true&include_market_cap=true"
+                    resp = requests.get(url, timeout=10)
+                    return resp.json()
+
+                data = await asyncio.to_thread(fetch)
+
+                if not data or coingecko_id not in data:
+                    if fallback_stock:
+                        await ctx.send(f"❌ Could not find price for: `{fallback_stock}` (no Finnhub API key configured)")
+                    else:
+                        await ctx.send(f"❌ Could not find crypto: `{display_symbol}`")
+                    return
+
+                crypto_data = data[coingecko_id]
+                price = crypto_data['usd']
+                change_pct = crypto_data.get('usd_24h_change', 0) or 0
+                market_cap = crypto_data.get('usd_market_cap', 0)
+
+                color = discord.Color.green() if change_pct >= 0 else discord.Color.red()
+                arrow = "📈" if change_pct >= 0 else "📉"
+
+                embed = discord.Embed(
+                    title=f"{arrow} {coingecko_id.replace('-', ' ').title()} ({display_symbol})",
+                    color=color
+                )
+
+                # Format price based on magnitude
+                if price >= 1:
+                    embed.add_field(name="Price", value=f"${price:,.2f}", inline=True)
+                else:
+                    embed.add_field(name="Price", value=f"${price:.6f}", inline=True)
+
+                embed.add_field(name="24h Change", value=f"{change_pct:+.2f}%", inline=True)
+
+                if market_cap:
+                    if market_cap >= 1e12:
+                        cap_str = f"${market_cap/1e12:.2f}T"
+                    elif market_cap >= 1e9:
+                        cap_str = f"${market_cap/1e9:.2f}B"
+                    elif market_cap >= 1e6:
+                        cap_str = f"${market_cap/1e6:.2f}M"
+                    else:
+                        cap_str = f"${market_cap:,.0f}"
+                    embed.add_field(name="Market Cap", value=cap_str, inline=True)
+
+                embed.set_footer(text="Data from CoinGecko")
                 await ctx.send(embed=embed)
 
             except Exception as e:
-                await ctx.send(f"❌ Stock lookup failed: {str(e)}")
+                if fallback_stock:
+                    await ctx.send(f"❌ Could not find price for: `{fallback_stock}` (add FINNHUB_API_KEY to .env for stock prices)")
+                else:
+                    await ctx.send(f"❌ Crypto lookup failed: {str(e)}")
+
+    @bot.command(name='yt', aliases=['youtube'])
+    async def youtube_search(ctx, *, query: str):
+        """Search YouTube and return video links: !yt rickroll"""
+        async with ctx.typing():
+            try:
+                def do_search():
+                    # Use YouTube search URL and parse results
+                    search_url = f"https://www.youtube.com/results?search_query={url_quote(query)}"
+                    headers = {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                    }
+                    resp = requests.get(search_url, headers=headers, timeout=10)
+                    return resp.text
+
+                html = await asyncio.to_thread(do_search)
+
+                # Extract video IDs and titles from the page
+                video_pattern = r'"videoId":"([^"]+)".*?"title":\{"runs":\[\{"text":"([^"]+)"\}'
+                matches = re.findall(video_pattern, html)
+
+                if not matches:
+                    await ctx.send(f"❌ No YouTube results found for: `{query}`")
+                    return
+
+                # Deduplicate and limit to 5 results
+                seen_ids = set()
+                results = []
+                for video_id, title in matches:
+                    if video_id not in seen_ids and len(results) < 5:
+                        seen_ids.add(video_id)
+                        results.append({
+                            "title": title,
+                            "url": f"https://www.youtube.com/watch?v={video_id}"
+                        })
+
+                if not results:
+                    await ctx.send(f"❌ No YouTube results found for: `{query}`")
+                    return
+
+                embed = discord.Embed(
+                    title=f"🎬 YouTube: {query}",
+                    color=discord.Color.red()
+                )
+
+                for i, vid in enumerate(results, 1):
+                    embed.add_field(
+                        name=f"{i}. {vid['title'][:100]}",
+                        value=vid['url'],
+                        inline=False
+                    )
+
+                await ctx.send(embed=embed)
+
+            except Exception as e:
+                await ctx.send(f"❌ YouTube search failed: {str(e)}")
 
     @bot.command(name='translate', aliases=['tr'])
     async def translate_text(ctx, target_lang: str, *, text: str):

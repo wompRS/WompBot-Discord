@@ -4526,4 +4526,168 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
             await interaction.followup.send(f"❌ Error fetching leaderboard: {str(e)}")
 
     print("✅ Trivia commands registered")
+
+    # ==================== BUG TRACKING COMMANDS ====================
+    # Wompie-only bug tracking system
+
+    from bug_tracker import report_bug, list_bugs, resolve_bug, add_note, get_bug, get_stats
+
+    @bot.tree.command(name="bug", description="Report a bug (Wompie only)")
+    @app_commands.describe(
+        description="Description of the bug",
+        priority="Bug priority level"
+    )
+    @app_commands.choices(priority=[
+        app_commands.Choice(name="Low", value="low"),
+        app_commands.Choice(name="Normal", value="normal"),
+        app_commands.Choice(name="High", value="high"),
+        app_commands.Choice(name="Critical", value="critical")
+    ])
+    async def bug_report(interaction: discord.Interaction, description: str, priority: app_commands.Choice[str] = None):
+        """Report a bug to be tracked"""
+        if WOMPIE_USER_ID is None or interaction.user.id != WOMPIE_USER_ID:
+            await interaction.response.send_message(
+                "❌ Only Wompie can report bugs.",
+                ephemeral=True
+            )
+            return
+
+        priority_val = priority.value if priority else "normal"
+        guild_name = interaction.guild.name if interaction.guild else "DM"
+        channel_name = interaction.channel.name if hasattr(interaction.channel, 'name') else "DM"
+
+        bug_id = report_bug(
+            description=description,
+            reporter=str(interaction.user),
+            guild_name=guild_name,
+            channel_name=channel_name,
+            priority=priority_val
+        )
+
+        priority_emoji = {"low": "🟢", "normal": "🟡", "high": "🟠", "critical": "🔴"}.get(priority_val, "🟡")
+
+        await interaction.response.send_message(
+            f"🐛 **Bug Tracked**\n\n"
+            f"**Bug ID:** `#{bug_id}`\n"
+            f"**Priority:** {priority_emoji} {priority_val.capitalize()}\n"
+            f"**Description:** {description}\n\n"
+            f"*Use `/bugs` to view all tracked bugs*"
+        )
+
+    @bot.tree.command(name="bugs", description="List tracked bugs (Wompie only)")
+    @app_commands.describe(
+        status="Filter by status",
+        limit="Max bugs to show"
+    )
+    @app_commands.choices(status=[
+        app_commands.Choice(name="All", value="all"),
+        app_commands.Choice(name="Open", value="open"),
+        app_commands.Choice(name="Fixed", value="fixed"),
+        app_commands.Choice(name="Won't Fix", value="wontfix")
+    ])
+    async def bugs_list(interaction: discord.Interaction, status: app_commands.Choice[str] = None, limit: int = 10):
+        """List tracked bugs"""
+        if WOMPIE_USER_ID is None or interaction.user.id != WOMPIE_USER_ID:
+            await interaction.response.send_message(
+                "❌ Only Wompie can view bugs.",
+                ephemeral=True
+            )
+            return
+
+        status_val = status.value if status and status.value != "all" else None
+        bugs = list_bugs(status=status_val, limit=limit)
+
+        if not bugs:
+            await interaction.response.send_message("✅ No bugs found!")
+            return
+
+        stats = get_stats()
+        status_emoji = {"open": "🔴", "fixed": "✅", "wontfix": "⚪", "duplicate": "🔁", "invalid": "❌"}
+        priority_emoji = {"low": "🟢", "normal": "🟡", "high": "🟠", "critical": "🔴"}
+
+        embed = discord.Embed(
+            title="🐛 Bug Tracker",
+            description=f"**Open:** {stats['open']} | **Fixed:** {stats['fixed']} | **Total:** {stats['total']}",
+            color=discord.Color.red() if stats['open'] > 0 else discord.Color.green()
+        )
+
+        for bug in bugs[:10]:  # Max 10 in embed
+            s_emoji = status_emoji.get(bug['status'], "❓")
+            p_emoji = priority_emoji.get(bug['priority'], "🟡")
+            created = bug['created_at'][:10] if bug['created_at'] else "Unknown"
+
+            embed.add_field(
+                name=f"{s_emoji} #{bug['id']} - {p_emoji} {bug['priority'].capitalize()}",
+                value=f"{bug['description'][:100]}{'...' if len(bug['description']) > 100 else ''}\n*{created}*",
+                inline=False
+            )
+
+        await interaction.response.send_message(embed=embed)
+
+    @bot.tree.command(name="bug_resolve", description="Resolve a bug (Wompie only)")
+    @app_commands.describe(
+        bug_id="Bug ID to resolve",
+        resolution="How was it resolved?"
+    )
+    @app_commands.choices(resolution=[
+        app_commands.Choice(name="Fixed", value="fixed"),
+        app_commands.Choice(name="Won't Fix", value="wontfix"),
+        app_commands.Choice(name="Duplicate", value="duplicate"),
+        app_commands.Choice(name="Invalid", value="invalid")
+    ])
+    async def bug_resolve_cmd(interaction: discord.Interaction, bug_id: int, resolution: app_commands.Choice[str]):
+        """Mark a bug as resolved"""
+        if WOMPIE_USER_ID is None or interaction.user.id != WOMPIE_USER_ID:
+            await interaction.response.send_message(
+                "❌ Only Wompie can resolve bugs.",
+                ephemeral=True
+            )
+            return
+
+        bug = get_bug(bug_id)
+        if not bug:
+            await interaction.response.send_message(f"❌ Bug #{bug_id} not found.", ephemeral=True)
+            return
+
+        success = resolve_bug(bug_id, resolution.value)
+
+        if success:
+            resolution_emoji = {"fixed": "✅", "wontfix": "⚪", "duplicate": "🔁", "invalid": "❌"}.get(resolution.value, "✅")
+            await interaction.response.send_message(
+                f"{resolution_emoji} **Bug #{bug_id} marked as {resolution.value}**\n\n"
+                f"*{bug['description'][:100]}*"
+            )
+        else:
+            await interaction.response.send_message(f"❌ Failed to resolve bug #{bug_id}", ephemeral=True)
+
+    @bot.tree.command(name="bug_note", description="Add a note to a bug (Wompie only)")
+    @app_commands.describe(
+        bug_id="Bug ID to add note to",
+        note="Note to add"
+    )
+    async def bug_note_cmd(interaction: discord.Interaction, bug_id: int, note: str):
+        """Add a note to a bug"""
+        if WOMPIE_USER_ID is None or interaction.user.id != WOMPIE_USER_ID:
+            await interaction.response.send_message(
+                "❌ Only Wompie can add bug notes.",
+                ephemeral=True
+            )
+            return
+
+        bug = get_bug(bug_id)
+        if not bug:
+            await interaction.response.send_message(f"❌ Bug #{bug_id} not found.", ephemeral=True)
+            return
+
+        success = add_note(bug_id, note, str(interaction.user))
+
+        if success:
+            await interaction.response.send_message(
+                f"📝 **Note added to Bug #{bug_id}**\n\n"
+                f"*{note}*"
+            )
+        else:
+            await interaction.response.send_message(f"❌ Failed to add note to bug #{bug_id}", ephemeral=True)
+
+    print("✅ Bug tracking commands registered")
     print("✅ Slash commands registered")

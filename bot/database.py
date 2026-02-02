@@ -329,13 +329,22 @@ class Database:
             print(f"❌ Error fetching active users: {e}")
             return []
     
-    def get_message_stats(self, days=7, limit=10):
-        """Get top users by message count"""
+    def get_message_stats(self, days=7, limit=10, guild_id=None, exclude_bots=True):
+        """Get top users by message count for a specific guild
+
+        Args:
+            days: Number of days to look back
+            limit: Max number of users to return
+            guild_id: Filter to specific Discord server (required for accurate stats)
+            exclude_bots: Exclude bot users from results
+        """
         try:
             with self.get_connection() as conn:
                 with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                    cur.execute("""
+                    # Build query with optional guild filter and bot exclusion
+                    query = """
                         SELECT
+                            m.user_id,
                             m.username,
                             COUNT(*) as message_count,
                             COUNT(DISTINCT DATE(m.timestamp)) as active_days
@@ -344,10 +353,27 @@ class Database:
                         WHERE COALESCE(m.opted_out, FALSE) = FALSE
                         AND COALESCE(up.opted_out, FALSE) = FALSE
                         AND m.timestamp > CURRENT_TIMESTAMP - INTERVAL '%s days'
+                    """
+                    params = [days]
+
+                    # Filter by guild if specified
+                    if guild_id:
+                        query += " AND m.guild_id = %s"
+                        params.append(guild_id)
+
+                    # Exclude bot messages
+                    if exclude_bots:
+                        query += " AND LOWER(m.username) NOT LIKE '%%bot%%'"
+                        query += " AND LOWER(m.username) NOT LIKE '%%[app]%%'"
+
+                    query += """
                         GROUP BY m.user_id, m.username
                         ORDER BY message_count DESC
                         LIMIT %s
-                    """, (days, limit))
+                    """
+                    params.append(limit)
+
+                    cur.execute(query, params)
                     return cur.fetchall()
         except Exception as e:
             print(f"❌ Error fetching message stats: {e}")

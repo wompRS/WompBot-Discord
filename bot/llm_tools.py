@@ -8,18 +8,26 @@ from datetime import datetime, timedelta
 import json
 
 # Tool definitions for LLM function calling
+# These visualization tools support TWO modes:
+# 1. INTERNAL DATA: Use data_query for Discord server stats (message counts, user activity, etc.)
+# 2. EXTERNAL DATA: Use web_search FIRST to get data, then pass it via the 'data' parameter
 VISUALIZATION_TOOLS = [
     {
         "type": "function",
         "function": {
             "name": "create_bar_chart",
-            "description": "Create a bar chart for INTERNAL BOT DATA ONLY (Discord message stats, user activity). Do NOT use for external web search data.",
+            "description": "Create a bar chart. For Discord server stats, use data_query. For external data (sports, stocks, etc.), FIRST use web_search to get the data, THEN call this with the 'data' parameter containing the results.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "data_query": {
                         "type": "string",
-                        "description": "INTERNAL data only: 'top 10 users by messages', 'messages by hour'. NOT for external data.",
+                        "description": "For INTERNAL Discord stats only: 'top users by messages', 'messages by hour'. Leave empty if using 'data' parameter.",
+                    },
+                    "data": {
+                        "type": "object",
+                        "description": "Raw data to visualize as {label: value} pairs. Use this for EXTERNAL data from web_search results. Example: {'Team A': 45, 'Team B': 38}",
+                        "additionalProperties": {"type": "number"}
                     },
                     "title": {
                         "type": "string",
@@ -39,7 +47,7 @@ VISUALIZATION_TOOLS = [
                         "default": False
                     }
                 },
-                "required": ["data_query", "title"]
+                "required": ["title"]
             }
         }
     },
@@ -47,13 +55,23 @@ VISUALIZATION_TOOLS = [
         "type": "function",
         "function": {
             "name": "create_line_chart",
-            "description": "Create a line chart for INTERNAL BOT DATA trends. Do NOT use for external web search data.",
+            "description": "Create a line chart. For Discord server stats, use data_query. For external data, FIRST use web_search, THEN pass results via 'data' parameter.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "data_query": {
                         "type": "string",
-                        "description": "INTERNAL data only: 'messages per day', 'user activity trend'. NOT for external data.",
+                        "description": "For INTERNAL Discord stats: 'messages per day', 'user activity over time'. Leave empty if using 'data' parameter.",
+                    },
+                    "data": {
+                        "type": "object",
+                        "description": "Raw data as {series_name: [values]}. For external data from web_search. Example: {'Points': [45, 42, 38]}",
+                        "additionalProperties": {"type": "array", "items": {"type": "number"}}
+                    },
+                    "x_labels": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Labels for x-axis when using raw data. Example: ['Jan', 'Feb', 'Mar']"
                     },
                     "title": {
                         "type": "string",
@@ -68,7 +86,7 @@ VISUALIZATION_TOOLS = [
                         "description": "Y-axis label"
                     }
                 },
-                "required": ["data_query", "title"]
+                "required": ["title"]
             }
         }
     },
@@ -76,13 +94,18 @@ VISUALIZATION_TOOLS = [
         "type": "function",
         "function": {
             "name": "create_pie_chart",
-            "description": "Create a pie chart for INTERNAL BOT DATA distributions. Do NOT use for external web search data.",
+            "description": "Create a pie chart. For Discord stats, use data_query. For external data, FIRST use web_search, THEN pass results via 'data' parameter.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "data_query": {
                         "type": "string",
-                        "description": "INTERNAL data only: 'message distribution by user', 'personality breakdown'. NOT for external data.",
+                        "description": "For INTERNAL Discord stats: 'message distribution by user', 'personality breakdown'. Leave empty if using 'data' parameter.",
+                    },
+                    "data": {
+                        "type": "object",
+                        "description": "Raw data as {label: value} pairs. For external data from web_search. Example: {'Category A': 45, 'Category B': 30}",
+                        "additionalProperties": {"type": "number"}
                     },
                     "title": {
                         "type": "string",
@@ -94,7 +117,7 @@ VISUALIZATION_TOOLS = [
                         "default": True
                     }
                 },
-                "required": ["data_query", "title"]
+                "required": ["title"]
             }
         }
     },
@@ -102,13 +125,23 @@ VISUALIZATION_TOOLS = [
         "type": "function",
         "function": {
             "name": "create_table",
-            "description": "Create a formatted table for INTERNAL BOT DATA ONLY (Discord message stats, user activity). Do NOT use for external data from web searches - present that as text instead.",
+            "description": "Create a formatted table. For Discord stats, use data_query. For EXTERNAL data (sports standings, rankings, etc.), FIRST use web_search to get the data, THEN pass it via 'data' parameter as a list of row objects.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "data_query": {
                         "type": "string",
-                        "description": "INTERNAL bot data only: 'top users by messages', 'user stats', 'activity by day'. NOT for external web data.",
+                        "description": "For INTERNAL Discord stats: 'top users by messages', 'user stats'. Leave empty if using 'data' parameter.",
+                    },
+                    "data": {
+                        "type": "array",
+                        "items": {"type": "object"},
+                        "description": "Raw table data as list of row objects. Use for EXTERNAL data. Example for Premier League: [{'Position': 1, 'Team': 'Liverpool', 'Points': 45}, {'Position': 2, 'Team': 'Arsenal', 'Points': 42}]"
+                    },
+                    "columns": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Column names in display order. Required when using 'data' parameter. Example: ['Position', 'Team', 'Points']"
                     },
                     "title": {
                         "type": "string",
@@ -120,7 +153,7 @@ VISUALIZATION_TOOLS = [
                         "default": 20
                     }
                 },
-                "required": ["data_query", "title"]
+                "required": ["title"]
             }
         }
     },
@@ -128,13 +161,23 @@ VISUALIZATION_TOOLS = [
         "type": "function",
         "function": {
             "name": "create_comparison_chart",
-            "description": "Create a comparison chart for INTERNAL BOT DATA ONLY. Do NOT use for external web search data.",
+            "description": "Create a comparison chart. For Discord stats, use data_query. For external data, FIRST use web_search, THEN pass results via 'data' parameter.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "data_query": {
                         "type": "string",
-                        "description": "INTERNAL data only: 'compare messages between users', 'activity by day'. NOT for external data.",
+                        "description": "For INTERNAL Discord stats: 'compare messages between users'. Leave empty if using 'data' parameter.",
+                    },
+                    "categories": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Category labels for comparison. Example: ['Team A', 'Team B', 'Team C']"
+                    },
+                    "datasets": {
+                        "type": "object",
+                        "description": "Named datasets to compare as {name: [values]}. Example: {'Wins': [10, 8, 6], 'Losses': [2, 4, 5]}",
+                        "additionalProperties": {"type": "array", "items": {"type": "number"}}
                     },
                     "title": {
                         "type": "string",
@@ -145,7 +188,7 @@ VISUALIZATION_TOOLS = [
                         "description": "Y-axis label"
                     }
                 },
-                "required": ["data_query", "title"]
+                "required": ["title"]
             }
         }
     }
@@ -412,6 +455,55 @@ COMPUTATIONAL_TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "stock_history",
+            "description": "Get historical stock price data AND automatically create a line chart. Use this for requests like 'chart TSLA stock', 'graph of Apple price', 'show me NVDA over time'. Returns a chart image. Supports up to 20 years of data.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "symbol": {
+                        "type": "string",
+                        "description": "Stock ticker symbol (AAPL, TSLA, MSFT, NVDA, etc.) or company name (Tesla, Apple, Microsoft)"
+                    },
+                    "period": {
+                        "type": "string",
+                        "description": "Time period: '1M', '3M', '6M', '1Y', '2Y', '5Y', '10Y', or 'MAX' (all available data)",
+                        "enum": ["1M", "3M", "6M", "1Y", "2Y", "5Y", "10Y", "MAX"],
+                        "default": "1Y"
+                    }
+                },
+                "required": ["symbol"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "sports_scores",
+            "description": "Get live sports scores, recent results, or upcoming games. Use for questions like 'what's the score of the Lakers game', 'NFL scores today', 'did Arsenal win', 'Premier League results', 'F1 results'.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "sport": {
+                        "type": "string",
+                        "description": "Sport league/type",
+                        "enum": ["nfl", "nba", "mlb", "nhl", "soccer", "f1", "college-football", "college-basketball"]
+                    },
+                    "league": {
+                        "type": "string",
+                        "description": "For soccer: specific league (eng.1 for Premier League, esp.1 for La Liga, ger.1 for Bundesliga, ita.1 for Serie A, fra.1 for Ligue 1, usa.1 for MLS, uefa.champions for Champions League)"
+                    },
+                    "team": {
+                        "type": "string",
+                        "description": "Team name to filter results (optional)"
+                    }
+                },
+                "required": ["sport"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "movie_info",
             "description": "Get information about a movie or TV show including ratings, cast, plot. Use for 'tell me about the movie X', 'what's the rating of Y'.",
             "parameters": {
@@ -554,13 +646,14 @@ class DataRetriever:
     def __init__(self, db):
         self.db = db
 
-    def retrieve_data(self, query: str, channel_id: Optional[int] = None) -> Dict[str, Any]:
+    def retrieve_data(self, query: str, channel_id: Optional[int] = None, guild_id: Optional[int] = None) -> Dict[str, Any]:
         """
         Retrieve data based on natural language query
 
         Args:
             query: Natural language description of data needed
             channel_id: Discord channel ID for context
+            guild_id: Discord guild/server ID for server-specific data
 
         Returns:
             Dictionary with data structure suitable for visualization
@@ -572,23 +665,23 @@ class DataRetriever:
 
         # Determine query type and fetch data
         if 'top' in query_lower and 'user' in query_lower and 'message' in query_lower:
-            return self._get_top_users_by_messages(days, limit=self._extract_limit(query_lower))
+            return self._get_top_users_by_messages(days, limit=self._extract_limit(query_lower), guild_id=guild_id)
 
         elif 'message' in query_lower and 'hour' in query_lower:
-            return self._get_messages_by_hour(days, channel_id)
+            return self._get_messages_by_hour(days, channel_id, guild_id)
 
         elif 'message' in query_lower and 'day' in query_lower:
-            return self._get_messages_by_day(days, channel_id)
+            return self._get_messages_by_day(days, channel_id, guild_id)
 
         elif 'activity' in query_lower and 'trend' in query_lower:
-            return self._get_activity_trend(days, channel_id)
+            return self._get_activity_trend(days, channel_id, guild_id)
 
         elif 'personality' in query_lower or 'distribution' in query_lower:
             return self._get_personality_distribution()
 
         else:
             # Default: top users
-            return self._get_top_users_by_messages(days, limit=10)
+            return self._get_top_users_by_messages(days, limit=10, guild_id=guild_id)
 
     def _extract_time_range(self, query: str) -> int:
         """Extract time range in days from query"""
@@ -615,9 +708,9 @@ class DataRetriever:
             return int(match.group(1))
         return 10  # Default
 
-    def _get_top_users_by_messages(self, days: int, limit: int = 10) -> Dict[str, Any]:
-        """Get top users by message count"""
-        results = self.db.get_message_stats(days=days, limit=limit)
+    def _get_top_users_by_messages(self, days: int, limit: int = 10, guild_id: Optional[int] = None) -> Dict[str, Any]:
+        """Get top users by message count for a specific guild"""
+        results = self.db.get_message_stats(days=days, limit=limit, guild_id=guild_id, exclude_bots=True)
 
         data = {}
         for user in results:
@@ -630,20 +723,24 @@ class DataRetriever:
             'metadata': {'time_range_days': days, 'limit': limit}
         }
 
-    def _get_messages_by_hour(self, days: int, channel_id: Optional[int]) -> Dict[str, Any]:
-        """Get message distribution by hour of day"""
+    def _get_messages_by_hour(self, days: int, channel_id: Optional[int], guild_id: Optional[int] = None) -> Dict[str, Any]:
+        """Get message distribution by hour of day for a specific guild"""
         query = """
             SELECT EXTRACT(HOUR FROM timestamp) as hour, COUNT(*) as count
             FROM messages
             WHERE timestamp > NOW() - INTERVAL '%s days'
-            """ + (" AND channel_id = %s" if channel_id else "") + """
-            GROUP BY hour
-            ORDER BY hour
+            AND LOWER(username) NOT LIKE '%%bot%%'
         """
-
         params = [days]
+
+        if guild_id:
+            query += " AND guild_id = %s"
+            params.append(guild_id)
         if channel_id:
+            query += " AND channel_id = %s"
             params.append(channel_id)
+
+        query += " GROUP BY hour ORDER BY hour"
 
         with self.db.get_connection() as conn:
             with conn.cursor() as cur:
@@ -658,20 +755,24 @@ class DataRetriever:
             'metadata': {'time_range_days': days}
         }
 
-    def _get_messages_by_day(self, days: int, channel_id: Optional[int]) -> Dict[str, Any]:
-        """Get messages per day over time"""
+    def _get_messages_by_day(self, days: int, channel_id: Optional[int], guild_id: Optional[int] = None) -> Dict[str, Any]:
+        """Get messages per day over time for a specific guild"""
         query = """
             SELECT DATE(timestamp) as day, COUNT(*) as count
             FROM messages
             WHERE timestamp > NOW() - INTERVAL '%s days'
-            """ + (" AND channel_id = %s" if channel_id else "") + """
-            GROUP BY day
-            ORDER BY day
+            AND LOWER(username) NOT LIKE '%%bot%%'
         """
-
         params = [days]
+
+        if guild_id:
+            query += " AND guild_id = %s"
+            params.append(guild_id)
         if channel_id:
+            query += " AND channel_id = %s"
             params.append(channel_id)
+
+        query += " GROUP BY day ORDER BY day"
 
         with self.db.get_connection() as conn:
             with conn.cursor() as cur:
@@ -688,9 +789,9 @@ class DataRetriever:
             'metadata': {'time_range_days': days}
         }
 
-    def _get_activity_trend(self, days: int, channel_id: Optional[int]) -> Dict[str, Any]:
+    def _get_activity_trend(self, days: int, channel_id: Optional[int], guild_id: Optional[int] = None) -> Dict[str, Any]:
         """Get activity trend"""
-        return self._get_messages_by_day(days, channel_id)
+        return self._get_messages_by_day(days, channel_id, guild_id)
 
     def _get_personality_distribution(self) -> Dict[str, Any]:
         """Get server personality distribution"""

@@ -78,7 +78,8 @@ class ToolExecutor:
         self,
         tool_call: Dict[str, Any],
         channel_id: Optional[int] = None,
-        user_id: Optional[int] = None
+        user_id: Optional[int] = None,
+        guild_id: Optional[int] = None
     ) -> Dict[str, Any]:
         """
         Execute a single tool call
@@ -87,6 +88,7 @@ class ToolExecutor:
             tool_call: Tool call from LLM
             channel_id: Discord channel ID for context
             user_id: Discord user ID for user-specific preferences
+            guild_id: Discord guild/server ID for server-specific data
 
         Returns:
             Dictionary with execution result
@@ -107,15 +109,15 @@ class ToolExecutor:
 
         try:
             if function_name == "create_bar_chart":
-                return await self._create_bar_chart(arguments, channel_id)
+                return await self._create_bar_chart(arguments, channel_id, guild_id)
             elif function_name == "create_line_chart":
-                return await self._create_line_chart(arguments, channel_id)
+                return await self._create_line_chart(arguments, channel_id, guild_id)
             elif function_name == "create_pie_chart":
-                return await self._create_pie_chart(arguments, channel_id)
+                return await self._create_pie_chart(arguments, channel_id, guild_id)
             elif function_name == "create_table":
-                return await self._create_table(arguments, channel_id)
+                return await self._create_table(arguments, channel_id, guild_id)
             elif function_name == "create_comparison_chart":
-                return await self._create_comparison_chart(arguments, channel_id)
+                return await self._create_comparison_chart(arguments, channel_id, guild_id)
 
             # Computational tools
             elif function_name == "wolfram_query":
@@ -145,17 +147,21 @@ class ToolExecutor:
             elif function_name == "iracing_series_info":
                 return await self._iracing_series_info(arguments)
             elif function_name == "user_stats":
-                return await self._user_stats(arguments, channel_id, user_id)
+                return await self._user_stats(arguments, channel_id, user_id, guild_id)
             elif function_name == "create_reminder":
                 return await self._create_reminder(arguments, user_id, channel_id)
             elif function_name == "stock_price":
                 return await self._stock_price(arguments)
+            elif function_name == "stock_history":
+                return await self._stock_history(arguments)
             elif function_name == "movie_info":
                 return await self._movie_info(arguments)
             elif function_name == "define_word":
                 return await self._define_word(arguments)
             elif function_name == "currency_convert":
                 return await self._currency_convert(arguments)
+            elif function_name == "sports_scores":
+                return await self._sports_scores(arguments)
             else:
                 return {
                     "success": False,
@@ -170,14 +176,21 @@ class ToolExecutor:
                 "error": str(e)
             }
 
-    async def _create_bar_chart(self, args: Dict[str, Any], channel_id: Optional[int]) -> Dict[str, Any]:
+    async def _create_bar_chart(self, args: Dict[str, Any], channel_id: Optional[int], guild_id: Optional[int] = None) -> Dict[str, Any]:
         """Create bar chart"""
-        # Retrieve data based on query
-        data_result = self.data.retrieve_data(args["data_query"], channel_id)
+        # Check if raw data was provided (for external data)
+        if "data" in args and args["data"]:
+            data = args["data"]
+        elif "data_query" in args and args["data_query"]:
+            # Retrieve data based on query (for internal Discord stats)
+            data_result = self.data.retrieve_data(args["data_query"], channel_id, guild_id)
+            data = data_result["data"]
+        else:
+            return {"success": False, "error": "Either 'data' or 'data_query' must be provided"}
 
         # Create visualization
         image_buffer = self.viz.create_bar_chart(
-            data=data_result["data"],
+            data=data,
             title=args["title"],
             xlabel=args.get("xlabel", ""),
             ylabel=args.get("ylabel", "Value"),
@@ -191,16 +204,26 @@ class ToolExecutor:
             "description": f"Created bar chart: {args['title']}"
         }
 
-    async def _create_line_chart(self, args: Dict[str, Any], channel_id: Optional[int]) -> Dict[str, Any]:
+    async def _create_line_chart(self, args: Dict[str, Any], channel_id: Optional[int], guild_id: Optional[int] = None) -> Dict[str, Any]:
         """Create line chart"""
-        data_result = self.data.retrieve_data(args["data_query"], channel_id)
+        # Check if raw data was provided (for external data)
+        if "data" in args and args["data"]:
+            data = args["data"]
+            x_labels = args.get("x_labels")
+        elif "data_query" in args and args["data_query"]:
+            # Retrieve data based on query (for internal Discord stats)
+            data_result = self.data.retrieve_data(args["data_query"], channel_id, guild_id)
+            data = data_result["data"]
+            x_labels = data_result.get("x_labels")
+        else:
+            return {"success": False, "error": "Either 'data' or 'data_query' must be provided"}
 
         image_buffer = self.viz.create_line_chart(
-            data=data_result["data"],
+            data=data,
             title=args["title"],
             xlabel=args.get("xlabel", ""),
             ylabel=args.get("ylabel", "Value"),
-            x_labels=data_result.get("x_labels")
+            x_labels=x_labels
         )
 
         return {
@@ -210,12 +233,20 @@ class ToolExecutor:
             "description": f"Created line chart: {args['title']}"
         }
 
-    async def _create_pie_chart(self, args: Dict[str, Any], channel_id: Optional[int]) -> Dict[str, Any]:
+    async def _create_pie_chart(self, args: Dict[str, Any], channel_id: Optional[int], guild_id: Optional[int] = None) -> Dict[str, Any]:
         """Create pie chart"""
-        data_result = self.data.retrieve_data(args["data_query"], channel_id)
+        # Check if raw data was provided (for external data)
+        if "data" in args and args["data"]:
+            data = args["data"]
+        elif "data_query" in args and args["data_query"]:
+            # Retrieve data based on query (for internal Discord stats)
+            data_result = self.data.retrieve_data(args["data_query"], channel_id, guild_id)
+            data = data_result["data"]
+        else:
+            return {"success": False, "error": "Either 'data' or 'data_query' must be provided"}
 
         image_buffer = self.viz.create_pie_chart(
-            data=data_result["data"],
+            data=data,
             title=args["title"],
             show_percentages=args.get("show_percentages", True)
         )
@@ -227,18 +258,32 @@ class ToolExecutor:
             "description": f"Created pie chart: {args['title']}"
         }
 
-    async def _create_table(self, args: Dict[str, Any], channel_id: Optional[int]) -> Dict[str, Any]:
+    async def _create_table(self, args: Dict[str, Any], channel_id: Optional[int], guild_id: Optional[int] = None) -> Dict[str, Any]:
         """Create table"""
-        data_result = self.data.retrieve_data(args["data_query"], channel_id)
+        # Check if raw data was provided (for external data like sports standings)
+        if "data" in args and args["data"]:
+            table_data = args["data"]
+            # Use provided columns or extract from first row
+            if "columns" in args and args["columns"]:
+                columns = args["columns"]
+            elif table_data and isinstance(table_data[0], dict):
+                columns = list(table_data[0].keys())
+            else:
+                columns = []
+        elif "data_query" in args and args["data_query"]:
+            # Retrieve data based on query (for internal Discord stats)
+            data_result = self.data.retrieve_data(args["data_query"], channel_id, guild_id)
 
-        # For tables, data should be list of dicts
-        if isinstance(data_result["data"], dict):
-            # Convert dict to list of dicts
-            table_data = [{"name": k, "value": v} for k, v in data_result["data"].items()]
-            columns = ["name", "value"]
+            # For tables, data should be list of dicts
+            if isinstance(data_result["data"], dict):
+                # Convert dict to list of dicts
+                table_data = [{"name": k, "value": v} for k, v in data_result["data"].items()]
+                columns = ["name", "value"]
+            else:
+                table_data = data_result["data"]
+                columns = list(table_data[0].keys()) if table_data else []
         else:
-            table_data = data_result["data"]
-            columns = list(table_data[0].keys()) if table_data else []
+            return {"success": False, "error": "Either 'data' or 'data_query' must be provided"}
 
         image_buffer = self.viz.create_table(
             data=table_data,
@@ -254,19 +299,26 @@ class ToolExecutor:
             "description": f"Created table: {args['title']}"
         }
 
-    async def _create_comparison_chart(self, args: Dict[str, Any], channel_id: Optional[int]) -> Dict[str, Any]:
+    async def _create_comparison_chart(self, args: Dict[str, Any], channel_id: Optional[int], guild_id: Optional[int] = None) -> Dict[str, Any]:
         """Create comparison chart"""
-        data_result = self.data.retrieve_data(args["data_query"], channel_id)
+        # Check if raw data was provided (for external data)
+        if "categories" in args and args["categories"] and "datasets" in args and args["datasets"]:
+            categories = args["categories"]
+            datasets = args["datasets"]
+        elif "data_query" in args and args["data_query"]:
+            # Retrieve data based on query (for internal Discord stats)
+            data_result = self.data.retrieve_data(args["data_query"], channel_id, guild_id)
 
-        # Extract categories and datasets from result
-        # This depends on how the data retriever structures comparison data
-        if "categories" in data_result and "datasets" in data_result:
-            categories = data_result["categories"]
-            datasets = data_result["datasets"]
+            # Extract categories and datasets from result
+            if "categories" in data_result and "datasets" in data_result:
+                categories = data_result["categories"]
+                datasets = data_result["datasets"]
+            else:
+                # Fallback: use data as-is
+                categories = list(data_result["data"].keys())
+                datasets = {"Values": list(data_result["data"].values())}
         else:
-            # Fallback: use data as-is
-            categories = list(data_result["data"].keys())
-            datasets = {"Values": list(data_result["data"].values())}
+            return {"success": False, "error": "Either 'categories'+'datasets' or 'data_query' must be provided"}
 
         image_buffer = self.viz.create_comparison_chart(
             categories=categories,
@@ -944,14 +996,14 @@ class ToolExecutor:
         except Exception as e:
             return {"success": False, "error": f"Series lookup failed: {str(e)}"}
 
-    async def _user_stats(self, args: Dict[str, Any], channel_id: Optional[int], user_id: Optional[int]) -> Dict[str, Any]:
-        """Get Discord user activity stats"""
+    async def _user_stats(self, args: Dict[str, Any], channel_id: Optional[int], user_id: Optional[int], guild_id: Optional[int] = None) -> Dict[str, Any]:
+        """Get Discord user activity stats for a specific server"""
         username = args.get("username")
         days = args.get("days", 30)
 
         try:
-            # Get top message stats for the time period
-            stats = self.db.get_message_stats(days=days, limit=50)
+            # Get top message stats for the time period, filtered by guild and excluding bots
+            stats = self.db.get_message_stats(days=days, limit=50, guild_id=guild_id, exclude_bots=True)
 
             if username:
                 # Filter to find the specified user
@@ -1050,14 +1102,14 @@ class ToolExecutor:
             return {"success": False, "error": f"Failed to create reminder: {str(e)}"}
 
     async def _stock_price(self, args: Dict[str, Any]) -> Dict[str, Any]:
-        """Get stock or crypto price using yfinance"""
+        """Get stock or crypto price using Finnhub (stocks) and CoinGecko (crypto)"""
         import asyncio
+        import os
 
         query = args["symbol"].upper()
 
-        # Common company/crypto name to ticker mappings
+        # Common company name to ticker mappings
         name_to_ticker = {
-            # Tech giants
             'MICROSOFT': 'MSFT', 'APPLE': 'AAPL', 'GOOGLE': 'GOOGL', 'ALPHABET': 'GOOGL',
             'AMAZON': 'AMZN', 'META': 'META', 'FACEBOOK': 'META', 'NETFLIX': 'NFLX',
             'NVIDIA': 'NVDA', 'TESLA': 'TSLA', 'AMD': 'AMD', 'INTEL': 'INTC',
@@ -1065,74 +1117,74 @@ class ToolExecutor:
             'SALESFORCE': 'CRM', 'PAYPAL': 'PYPL', 'SQUARE': 'SQ', 'BLOCK': 'SQ',
             'SHOPIFY': 'SHOP', 'SPOTIFY': 'SPOT', 'UBER': 'UBER', 'LYFT': 'LYFT',
             'AIRBNB': 'ABNB', 'TWITTER': 'X', 'SNAP': 'SNAP', 'SNAPCHAT': 'SNAP',
-            'PINTEREST': 'PINS', 'ZOOM': 'ZM', 'SLACK': 'WORK', 'DROPBOX': 'DBX',
             'PALANTIR': 'PLTR', 'SNOWFLAKE': 'SNOW', 'DATADOG': 'DDOG',
-            'CROWDSTRIKE': 'CRWD', 'CLOUDFLARE': 'NET', 'TWILIO': 'TWLO',
-            # Finance
+            'CROWDSTRIKE': 'CRWD', 'CLOUDFLARE': 'NET',
             'JPMORGAN': 'JPM', 'JP MORGAN': 'JPM', 'CHASE': 'JPM',
             'BANK OF AMERICA': 'BAC', 'BOFA': 'BAC', 'WELLS FARGO': 'WFC',
             'GOLDMAN': 'GS', 'GOLDMAN SACHS': 'GS', 'MORGAN STANLEY': 'MS',
-            'VISA': 'V', 'MASTERCARD': 'MA', 'AMEX': 'AXP', 'AMERICAN EXPRESS': 'AXP',
-            'BERKSHIRE': 'BRK-B', 'BERKSHIRE HATHAWAY': 'BRK-B',
-            # Retail
+            'VISA': 'V', 'MASTERCARD': 'MA', 'AMEX': 'AXP',
+            'BERKSHIRE': 'BRK.A', 'BERKSHIRE HATHAWAY': 'BRK.A',
             'WALMART': 'WMT', 'TARGET': 'TGT', 'COSTCO': 'COST', 'HOME DEPOT': 'HD',
-            'LOWES': 'LOW', "LOWE'S": 'LOW', 'NIKE': 'NKE', 'STARBUCKS': 'SBUX',
-            'MCDONALDS': 'MCD', "MCDONALD'S": 'MCD', 'CHIPOTLE': 'CMG',
-            # Healthcare
-            'JOHNSON': 'JNJ', 'JOHNSON AND JOHNSON': 'JNJ', 'J&J': 'JNJ',
+            'NIKE': 'NKE', 'STARBUCKS': 'SBUX', 'MCDONALDS': 'MCD', 'DISNEY': 'DIS',
             'PFIZER': 'PFE', 'MODERNA': 'MRNA', 'MERCK': 'MRK',
-            'UNITEDHEALTH': 'UNH', 'CVS': 'CVS', 'WALGREENS': 'WBA',
-            # Energy
-            'EXXON': 'XOM', 'EXXONMOBIL': 'XOM', 'CHEVRON': 'CVX', 'SHELL': 'SHEL',
-            # Crypto (yfinance uses -USD suffix)
-            'BITCOIN': 'BTC-USD', 'BTC': 'BTC-USD',
-            'ETHEREUM': 'ETH-USD', 'ETH': 'ETH-USD', 'ETHER': 'ETH-USD',
-            'DOGECOIN': 'DOGE-USD', 'DOGE': 'DOGE-USD',
-            'SOLANA': 'SOL-USD', 'SOL': 'SOL-USD',
-            'CARDANO': 'ADA-USD', 'ADA': 'ADA-USD',
-            'RIPPLE': 'XRP-USD', 'XRP': 'XRP-USD',
-            'LITECOIN': 'LTC-USD', 'LTC': 'LTC-USD',
-            'POLKADOT': 'DOT-USD', 'DOT': 'DOT-USD',
-            'CHAINLINK': 'LINK-USD', 'LINK': 'LINK-USD',
-            'AVALANCHE': 'AVAX-USD', 'AVAX': 'AVAX-USD',
-            'SHIBA': 'SHIB-USD', 'SHIB': 'SHIB-USD', 'SHIBA INU': 'SHIB-USD',
-            # Indices
-            'S&P': '^GSPC', 'S&P 500': '^GSPC', 'SP500': '^GSPC', 'SPX': '^GSPC',
-            'DOW': '^DJI', 'DOW JONES': '^DJI', 'DJIA': '^DJI',
-            'NASDAQ': '^IXIC', 'NASDAQ COMPOSITE': '^IXIC',
-            'RUSSELL': '^RUT', 'RUSSELL 2000': '^RUT',
+            'EXXON': 'XOM', 'EXXONMOBIL': 'XOM', 'CHEVRON': 'CVX',
         }
 
+        # Crypto name to CoinGecko ID
+        crypto_to_coingecko = {
+            'BITCOIN': 'bitcoin', 'BTC': 'bitcoin', 'BTC-USD': 'bitcoin',
+            'ETHEREUM': 'ethereum', 'ETH': 'ethereum', 'ETH-USD': 'ethereum',
+            'DOGECOIN': 'dogecoin', 'DOGE': 'dogecoin', 'DOGE-USD': 'dogecoin',
+            'SOLANA': 'solana', 'SOL': 'solana', 'SOL-USD': 'solana',
+            'CARDANO': 'cardano', 'ADA': 'cardano', 'ADA-USD': 'cardano',
+            'XRP': 'ripple', 'RIPPLE': 'ripple', 'XRP-USD': 'ripple',
+            'LITECOIN': 'litecoin', 'LTC': 'litecoin', 'LTC-USD': 'litecoin',
+            'POLKADOT': 'polkadot', 'DOT': 'polkadot', 'DOT-USD': 'polkadot',
+            'AVALANCHE': 'avalanche-2', 'AVAX': 'avalanche-2', 'AVAX-USD': 'avalanche-2',
+            'CHAINLINK': 'chainlink', 'LINK': 'chainlink', 'LINK-USD': 'chainlink',
+            'SHIBA': 'shiba-inu', 'SHIB': 'shiba-inu', 'SHIB-USD': 'shiba-inu',
+        }
+
+        # Check if it's a crypto
+        coingecko_id = crypto_to_coingecko.get(query)
+        if coingecko_id:
+            return await self._fetch_crypto_price_tool(coingecko_id, query)
+
+        # It's a stock - use Finnhub
         symbol = name_to_ticker.get(query, query)
+        finnhub_key = os.getenv('FINNHUB_API_KEY')
+
+        if not finnhub_key:
+            return {"success": False, "error": "Stock lookup requires FINNHUB_API_KEY in .env (free at finnhub.io)"}
 
         try:
-            def do_fetch():
-                # Use Yahoo Finance
-                import yfinance as yf
-                ticker = yf.Ticker(symbol)
-                info = ticker.info
-                return info
+            def fetch_finnhub():
+                url = f"https://finnhub.io/api/v1/quote?symbol={symbol}&token={finnhub_key}"
+                resp = requests.get(url, timeout=10)
+                return resp.json()
 
-            info = await asyncio.to_thread(do_fetch)
+            data = await asyncio.to_thread(fetch_finnhub)
 
-            if not info or 'currentPrice' not in info and 'regularMarketPrice' not in info:
+            if not data or data.get('c', 0) == 0:
                 return {"success": False, "error": f"Could not find price for '{symbol}'"}
 
-            price = info.get('currentPrice') or info.get('regularMarketPrice')
-            prev_close = info.get('previousClose') or info.get('regularMarketPreviousClose')
-            name = info.get('shortName') or info.get('longName') or symbol
+            price = data['c']
+            change = data['d']
+            change_pct = data['dp']
 
-            if prev_close and price:
-                change = price - prev_close
-                change_pct = (change / prev_close) * 100
-                change_str = f"+${change:.2f} (+{change_pct:.2f}%)" if change >= 0 else f"-${abs(change):.2f} ({change_pct:.2f}%)"
-            else:
-                change_str = ""
+            # Get company name
+            def fetch_profile():
+                url = f"https://finnhub.io/api/v1/stock/profile2?symbol={symbol}&token={finnhub_key}"
+                resp = requests.get(url, timeout=10)
+                return resp.json()
+
+            profile = await asyncio.to_thread(fetch_profile)
+            name = profile.get('name', symbol) if profile else symbol
+
+            change_str = f"+${change:.2f} (+{change_pct:.2f}%)" if change >= 0 else f"${change:.2f} ({change_pct:.2f}%)"
 
             result = f"**{name}** ({symbol})\n"
-            result += f"Price: **${price:,.2f}**"
-            if change_str:
-                result += f" ({change_str})"
+            result += f"Price: **${price:,.2f}** ({change_str})"
 
             return {
                 "success": True,
@@ -1141,10 +1193,222 @@ class ToolExecutor:
                 "description": f"Stock price: {symbol}"
             }
 
-        except ImportError:
-            return {"success": False, "error": "Stock price lookup not available (yfinance not installed)"}
         except Exception as e:
             return {"success": False, "error": f"Stock lookup failed: {str(e)}"}
+
+    async def _stock_history(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        """Get historical stock price data and create a line chart"""
+        import asyncio
+        import os
+        import time
+
+        symbol = args["symbol"].upper()
+        period = args.get("period", "1Y")
+
+        # Common company name to ticker mappings
+        name_to_ticker = {
+            'MICROSOFT': 'MSFT', 'APPLE': 'AAPL', 'GOOGLE': 'GOOGL', 'ALPHABET': 'GOOGL',
+            'AMAZON': 'AMZN', 'META': 'META', 'FACEBOOK': 'META', 'NETFLIX': 'NFLX',
+            'NVIDIA': 'NVDA', 'TESLA': 'TSLA', 'AMD': 'AMD', 'INTEL': 'INTC',
+            'IBM': 'IBM', 'ORACLE': 'ORCL', 'CISCO': 'CSCO', 'ADOBE': 'ADBE',
+            'SALESFORCE': 'CRM', 'PAYPAL': 'PYPL', 'SQUARE': 'SQ', 'BLOCK': 'SQ',
+            'SHOPIFY': 'SHOP', 'SPOTIFY': 'SPOT', 'UBER': 'UBER', 'LYFT': 'LYFT',
+            'AIRBNB': 'ABNB', 'PALANTIR': 'PLTR', 'SNOWFLAKE': 'SNOW',
+        }
+
+        symbol = name_to_ticker.get(symbol, symbol)
+
+        # Period display names
+        period_names = {
+            '1M': '1 Month', '3M': '3 Months', '6M': '6 Months',
+            '1Y': '1 Year', '2Y': '2 Years', '5Y': '5 Years',
+            '10Y': '10 Years', 'MAX': 'All Time',
+        }
+        period_display = period_names.get(period, period)
+
+        # For periods > 1Y, use Alpha Vantage (supports 20+ years)
+        # For periods <= 1Y, use Finnhub (better rate limits)
+        if period in ['2Y', '5Y', '10Y', 'MAX']:
+            return await self._stock_history_alphavantage(symbol, period, period_display)
+        else:
+            return await self._stock_history_finnhub(symbol, period, period_display)
+
+    async def _stock_history_finnhub(self, symbol: str, period: str, period_display: str) -> Dict[str, Any]:
+        """Fetch stock history from Finnhub (up to 1 year)"""
+        import asyncio
+        import os
+        import time
+
+        finnhub_key = os.getenv('FINNHUB_API_KEY')
+        if not finnhub_key:
+            return {"success": False, "error": "Stock history requires FINNHUB_API_KEY in .env (free at finnhub.io)"}
+
+        now = int(time.time())
+        period_days = {'1M': 30, '3M': 90, '6M': 180, '1Y': 365}
+        days = period_days.get(period, 365)
+        from_ts = now - (days * 24 * 60 * 60)
+
+        try:
+            def fetch_candles():
+                url = f"https://finnhub.io/api/v1/stock/candle?symbol={symbol}&resolution=D&from={from_ts}&to={now}&token={finnhub_key}"
+                resp = requests.get(url, timeout=15)
+                return resp.json(), resp.status_code
+
+            data, status_code = await asyncio.to_thread(fetch_candles)
+
+            # Log the response for debugging
+            print(f"Finnhub response for {symbol}: status={status_code}, data={str(data)[:200]}")
+
+            if status_code == 401 or status_code == 403:
+                return {"success": False, "error": "Finnhub API key is invalid. Check FINNHUB_API_KEY in .env"}
+
+            if status_code == 429:
+                return {"success": False, "error": "Finnhub rate limit reached. Try again in a minute."}
+
+            if not data or data.get('s') == 'no_data':
+                return {"success": False, "error": f"No historical data available for '{symbol}'. Make sure it's a valid US stock ticker."}
+
+            if data.get('s') != 'ok':
+                return {"success": False, "error": f"Could not find historical data for '{symbol}'. API status: {data.get('s', 'unknown')}"}
+
+            closes = data.get('c', [])
+            timestamps = data.get('t', [])
+
+            if not closes or not timestamps:
+                return {"success": False, "error": f"No price data available for '{symbol}'"}
+
+            dates = [datetime.fromtimestamp(ts).strftime('%m/%d') for ts in timestamps]
+
+            return self._create_stock_chart(symbol, closes, dates, period_display)
+
+        except Exception as e:
+            return {"success": False, "error": f"Stock history lookup failed: {str(e)}"}
+
+    async def _stock_history_alphavantage(self, symbol: str, period: str, period_display: str) -> Dict[str, Any]:
+        """Fetch stock history from Alpha Vantage (up to 20+ years)"""
+        import asyncio
+        import os
+
+        av_key = os.getenv('ALPHA_VANTAGE_API_KEY')
+        if not av_key:
+            return {"success": False, "error": "Long-term stock history requires ALPHA_VANTAGE_API_KEY in .env (free at alphavantage.co - 25 calls/day)"}
+
+        try:
+            def fetch_data():
+                # Use TIME_SERIES_DAILY with full output for maximum history
+                url = f"https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={symbol}&outputsize=full&apikey={av_key}"
+                resp = requests.get(url, timeout=30)
+                return resp.json()
+
+            data = await asyncio.to_thread(fetch_data)
+
+            if "Error Message" in data:
+                return {"success": False, "error": f"Could not find data for '{symbol}'"}
+            if "Note" in data:
+                return {"success": False, "error": "API rate limit reached (25 calls/day on free tier). Try again tomorrow."}
+            if "Time Series (Daily)" not in data:
+                return {"success": False, "error": f"No historical data available for '{symbol}'"}
+
+            time_series = data["Time Series (Daily)"]
+
+            # Convert to lists sorted by date
+            sorted_dates = sorted(time_series.keys())
+            all_closes = [float(time_series[d]["4. close"]) for d in sorted_dates]
+
+            # Filter to requested period
+            period_days = {'2Y': 730, '5Y': 1825, '10Y': 3650, 'MAX': len(all_closes)}
+            days_limit = period_days.get(period, len(all_closes))
+
+            # Take the most recent N days
+            if len(all_closes) > days_limit:
+                sorted_dates = sorted_dates[-days_limit:]
+                all_closes = all_closes[-days_limit:]
+
+            # Format dates - use year for long periods
+            if period in ['5Y', '10Y', 'MAX']:
+                dates = [d[:7] for d in sorted_dates]  # YYYY-MM format
+            else:
+                dates = [d[5:] for d in sorted_dates]  # MM-DD format
+
+            return self._create_stock_chart(symbol, all_closes, dates, period_display)
+
+        except Exception as e:
+            return {"success": False, "error": f"Stock history lookup failed: {str(e)}"}
+
+    def _create_stock_chart(self, symbol: str, closes: list, dates: list, period_display: str) -> Dict[str, Any]:
+        """Create the stock price chart from data"""
+        # Sample data if there are too many points (for cleaner charts)
+        if len(closes) > 80:
+            step = len(closes) // 80
+            closes = closes[::step]
+            dates = dates[::step]
+
+        # Calculate price change
+        start_price = closes[0]
+        end_price = closes[-1]
+        change = end_price - start_price
+        change_pct = (change / start_price) * 100 if start_price else 0
+
+        # Create the chart
+        chart_data = {symbol: closes}
+        image_buffer = self.viz.create_line_chart(
+            data=chart_data,
+            title=f"{symbol} Stock Price - {period_display}",
+            xlabel="Date",
+            ylabel="Price ($)",
+            x_labels=dates
+        )
+
+        # Format summary
+        change_str = f"+${change:.2f} (+{change_pct:.1f}%)" if change >= 0 else f"${change:.2f} ({change_pct:.1f}%)"
+        summary = f"**{symbol}** {period_display}: ${start_price:.2f} → ${end_price:.2f} ({change_str})"
+
+        return {
+            "success": True,
+            "type": "image",
+            "image": image_buffer,
+            "description": summary
+        }
+
+    async def _fetch_crypto_price_tool(self, coingecko_id: str, display_symbol: str) -> Dict[str, Any]:
+        """Fetch crypto price from CoinGecko for tool executor"""
+        import asyncio
+
+        try:
+            def fetch():
+                url = f"https://api.coingecko.com/api/v3/simple/price?ids={coingecko_id}&vs_currencies=usd&include_24hr_change=true&include_market_cap=true"
+                resp = requests.get(url, timeout=10)
+                return resp.json()
+
+            data = await asyncio.to_thread(fetch)
+
+            if not data or coingecko_id not in data:
+                return {"success": False, "error": f"Could not find crypto: '{display_symbol}'"}
+
+            crypto_data = data[coingecko_id]
+            price = crypto_data['usd']
+            change_pct = crypto_data.get('usd_24h_change', 0) or 0
+
+            name = coingecko_id.replace('-', ' ').title()
+            change_str = f"+{change_pct:.2f}%" if change_pct >= 0 else f"{change_pct:.2f}%"
+
+            if price >= 1:
+                price_str = f"${price:,.2f}"
+            else:
+                price_str = f"${price:.6f}"
+
+            result = f"**{name}** ({display_symbol})\n"
+            result += f"Price: **{price_str}** (24h: {change_str})"
+
+            return {
+                "success": True,
+                "type": "text",
+                "text": result,
+                "description": f"Crypto price: {display_symbol}"
+            }
+
+        except Exception as e:
+            return {"success": False, "error": f"Crypto lookup failed: {str(e)}"}
 
     async def _movie_info(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Get movie/TV show info from OMDB"""
@@ -1330,3 +1594,129 @@ class ToolExecutor:
 
         except Exception as e:
             return {"success": False, "error": f"Currency conversion failed: {str(e)}"}
+
+    async def _sports_scores(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        """Get sports scores from ESPN API (no key needed)"""
+        import asyncio
+
+        sport = args["sport"].lower()
+        league = args.get("league", "")
+        team_filter = args.get("team", "").lower()
+
+        # Map sport to ESPN API endpoint
+        sport_endpoints = {
+            "nfl": "football/nfl",
+            "nba": "basketball/nba",
+            "mlb": "baseball/mlb",
+            "nhl": "hockey/nhl",
+            "soccer": f"soccer/{league}" if league else "soccer/eng.1",  # Default to Premier League
+            "f1": "racing/f1",
+            "college-football": "football/college-football",
+            "college-basketball": "basketball/mens-college-basketball",
+        }
+
+        endpoint = sport_endpoints.get(sport)
+        if not endpoint:
+            return {"success": False, "error": f"Unknown sport: {sport}"}
+
+        try:
+            def fetch_scores():
+                url = f"https://site.api.espn.com/apis/site/v2/sports/{endpoint}/scoreboard"
+                resp = requests.get(url, timeout=15)
+                return resp.json()
+
+            data = await asyncio.to_thread(fetch_scores)
+
+            events = data.get("events", [])
+            if not events:
+                return {"success": True, "type": "text", "text": f"No {sport.upper()} games found today.", "description": f"{sport.upper()} scores"}
+
+            results = []
+            for event in events[:10]:  # Limit to 10 games
+                name = event.get("name", "Unknown")
+                status_obj = event.get("status", {})
+                status_type = status_obj.get("type", {})
+                status = status_type.get("description", "Unknown")
+                status_state = status_type.get("state", "")
+
+                # Get competitors
+                competitions = event.get("competitions", [{}])
+                if competitions:
+                    competitors = competitions[0].get("competitors", [])
+
+                    # Filter by team if specified
+                    if team_filter:
+                        team_match = False
+                        for comp in competitors:
+                            team_name = comp.get("team", {}).get("displayName", "").lower()
+                            team_abbrev = comp.get("team", {}).get("abbreviation", "").lower()
+                            if team_filter in team_name or team_filter in team_abbrev:
+                                team_match = True
+                                break
+                        if not team_match:
+                            continue
+
+                    # Format score
+                    if len(competitors) >= 2:
+                        away = competitors[0] if competitors[0].get("homeAway") == "away" else competitors[1]
+                        home = competitors[1] if competitors[0].get("homeAway") == "away" else competitors[0]
+
+                        away_name = away.get("team", {}).get("abbreviation", "???")
+                        home_name = home.get("team", {}).get("abbreviation", "???")
+                        away_score = away.get("score", "-")
+                        home_score = home.get("score", "-")
+
+                        # Winner indicator
+                        away_win = ""
+                        home_win = ""
+                        if status_state == "post":
+                            try:
+                                if int(away_score) > int(home_score):
+                                    away_win = " W"
+                                elif int(home_score) > int(away_score):
+                                    home_win = " W"
+                            except (ValueError, TypeError):
+                                pass
+
+                        if status_state == "in":
+                            # Live game
+                            detail = status_obj.get("type", {}).get("detail", "")
+                            results.append(f"**LIVE** {away_name} {away_score} @ {home_name} {home_score} ({detail})")
+                        elif status_state == "post":
+                            # Finished
+                            results.append(f"{away_name} {away_score}{away_win} @ {home_name} {home_score}{home_win} (Final)")
+                        else:
+                            # Scheduled
+                            date_str = event.get("date", "")
+                            if date_str:
+                                from datetime import datetime as dt
+                                try:
+                                    game_time = dt.fromisoformat(date_str.replace("Z", "+00:00"))
+                                    time_str = game_time.strftime("%I:%M %p")
+                                except:
+                                    time_str = status
+                            else:
+                                time_str = status
+                            results.append(f"{away_name} @ {home_name} ({time_str})")
+
+            if not results:
+                if team_filter:
+                    return {"success": True, "type": "text", "text": f"No games found for '{team_filter}' in {sport.upper()} today.", "description": f"{sport.upper()} scores"}
+                return {"success": True, "type": "text", "text": f"No {sport.upper()} games found.", "description": f"{sport.upper()} scores"}
+
+            # Get league name for header
+            league_info = data.get("leagues", [{}])[0]
+            league_name = league_info.get("name", sport.upper())
+
+            result_text = f"**{league_name} Scores**\n\n"
+            result_text += "\n".join(results)
+
+            return {
+                "success": True,
+                "type": "text",
+                "text": result_text,
+                "description": f"{sport.upper()} scores"
+            }
+
+        except Exception as e:
+            return {"success": False, "error": f"Sports scores lookup failed: {str(e)}"}

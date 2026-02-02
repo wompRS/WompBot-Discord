@@ -1,14 +1,14 @@
 # WompBot - Discord Bot
 
-A Discord bot powered by Claude Sonnet through OpenRouter, featuring intelligent conversation memory (RAG), media analysis (images, GIFs, YouTube transcripts, video transcription), 18 LLM tools, web search integration, claims tracking, user behavior analysis, and iRacing integration.
+A Discord bot powered by DeepSeek through OpenRouter, featuring intelligent conversation memory (RAG), media analysis (images, GIFs, YouTube transcripts, video transcription), 18 LLM tools, web search integration, claims tracking, user behavior analysis, and iRacing integration.
 
 ## Core Features
 
 ### Conversational AI
 
-**Dual-Model Architecture**
-- General Chat: Claude 3.7 Sonnet for high-quality conversational responses
-- Fact-Checking: Claude 3.5 Sonnet for maximum accuracy with minimal hallucination
+**AI Architecture**
+- General Chat: DeepSeek for high-quality conversational responses
+- Configurable model via MODEL_NAME environment variable
 
 **Three Personality Modes**
 - Default: Conversational and helpful, provides detailed responses with personality
@@ -163,7 +163,7 @@ React with a cloud emoji to any message to save it as a memorable quote.
 React with a warning emoji to trigger an automated fact-check.
 
 **How it works:**
-- Uses Claude 3.5 Sonnet for high accuracy
+- Uses DeepSeek for high accuracy
 - Automatically searches 7 web sources using Tavily
 - Requires at least 2 sources to corroborate claims
 - Strict anti-hallucination prompts
@@ -670,19 +670,12 @@ Comprehensive guides are available in the docs directory.
 
 ## Costs
 
-### Dual-Model Pricing
+### Model Pricing
 
-**General Chat (Claude 3.7 Sonnet):**
-- About $3 input / $15 output per 1M tokens
-- Roughly $0.015-0.03 per message depending on length
-- 100 messages per day = $45-90/month without rate limits
-- With rate limits: $10-20/month
-
-**Fact-Checking (Claude 3.5 Sonnet):**
-- About $3 input / $15 output per 1M tokens
-- Roughly $0.018 per fact-check (warning emoji trigger)
-- 50 fact-checks per month = $0.90/month
-- Rate limited: 10 per day per user
+**DeepSeek Chat:**
+- Very cost-effective compared to other models
+- Roughly $0.001-0.005 per message depending on length
+- Excellent quality/cost ratio
 
 **Search (Tavily):**
 - Free up to 1,000 searches per month
@@ -761,32 +754,25 @@ docker-compose up -d
 
 ## Model Configuration
 
-WompBot uses Claude 3.7 Sonnet via OpenRouter for high-quality conversational AI:
+WompBot uses DeepSeek via OpenRouter for high-quality conversational AI:
 
 ```env
 # General chat - Fast, high-quality responses
-MODEL_NAME=anthropic/claude-3.7-sonnet
-
-# Fact-checking - High accuracy, prevents hallucination
-FACT_CHECK_MODEL=anthropic/claude-3.5-sonnet
+MODEL_NAME=deepseek/deepseek-chat
 ```
 
-### Why Claude?
+### Why DeepSeek?
 
-- General chat uses Claude 3.7 Sonnet for fast, accurate, conversational responses
-- Fact-checking uses Claude 3.5 Sonnet for maximum accuracy and zero hallucination
-- Cost optimized: expensive fact-check model only used when warning emoji triggered
+- Excellent quality/cost ratio
+- Fast, accurate, conversational responses
+- Very cost-effective for high-volume usage
 
-### Alternative Models
+### Alternative Models (via OpenRouter)
 
-**General Chat Models (via OpenRouter):**
-- anthropic/claude-3.7-sonnet (Default - excellent balance)
-- anthropic/claude-3.5-sonnet (More accurate, slightly slower)
-- anthropic/claude-3-haiku (Faster, more economical)
+- deepseek/deepseek-chat (Default - excellent balance)
+- anthropic/claude-3.5-sonnet (Higher accuracy, more expensive)
+- anthropic/claude-3-haiku (Fast, economical)
 - google/gemini-2.0-flash-exp (Fast alternative)
-
-**Fact-Check Models:**
-- anthropic/claude-3.5-sonnet (Default - minimal hallucination)
 - anthropic/claude-3-opus (Maximum accuracy, expensive)
 - Other models not recommended for fact-checking
 

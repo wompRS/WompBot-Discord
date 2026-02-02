@@ -225,6 +225,7 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                              self_knowledge=None, rag=None, wolfram=None, weather=None,
                              iracing_manager=None, reminder_system=None):
     """Handle when bot is mentioned/tagged"""
+    print(f"🔔 handle_bot_mention called for {message.author} in #{getattr(message.channel, 'name', 'DM')}")
     # Track placeholder message for cleanup on error
     placeholder_msg = None
     try:
@@ -474,29 +475,7 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                 f"⚠️ Message truncated to {max_input_length} characters for processing."
             )
 
-        # Message frequency rate limiting (skip for admin)
-        if not is_admin:
-            message_cooldown = int(os.getenv('MESSAGE_COOLDOWN', '3'))  # 3 seconds default
-            max_messages_per_minute = int(os.getenv('MAX_MESSAGES_PER_MINUTE', '10'))  # 10/min default
-
-            freq_check = db.check_feature_rate_limit(
-                message.author.id,
-                'bot_message',
-                cooldown_seconds=message_cooldown,
-                hourly_limit=max_messages_per_minute * 6  # Convert per-minute to per-hour approximation
-            )
-
-            if not freq_check['allowed']:
-                if freq_check['reason'] == 'cooldown':
-                    # Silent cooldown - just ignore to prevent spam
-                    return
-                elif freq_check['reason'] == 'hourly_limit':
-                    await message.channel.send(
-                        f"⏱️ Slow down! You're sending messages too quickly."
-                    )
-                    return
-
-        # Record message
+        # Record message for analytics
         db.record_feature_usage(message.author.id, 'bot_message')
 
         content_lower = content.lower()
@@ -559,53 +538,7 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                 await generate_leaderboard_response(message.channel, stat_type, days, db, llm)
                 return
 
-        # Rate limiting (per user to avoid abuse) - skip for admin
-        if not is_admin:
-            rate_window = float(os.getenv("MENTION_RATE_WINDOW_SECONDS", "6"))
-            max_per_window = int(os.getenv("MENTION_RATE_MAX_CALLS", "3"))
-            if rate_window > 0 and max_per_window > 0:
-                now_ts = datetime.now(timezone.utc).timestamp()
-                rate_limited = False
-                async with _RATE_STATE_LOCK:
-                    user_bucket = MENTION_RATE_STATE.get(message.author.id)
-                    if user_bucket and now_ts - user_bucket["window_start"] <= rate_window:
-                        if user_bucket["count"] >= max_per_window:
-                            rate_limited = True
-                        else:
-                            user_bucket["count"] += 1
-                    else:
-                        MENTION_RATE_STATE[message.author.id] = {
-                            "count": 1,
-                            "window_start": now_ts,
-                        }
-                if rate_limited:
-                    await message.channel.send(
-                        "⏱️ Let's take a breather. Try again in a few seconds."
-                    )
-                    return
-
-        # Token-based rate limiting check (skip for admin)
-        if not is_admin:
-            max_tokens_per_request = int(os.getenv('MAX_TOKENS_PER_REQUEST', '1000'))
-            rate_limit_check = db.check_rate_limit(
-                message.author.id,
-                str(message.author),
-                max_tokens_per_request
-            )
-
-            if not rate_limit_check['allowed']:
-                tokens_used = rate_limit_check['tokens_used']
-                limit = rate_limit_check['limit']
-                reset_minutes = rate_limit_check['reset_seconds'] // 60
-                reset_seconds = rate_limit_check['reset_seconds'] % 60
-
-                await message.channel.send(
-                    f"⏱️ Token limit reached! You've used {tokens_used:,}/{limit:,} tokens this hour.\n"
-                    f"Reset in {reset_minutes}m {reset_seconds}s."
-                )
-                return
-
-        # Repeated message detection (anti-gaming) - skip for admin
+        # Repeated message detection (anti-spam) - blocks same question spam - skip for admin
         if not is_admin:
             repeated_check = db.check_repeated_messages(
                 message.author.id,
@@ -694,43 +627,13 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
             search_results = None
 
             if search and not bot_docs and llm.should_search(content, conversation_history):
-                # Check search rate limits (skip for admin)
-                search_rate_check = {'allowed': True}
-                if not is_admin:
-                    search_hourly_limit = int(os.getenv('SEARCH_HOURLY_LIMIT', '5'))
-                    search_daily_limit = int(os.getenv('SEARCH_DAILY_LIMIT', '20'))
+                # Build contextual query that considers recent conversation
+                search_query = search.build_contextual_query(content, conversation_history)
+                search_results_raw = await asyncio.to_thread(search.search, search_query)
+                search_results = search.format_results_for_llm(search_results_raw)
 
-                    search_rate_check = db.check_feature_rate_limit(
-                        message.author.id,
-                        'search',
-                        hourly_limit=search_hourly_limit,
-                        daily_limit=search_daily_limit
-                    )
-
-                if not search_rate_check['allowed']:
-                    # Delete the placeholder if rate limited
-                    if placeholder_msg:
-                        await placeholder_msg.delete()
-                        placeholder_msg = None
-
-                    if search_rate_check['reason'] == 'hourly_limit':
-                        await message.channel.send(
-                            f"⏱️ Search limit reached! You've used {search_rate_check['count']}/{search_rate_check['limit']} searches this hour."
-                        )
-                    elif search_rate_check['reason'] == 'daily_limit':
-                        await message.channel.send(
-                            f"📊 Daily search limit reached! You've used {search_rate_check['count']}/{search_rate_check['limit']} searches today."
-                        )
-                    # Skip search but continue with response
-                else:
-                    # Placeholder already sent, now actually do the search
-                    # Build contextual query that considers recent conversation
-                    search_query = search.build_contextual_query(content, conversation_history)
-                    search_results_raw = await asyncio.to_thread(search.search, search_query)
-                    search_results = search.format_results_for_llm(search_results_raw)
-
-                    db.store_search_log(search_query, len(search_results_raw), message.author.id, message.channel.id)
-                    db.record_feature_usage(message.author.id, 'search')
+                db.store_search_log(search_query, len(search_results_raw), message.author.id, message.channel.id)
+                db.record_feature_usage(message.author.id, 'search')
 
             # Get server personality setting
             server_id = message.guild.id if message.guild else None
@@ -802,7 +705,8 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                     result = await tool_executor.execute_tool(
                         tool_call,
                         channel_id=message.channel.id,
-                        user_id=message.author.id
+                        user_id=message.author.id,
+                        guild_id=message.guild.id if message.guild else None
                     )
 
                     # Collect tool results for LLM feedback
@@ -924,34 +828,20 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
 
             # Check if LLM says it needs more info (skip if we used bot docs or response is None)
             if response is not None and search and not bot_docs and not search_results and llm.detect_needs_search_from_response(response):
-                # Check search rate limits (second attempt) - skip for admin
-                search_rate_check = {'allowed': True}
-                if not is_admin:
-                    search_hourly_limit = int(os.getenv('SEARCH_HOURLY_LIMIT', '5'))
-                    search_daily_limit = int(os.getenv('SEARCH_DAILY_LIMIT', '20'))
+                if not placeholder_msg:
+                    placeholder_msg = await message.channel.send("🔍 Let me search for that...")
+                else:
+                    await placeholder_msg.edit(content="🔍 Let me search for that...")
 
-                    search_rate_check = db.check_feature_rate_limit(
-                        message.author.id,
-                        'search',
-                        hourly_limit=search_hourly_limit,
-                        daily_limit=search_daily_limit
-                    )
+                # Build contextual query that considers recent conversation
+                search_query = search.build_contextual_query(content, conversation_history)
+                search_results_raw = await asyncio.to_thread(search.search, search_query)
+                search_results = search.format_results_for_llm(search_results_raw)
 
-                if search_rate_check['allowed']:
-                    if not placeholder_msg:
-                        placeholder_msg = await message.channel.send("🔍 Let me search for that...")
-                    else:
-                        await placeholder_msg.edit(content="🔍 Let me search for that...")
+                db.store_search_log(search_query, len(search_results_raw), message.author.id, message.channel.id)
+                db.record_feature_usage(message.author.id, 'search')
 
-                    # Build contextual query that considers recent conversation
-                    search_query = search.build_contextual_query(content, conversation_history)
-                    search_results_raw = await asyncio.to_thread(search.search, search_query)
-                    search_results = search.format_results_for_llm(search_results_raw)
-
-                    db.store_search_log(search_query, len(search_results_raw), message.author.id, message.channel.id)
-                    db.record_feature_usage(message.author.id, 'search')
-
-                # Regenerate response with search results (or without if rate limited)
+                # Regenerate response with search results
                 # Update context (bot docs take priority over search)
                 context_for_llm = bot_docs or search_results
 
@@ -1001,7 +891,8 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                         result = await tool_executor.execute_tool(
                             tool_call,
                             channel_id=message.channel.id,
-                            user_id=message.author.id
+                            user_id=message.author.id,
+                            guild_id=message.guild.id if message.guild else None
                         )
 
                         tool_name = tool_call.get("function", {}).get("name", "unknown")

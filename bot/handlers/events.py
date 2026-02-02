@@ -384,6 +384,7 @@ def register_events(bot, db, privacy_manager, claims_tracker, debate_scorekeeper
         if should_respond:
             # Import here to avoid circular dependency
             from handlers.conversations import handle_bot_mention
+            print(f"💬 Bot mention detected from {message.author}: {message.content[:50]}...")
             await handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker,
                                     search=search, self_knowledge=self_knowledge, rag=rag,
                                     wolfram=wolfram, weather=weather,

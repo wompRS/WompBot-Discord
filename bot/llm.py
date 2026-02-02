@@ -2,6 +2,29 @@ import os
 import requests
 from compression import ConversationCompressor
 
+
+def _get_text_content(content):
+    """Extract text from content that may be a string or multimodal list.
+
+    When images are included, OpenAI-style APIs use a list format:
+    [{"type": "text", "text": "..."}, {"type": "image_url", ...}]
+
+    This helper safely extracts the text portion regardless of format.
+    """
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        # Extract text from multimodal content array
+        text_parts = []
+        for part in content:
+            if isinstance(part, dict) and part.get("type") == "text":
+                text_parts.append(part.get("text", ""))
+        return " ".join(text_parts)
+    return str(content)
+
+
 class LLMClient:
     def __init__(self, cost_tracker=None):
         self.api_key = os.getenv('OPENROUTER_API_KEY')
@@ -153,7 +176,7 @@ Be useful and real. That's the balance."""
             # Check if recent conversation contains a search-worthy question from user
             # that the bot asked for clarification on
             for msg in reversed(conversation_context[-6:]):
-                msg_content = msg.get('content', '').lower()
+                msg_content = _get_text_content(msg.get('content', '')).lower()
                 msg_username = msg.get('username', '').lower()
 
                 # Skip bot messages
@@ -195,7 +218,7 @@ Be useful and real. That's the balance."""
         response_lower = response_text.lower()
         return any(phrase in response_lower for phrase in uncertainty_phrases)
     
-    MAX_HISTORY_CHARS = 6000
+    MAX_HISTORY_CHARS = int(os.getenv('MAX_HISTORY_CHARS', '50000'))  # Increased - was 6000
 
     def generate_response(
         self,
@@ -427,7 +450,8 @@ Use this history to maintain conversation continuity and remember what was discu
                 print(f"   💬 Recent context messages:")
                 for i, msg in enumerate(messages[-4:]):  # Show last 4 messages
                     role = msg['role']
-                    content_preview = msg['content'][:80].replace('\n', ' ')
+                    content_text = _get_text_content(msg['content'])
+                    content_preview = content_text[:80].replace('\n', ' ') if content_text else "[image]"
                     print(f"      [{i}] {role}: {content_preview}...")
 
             headers = {
