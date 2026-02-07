@@ -95,13 +95,21 @@ class ToolExecutor:
         """
         try:
             function_name = tool_call["function"]["name"]
-            arguments_str = tool_call["function"].get("arguments", "{}")
-            arguments = json.loads(arguments_str) if arguments_str else {}
+            arguments_raw = tool_call["function"].get("arguments", "{}")
+            # Handle both JSON string and dict formats (different models return different formats)
+            if isinstance(arguments_raw, dict):
+                arguments = arguments_raw
+            elif isinstance(arguments_raw, str):
+                arguments = json.loads(arguments_raw) if arguments_raw else {}
+            else:
+                arguments = {}
 
             print(f"🛠️  Executing tool: {function_name}")
             print(f"   Arguments: {arguments}")
 
         except (KeyError, json.JSONDecodeError) as e:
+            print(f"❌ Tool call parse error: {e}")
+            print(f"   Raw tool_call: {tool_call}")
             return {
                 "success": False,
                 "error": "Invalid tool call format. Please try your request again."
@@ -128,6 +136,8 @@ class ToolExecutor:
                 return await self._get_weather_forecast(arguments, user_id)
             elif function_name == "web_search":
                 return await self._web_search(arguments)
+            elif function_name == "image_search":
+                return await self._image_search(arguments)
 
             # New utility tools
             elif function_name == "get_time":
@@ -367,7 +377,7 @@ class ToolExecutor:
 
         # Check if location was provided, otherwise use saved preference
         location = args.get("location")
-        units = args.get("units", "metric")
+        units = args.get("units", "imperial")
 
         if not location and user_id:
             # Try to get saved preference
@@ -449,7 +459,7 @@ class ToolExecutor:
         # Check if location was provided, otherwise use saved preference
         location = args.get("location")
         days = args.get("days", 3)
-        units = args.get("units", "metric")
+        units = args.get("units", "imperial")
 
         if not location and user_id:
             # Try to get saved preference
@@ -503,6 +513,60 @@ class ToolExecutor:
         except Exception as e:
             return {"success": False, "error": f"Search failed: {str(e)}"}
 
+    async def _image_search(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        """Search for an image and return URL for embedding"""
+        import asyncio
+
+        query = args.get("query", "")
+        if not query:
+            return {"success": False, "error": "No search query provided"}
+
+        try:
+            def search_images():
+                from duckduckgo_search import DDGS
+                import requests
+
+                # Use duckduckgo-search library with safe search ON
+                with DDGS() as ddgs:
+                    # safesearch='on' enables strict filtering
+                    results = list(ddgs.images(query, max_results=5, safesearch='on'))
+
+                    if results:
+                        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+                        # Try to find a working image URL
+                        for result in results:
+                            image_url = result.get('image')
+                            if image_url and image_url.startswith('http'):
+                                # Verify the image is accessible
+                                try:
+                                    check = requests.head(image_url, headers=headers, timeout=5, allow_redirects=True)
+                                    if check.status_code == 200:
+                                        return {
+                                            'url': image_url,
+                                            'title': result.get('title', query),
+                                            'source': result.get('source', '')
+                                        }
+                                except:
+                                    continue
+                return None
+
+            result = await asyncio.to_thread(search_images)
+
+            if result:
+                return {
+                    "success": True,
+                    "type": "image_url",
+                    "url": result['url'],
+                    "title": result['title'],
+                    "description": f"Image of {query}"
+                }
+            else:
+                return {"success": False, "error": f"No images found for '{query}'"}
+
+        except Exception as e:
+            print(f"❌ Image search error: {e}")
+            return {"success": False, "error": f"Image search failed: {str(e)}"}
+
     # ========== New Utility Tools ==========
 
     async def _get_time(self, args: Dict[str, Any]) -> Dict[str, Any]:
@@ -537,7 +601,7 @@ class ToolExecutor:
         }
 
     async def _translate(self, args: Dict[str, Any]) -> Dict[str, Any]:
-        """Translate text using LibreTranslate (free) or Google Translate"""
+        """Translate text using MyMemory API (free, no API key needed)"""
         import asyncio
 
         text = args["text"]
@@ -552,46 +616,47 @@ class ToolExecutor:
             'swedish': 'sv', 'norwegian': 'no', 'danish': 'da', 'finnish': 'fi',
             'polish': 'pl', 'turkish': 'tr', 'greek': 'el', 'hebrew': 'he',
             'thai': 'th', 'vietnamese': 'vi', 'indonesian': 'id', 'malay': 'ms',
-            'english': 'en'
+            'english': 'en', 'czech': 'cs', 'romanian': 'ro', 'hungarian': 'hu',
+            'ukrainian': 'uk'
         }
         target = lang_codes.get(target, target)
         if source != "auto":
             source = lang_codes.get(source, source)
 
-        # Try LibreTranslate (free, public instances)
-        libre_instances = [
-            "https://libretranslate.com",
-            "https://translate.argosopentech.com",
-            "https://translate.terraprint.co"
-        ]
+        # Use MyMemory API (free, no API key needed for low volume)
+        try:
+            def do_translate():
+                url = "https://api.mymemory.translated.net/get"
+                # MyMemory uses "autodetect" for auto detection when translating TO English
+                source_param = "autodetect" if source == "auto" and target == "en" else (source if source != "auto" else "en")
+                params = {
+                    "q": text[:500],  # Limit text length
+                    "langpair": f"{source_param}|{target}"
+                }
+                return requests.get(url, params=params, timeout=15)
 
-        for instance in libre_instances:
-            try:
-                def do_translate():
-                    resp = requests.post(
-                        f"{instance}/translate",
-                        json={
-                            "q": text,
-                            "source": source if source != "auto" else "auto",
-                            "target": target
-                        },
-                        timeout=10
-                    )
-                    return resp
+            response = await asyncio.to_thread(do_translate)
 
-                response = await asyncio.to_thread(do_translate)
-                if response.status_code == 200:
-                    result = response.json()
-                    translated = result.get("translatedText", "")
-                    if translated:
-                        return {
-                            "success": True,
-                            "type": "text",
-                            "text": f"**Translation ({target}):** {translated}",
-                            "description": f"Translated to {target}"
-                        }
-            except Exception:
-                continue
+            if response.status_code == 200:
+                data = response.json()
+                translated = data.get('responseData', {}).get('translatedText', '')
+                detected_lang = data.get('responseData', {}).get('detectedLanguage', source)
+
+                if translated and translated.upper() != text.upper():
+                    source_display = detected_lang.upper() if source == "auto" else source.upper()
+                    return {
+                        "success": True,
+                        "type": "text",
+                        "text": f"**Translation ({source_display} → {target.upper()}):** {translated}",
+                        "description": f"Translated from {source_display} to {target.upper()}"
+                    }
+                else:
+                    return {"success": False, "error": f"Could not translate text to {target}. The text may already be in the target language."}
+
+        except requests.Timeout:
+            return {"success": False, "error": "Translation request timed out. Try again."}
+        except Exception as e:
+            print(f"Translation error: {e}")
 
         return {"success": False, "error": "Translation service unavailable. Try again later."}
 
@@ -602,6 +667,8 @@ class ToolExecutor:
         query = args["query"]
 
         try:
+            headers = {'User-Agent': 'WompBot/1.0 (Discord Bot; educational project)'}
+
             def do_search():
                 # Search for the article
                 search_url = "https://en.wikipedia.org/w/api.php"
@@ -612,7 +679,7 @@ class ToolExecutor:
                     "format": "json",
                     "srlimit": 1
                 }
-                resp = requests.get(search_url, params=search_params, timeout=10)
+                resp = requests.get(search_url, params=search_params, headers=headers, timeout=10)
                 return resp
 
             search_response = await asyncio.to_thread(do_search)
@@ -626,7 +693,7 @@ class ToolExecutor:
             # Get the summary
             def do_summary():
                 summary_url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{title.replace(' ', '_')}"
-                resp = requests.get(summary_url, timeout=10)
+                resp = requests.get(summary_url, headers=headers, timeout=10)
                 return resp
 
             summary_response = await asyncio.to_thread(do_summary)
@@ -1197,13 +1264,13 @@ class ToolExecutor:
             return {"success": False, "error": f"Stock lookup failed: {str(e)}"}
 
     async def _stock_history(self, args: Dict[str, Any]) -> Dict[str, Any]:
-        """Get historical stock price data and create a line chart"""
+        """Get historical stock price data using yfinance (no API key needed)"""
         import asyncio
-        import os
-        import time
+        import yfinance as yf
 
         symbol = args["symbol"].upper()
         period = args.get("period", "1Y")
+        chart_type = args.get("chart_type", "line")  # "line" or "candle"
 
         # Common company name to ticker mappings
         name_to_ticker = {
@@ -1218,157 +1285,95 @@ class ToolExecutor:
 
         symbol = name_to_ticker.get(symbol, symbol)
 
-        # Period display names
-        period_names = {
-            '1M': '1 Month', '3M': '3 Months', '6M': '6 Months',
-            '1Y': '1 Year', '2Y': '2 Years', '5Y': '5 Years',
-            '10Y': '10 Years', 'MAX': 'All Time',
+        # Period mapping: internal -> (yfinance period, display name)
+        period_map = {
+            '1M': ('1mo', '1 Month'),
+            '3M': ('3mo', '3 Months'),
+            '6M': ('6mo', '6 Months'),
+            '1Y': ('1y', '1 Year'),
+            '2Y': ('2y', '2 Years'),
+            '5Y': ('5y', '5 Years'),
+            '10Y': ('10y', '10 Years'),
+            'MAX': ('max', 'All Time'),
         }
-        period_display = period_names.get(period, period)
-
-        # For periods > 1Y, use Alpha Vantage (supports 20+ years)
-        # For periods <= 1Y, use Finnhub (better rate limits)
-        if period in ['2Y', '5Y', '10Y', 'MAX']:
-            return await self._stock_history_alphavantage(symbol, period, period_display)
-        else:
-            return await self._stock_history_finnhub(symbol, period, period_display)
-
-    async def _stock_history_finnhub(self, symbol: str, period: str, period_display: str) -> Dict[str, Any]:
-        """Fetch stock history from Finnhub (up to 1 year)"""
-        import asyncio
-        import os
-        import time
-
-        finnhub_key = os.getenv('FINNHUB_API_KEY')
-        if not finnhub_key:
-            return {"success": False, "error": "Stock history requires FINNHUB_API_KEY in .env (free at finnhub.io)"}
-
-        now = int(time.time())
-        period_days = {'1M': 30, '3M': 90, '6M': 180, '1Y': 365}
-        days = period_days.get(period, 365)
-        from_ts = now - (days * 24 * 60 * 60)
+        yf_period, period_display = period_map.get(period, ('1y', '1 Year'))
 
         try:
-            def fetch_candles():
-                url = f"https://finnhub.io/api/v1/stock/candle?symbol={symbol}&resolution=D&from={from_ts}&to={now}&token={finnhub_key}"
-                resp = requests.get(url, timeout=15)
-                return resp.json(), resp.status_code
+            def fetch_yfinance():
+                ticker = yf.Ticker(symbol)
+                hist = ticker.history(period=yf_period)
+                info = ticker.info
+                return hist, info
 
-            data, status_code = await asyncio.to_thread(fetch_candles)
+            hist, info = await asyncio.to_thread(fetch_yfinance)
 
-            # Log the response for debugging
-            print(f"Finnhub response for {symbol}: status={status_code}, data={str(data)[:200]}")
+            if hist.empty:
+                return {"success": False, "error": f"No historical data found for '{symbol}'"}
 
-            if status_code == 401 or status_code == 403:
-                return {"success": False, "error": "Finnhub API key is invalid. Check FINNHUB_API_KEY in .env"}
+            # Get company name
+            company_name = info.get('shortName', info.get('longName', symbol))
 
-            if status_code == 429:
-                return {"success": False, "error": "Finnhub rate limit reached. Try again in a minute."}
+            # Extract data
+            closes = hist['Close'].tolist()
+            dates_raw = hist.index.tolist()
 
-            if not data or data.get('s') == 'no_data':
-                return {"success": False, "error": f"No historical data available for '{symbol}'. Make sure it's a valid US stock ticker."}
-
-            if data.get('s') != 'ok':
-                return {"success": False, "error": f"Could not find historical data for '{symbol}'. API status: {data.get('s', 'unknown')}"}
-
-            closes = data.get('c', [])
-            timestamps = data.get('t', [])
-
-            if not closes or not timestamps:
-                return {"success": False, "error": f"No price data available for '{symbol}'"}
-
-            dates = [datetime.fromtimestamp(ts).strftime('%m/%d') for ts in timestamps]
-
-            return self._create_stock_chart(symbol, closes, dates, period_display)
-
-        except Exception as e:
-            return {"success": False, "error": f"Stock history lookup failed: {str(e)}"}
-
-    async def _stock_history_alphavantage(self, symbol: str, period: str, period_display: str) -> Dict[str, Any]:
-        """Fetch stock history from Alpha Vantage (up to 20+ years)"""
-        import asyncio
-        import os
-
-        av_key = os.getenv('ALPHA_VANTAGE_API_KEY')
-        if not av_key:
-            return {"success": False, "error": "Long-term stock history requires ALPHA_VANTAGE_API_KEY in .env (free at alphavantage.co - 25 calls/day)"}
-
-        try:
-            def fetch_data():
-                # Use TIME_SERIES_DAILY with full output for maximum history
-                url = f"https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={symbol}&outputsize=full&apikey={av_key}"
-                resp = requests.get(url, timeout=30)
-                return resp.json()
-
-            data = await asyncio.to_thread(fetch_data)
-
-            if "Error Message" in data:
-                return {"success": False, "error": f"Could not find data for '{symbol}'"}
-            if "Note" in data:
-                return {"success": False, "error": "API rate limit reached (25 calls/day on free tier). Try again tomorrow."}
-            if "Time Series (Daily)" not in data:
-                return {"success": False, "error": f"No historical data available for '{symbol}'"}
-
-            time_series = data["Time Series (Daily)"]
-
-            # Convert to lists sorted by date
-            sorted_dates = sorted(time_series.keys())
-            all_closes = [float(time_series[d]["4. close"]) for d in sorted_dates]
-
-            # Filter to requested period
-            period_days = {'2Y': 730, '5Y': 1825, '10Y': 3650, 'MAX': len(all_closes)}
-            days_limit = period_days.get(period, len(all_closes))
-
-            # Take the most recent N days
-            if len(all_closes) > days_limit:
-                sorted_dates = sorted_dates[-days_limit:]
-                all_closes = all_closes[-days_limit:]
-
-            # Format dates - use year for long periods
-            if period in ['5Y', '10Y', 'MAX']:
-                dates = [d[:7] for d in sorted_dates]  # YYYY-MM format
+            # Format dates based on period length
+            if period in ['1M', '3M', '6M']:
+                dates = [d.strftime('%m/%d') for d in dates_raw]
+            elif period in ['1Y', '2Y']:
+                dates = [d.strftime('%m/%y') for d in dates_raw]
             else:
-                dates = [d[5:] for d in sorted_dates]  # MM-DD format
+                dates = [d.strftime('%Y') for d in dates_raw]
 
-            return self._create_stock_chart(symbol, all_closes, dates, period_display)
+            # Sample data if there are too many points
+            if len(closes) > 80:
+                step = len(closes) // 80
+                closes = closes[::step]
+                dates = dates[::step]
+
+            # Calculate price change
+            start_price = closes[0]
+            end_price = closes[-1]
+            change = end_price - start_price
+            change_pct = (change / start_price) * 100 if start_price else 0
+
+            # Create chart using visualizer
+            chart_data = {symbol: closes}
+            image_buffer = self.viz.create_line_chart(
+                data=chart_data,
+                title=f"{company_name} ({symbol}) - {period_display}",
+                xlabel="Date",
+                ylabel="Price ($)",
+                x_labels=dates
+            )
+
+            # Format summary with additional stats
+            change_str = f"+${change:.2f} (+{change_pct:.1f}%)" if change >= 0 else f"-${abs(change):.2f} ({change_pct:.1f}%)"
+            summary = f"**{company_name} ({symbol})** {period_display}\n"
+            summary += f"${start_price:.2f} → ${end_price:.2f} ({change_str})\n"
+
+            # Add extra info if available
+            if info.get('fiftyTwoWeekHigh') and info.get('fiftyTwoWeekLow'):
+                summary += f"52W Range: ${info['fiftyTwoWeekLow']:.2f} - ${info['fiftyTwoWeekHigh']:.2f}\n"
+            if info.get('marketCap'):
+                cap = info['marketCap']
+                if cap >= 1e12:
+                    cap_str = f"${cap/1e12:.2f}T"
+                elif cap >= 1e9:
+                    cap_str = f"${cap/1e9:.2f}B"
+                else:
+                    cap_str = f"${cap/1e6:.2f}M"
+                summary += f"Market Cap: {cap_str}"
+
+            return {
+                "success": True,
+                "type": "image",
+                "image": image_buffer,
+                "description": summary
+            }
 
         except Exception as e:
             return {"success": False, "error": f"Stock history lookup failed: {str(e)}"}
-
-    def _create_stock_chart(self, symbol: str, closes: list, dates: list, period_display: str) -> Dict[str, Any]:
-        """Create the stock price chart from data"""
-        # Sample data if there are too many points (for cleaner charts)
-        if len(closes) > 80:
-            step = len(closes) // 80
-            closes = closes[::step]
-            dates = dates[::step]
-
-        # Calculate price change
-        start_price = closes[0]
-        end_price = closes[-1]
-        change = end_price - start_price
-        change_pct = (change / start_price) * 100 if start_price else 0
-
-        # Create the chart
-        chart_data = {symbol: closes}
-        image_buffer = self.viz.create_line_chart(
-            data=chart_data,
-            title=f"{symbol} Stock Price - {period_display}",
-            xlabel="Date",
-            ylabel="Price ($)",
-            x_labels=dates
-        )
-
-        # Format summary
-        change_str = f"+${change:.2f} (+{change_pct:.1f}%)" if change >= 0 else f"${change:.2f} ({change_pct:.1f}%)"
-        summary = f"**{symbol}** {period_display}: ${start_price:.2f} → ${end_price:.2f} ({change_str})"
-
-        return {
-            "success": True,
-            "type": "image",
-            "image": image_buffer,
-            "description": summary
-        }
 
     async def _fetch_crypto_price_tool(self, coingecko_id: str, display_symbol: str) -> Dict[str, Any]:
         """Fetch crypto price from CoinGecko for tool executor"""

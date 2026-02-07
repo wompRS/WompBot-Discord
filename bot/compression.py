@@ -28,15 +28,16 @@ class ConversationCompressor:
                 from llmlingua import PromptCompressor
 
                 # Use a smaller model for CPU efficiency
-                # microsoft/llmlingua-2-bert-base-multilingual-cased is faster than xlm-roberta-large
+                # llmlingua-2-bert-base is faster than xlm-roberta-large
                 model_name = os.getenv(
                     'COMPRESSION_MODEL',
-                    'microsoft/llmlingua-2-bert-base-multilingual-cased'
+                    'microsoft/llmlingua-2-bert-base-multilingual-cased-meetingbank'
                 )
 
                 self._compressor = PromptCompressor(
                     model_name=model_name,
                     device_map="cpu",  # Use CPU to avoid GPU memory issues
+                    use_llmlingua2=True,  # Enable LLMLingua-2 mode
                 )
                 print(f"✅ Compression model loaded: {model_name}")
             except Exception as e:

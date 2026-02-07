@@ -29,6 +29,46 @@ class Weather:
         self.base_url = "http://api.openweathermap.org/data/2.5"
         self.geo_url = "http://api.openweathermap.org/geo/1.0"
 
+        # US state abbreviations for location normalization
+        self.us_states = {
+            'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA',
+            'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME', 'MD',
+            'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ',
+            'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC',
+            'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY', 'DC'
+        }
+
+    def _normalize_location(self, location: str) -> str:
+        """
+        Normalize location string for OpenWeatherMap API.
+        Handles formats like:
+        - "spokane wa" -> "Spokane,WA,US"
+        - "spokane, wa" -> "Spokane,WA,US"
+        - "new york, ny" -> "New York,NY,US"
+        """
+        location = location.strip()
+
+        # If it has commas, normalize the format
+        if ',' in location:
+            parts = [p.strip() for p in location.split(',')]
+            # Check if second part is a US state (city, state format)
+            if len(parts) == 2:
+                potential_state = parts[1].upper()
+                if potential_state in self.us_states:
+                    return f"{parts[0]},{potential_state},US"
+            # Already has country code or unknown format - clean up spaces
+            return ','.join(parts)
+
+        # No commas - check if last word is a US state
+        parts = location.split()
+        if len(parts) >= 2:
+            potential_state = parts[-1].upper()
+            if potential_state in self.us_states:
+                city = ' '.join(parts[:-1])
+                return f"{city},{potential_state},US"
+
+        return location
+
     def reverse_geocode(self, lat: float, lon: float) -> Optional[str]:
         """
         Get state/region name from coordinates using OpenWeatherMap reverse geocoding.
@@ -68,6 +108,9 @@ class Weather:
             Dict with weather data and formatted description
         """
         try:
+            # Normalize location format (e.g., "spokane wa" -> "Spokane,WA,US")
+            location = self._normalize_location(location)
+
             params = {
                 'q': location,
                 'appid': self.api_key,
@@ -207,6 +250,9 @@ class Weather:
             Dict with forecast data
         """
         try:
+            # Normalize location format (e.g., "spokane wa" -> "Spokane,WA,US")
+            location = self._normalize_location(location)
+
             params = {
                 'q': location,
                 'appid': self.api_key,

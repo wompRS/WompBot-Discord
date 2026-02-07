@@ -6,12 +6,15 @@ This module contains traditional prefix commands (!command syntax).
 
 import asyncio
 import json
+import os
 import discord
 import requests
 from discord.ext import commands
 from datetime import datetime, timedelta
 from urllib.parse import quote as url_quote
 import re
+from io import BytesIO
+import time
 
 
 def register_prefix_commands(bot, db, llm, search, help_system, tasks_dict,
@@ -163,14 +166,28 @@ def register_prefix_commands(bot, db, llm, search, help_system, tasks_dict,
 
     @bot.command(name='help')
     async def help_prefix(ctx, command: str = None):
-        """Show bot commands or get detailed help for a specific command"""
+        """Show bot commands or get detailed help for a specific command or category"""
         if command:
-            # Show detailed help for specific command
-            embed = help_system.get_command_help(command)
+            command_lower = command.lower().strip()
+
+            # First check if it's a category
+            embed = help_system.get_category_help(command_lower)
+            if embed:
+                await ctx.send(embed=embed)
+                return
+
+            # Then check for specific command
+            embed = help_system.get_command_help(command_lower)
             if embed:
                 await ctx.send(embed=embed)
             else:
-                await ctx.send(f"❌ No help found for command `{command}`. Use `!help` to see all available commands.")
+                # List available categories
+                categories = help_system.get_available_categories()
+                await ctx.send(
+                    f"❌ No help found for `{command}`.\n\n"
+                    f"**Available categories:** {', '.join(f'`{c}`' for c in categories)}\n\n"
+                    f"Use `!help` to see all commands or `!help <category>` for category help."
+                )
         else:
             # Show general help
             embed = help_system.get_general_help()
@@ -408,24 +425,27 @@ def register_prefix_commands(bot, db, llm, search, help_system, tasks_dict,
 
         async with ctx.typing():
             try:
-                result = await asyncio.to_thread(weather.get_current, location)
+                result = await asyncio.to_thread(weather.get_current_weather, location)
 
                 if not result.get('success'):
                     await ctx.send(f"❌ {result.get('error', 'Could not fetch weather')}")
                     return
 
-                data = result['data']
-                embed = discord.Embed(
-                    title=f"🌤️ Weather in {data['city']}, {data['country']}",
-                    color=discord.Color.blue()
-                )
-                embed.add_field(name="Temperature", value=f"{data['temp_c']:.1f}°C / {data['temp_f']:.1f}°F", inline=True)
-                embed.add_field(name="Feels Like", value=f"{data['feels_like_c']:.1f}°C / {data['feels_like_f']:.1f}°F", inline=True)
-                embed.add_field(name="Conditions", value=data['description'].capitalize(), inline=True)
-                embed.add_field(name="Humidity", value=f"{data['humidity']}%", inline=True)
-                embed.add_field(name="Wind", value=f"{data['wind_speed']} m/s", inline=True)
-
-                await ctx.send(embed=embed)
+                # Weather API returns a summary with all info formatted
+                if 'summary' in result:
+                    await ctx.send(result['summary'])
+                else:
+                    # Fallback to embed if no summary
+                    embed = discord.Embed(
+                        title=f"🌤️ Weather in {result['location']}, {result['country']}",
+                        color=discord.Color.blue()
+                    )
+                    embed.add_field(name="Temperature", value=f"{result['temperature']}{result['units']['temp']}", inline=True)
+                    embed.add_field(name="Feels Like", value=f"{result['feels_like']}{result['units']['temp']}", inline=True)
+                    embed.add_field(name="Conditions", value=result['description'], inline=True)
+                    embed.add_field(name="Humidity", value=f"{result['humidity']}%", inline=True)
+                    embed.add_field(name="Wind", value=f"{result['wind_speed']} {result['units']['speed']}", inline=True)
+                    await ctx.send(embed=embed)
 
             except Exception as e:
                 await ctx.send(f"❌ Weather lookup failed: {str(e)}")
@@ -567,10 +587,55 @@ def register_prefix_commands(bot, db, llm, search, help_system, tasks_dict,
 
     @bot.command(name='stock', aliases=['price', 'crypto'])
     async def stock_price(ctx, *, query: str):
-        """Get stock/crypto price: !stock AAPL, !stock Microsoft, !stock BTC"""
-        import os
-
+        """Get stock/crypto price or history: !stock AAPL, !stock TSLA 1 year, !stock NVDA 3m candle"""
         query = query.strip()
+
+        # Check for chart type modifier (candle/candlestick)
+        chart_type = "line"
+        if re.search(r'\b(candle|candlestick|ohlc)\b', query, re.IGNORECASE):
+            chart_type = "candle"
+            query = re.sub(r'\s*(candle|candlestick|ohlc)\s*', ' ', query, flags=re.IGNORECASE).strip()
+
+        # Parse time period from query (e.g., "tsla 1 year", "AAPL 6 months", "NVDA 1Y")
+        period_patterns = [
+            # Verbose patterns: "1 year", "6 months", "3 month"
+            (r'^(.+?)\s+(\d+)\s*(year|years|yr|yrs)$', lambda m: f"{m.group(2)}Y"),
+            (r'^(.+?)\s+(\d+)\s*(month|months|mo|mos)$', lambda m: f"{m.group(2)}M"),
+            # Short patterns: "1Y", "6M", "1y", "6m"
+            (r'^(.+?)\s+(\d+)\s*([YyMm])$', lambda m: f"{m.group(2)}{m.group(3).upper()}"),
+            # Keyword patterns: "ytd", "max", "all time"
+            (r'^(.+?)\s+(ytd|max|all\s*time)$', lambda m: 'MAX' if 'max' in m.group(2).lower() or 'all' in m.group(2).lower() else '1Y'),
+        ]
+
+        period = None
+        symbol_part = query
+        for pattern, period_func in period_patterns:
+            match = re.match(pattern, query, re.IGNORECASE)
+            if match:
+                symbol_part = match.group(1).strip()
+                period = period_func(match)
+                # Normalize period to valid values
+                period_num = int(re.match(r'(\d+)', period).group(1)) if re.match(r'(\d+)', period) else 1
+                period_unit = period[-1].upper()
+                if period_unit == 'Y':
+                    if period_num == 1:
+                        period = '1Y'
+                    elif period_num == 2:
+                        period = '2Y'
+                    elif period_num <= 5:
+                        period = '5Y'
+                    else:
+                        period = '10Y'
+                elif period_unit == 'M':
+                    if period_num <= 1:
+                        period = '1M'
+                    elif period_num <= 3:
+                        period = '3M'
+                    elif period_num <= 6:
+                        period = '6M'
+                    else:
+                        period = '1Y'
+                break
 
         # Common company/crypto name to ticker mappings
         name_to_ticker = {
@@ -622,16 +687,22 @@ def register_prefix_commands(bot, db, llm, search, help_system, tasks_dict,
             'UNISWAP': 'uniswap', 'UNI': 'uniswap',
         }
 
-        query_upper = query.upper()
-
-        # Check if it's a crypto
-        coingecko_id = crypto_to_coingecko.get(query_upper)
-        if coingecko_id:
-            await _fetch_crypto_price(ctx, coingecko_id, query_upper)
-            return
+        # Use symbol_part (query minus period) for lookups
+        symbol_upper = symbol_part.upper()
 
         # Check if query matches a known stock name
-        symbol = name_to_ticker.get(query_upper, query_upper)
+        symbol = name_to_ticker.get(symbol_upper, symbol_upper)
+
+        # If a time period was specified, fetch stock history with chart
+        if period:
+            await _fetch_stock_history(ctx, symbol, period, chart_type)
+            return
+
+        # Check if it's a crypto (only for current price, no period)
+        coingecko_id = crypto_to_coingecko.get(symbol_upper)
+        if coingecko_id:
+            await _fetch_crypto_price(ctx, coingecko_id, symbol_upper)
+            return
 
         # Try Finnhub first (free, 60 calls/min)
         finnhub_key = os.getenv('FINNHUB_API_KEY')
@@ -641,7 +712,7 @@ def register_prefix_commands(bot, db, llm, search, help_system, tasks_dict,
                 return
 
         # Fallback: try as crypto on CoinGecko (maybe user typed a crypto symbol we don't have mapped)
-        await _fetch_crypto_price(ctx, query.lower(), query_upper, fallback_stock=symbol)
+        await _fetch_crypto_price(ctx, symbol_part.lower(), symbol_upper, fallback_stock=symbol)
 
     async def _fetch_finnhub_price(ctx, symbol: str, api_key: str) -> bool:
         """Fetch stock price from Finnhub. Returns True if successful."""
@@ -759,6 +830,229 @@ def register_prefix_commands(bot, db, llm, search, help_system, tasks_dict,
                 else:
                     await ctx.send(f"❌ Crypto lookup failed: {str(e)}")
 
+    async def _fetch_stock_history(ctx, symbol: str, period: str, chart_type: str = "line"):
+        """Fetch stock history using yfinance and create a chart. No API key needed."""
+        async with ctx.typing():
+            try:
+                import matplotlib
+                matplotlib.use('Agg')
+                import matplotlib.pyplot as plt
+                import pandas as pd
+                import yfinance as yf
+
+                # Period display names and yfinance period mapping
+                period_map = {
+                    '1M': ('1mo', '1 Month'),
+                    '3M': ('3mo', '3 Months'),
+                    '6M': ('6mo', '6 Months'),
+                    '1Y': ('1y', '1 Year'),
+                    '2Y': ('2y', '2 Years'),
+                    '5Y': ('5y', '5 Years'),
+                    '10Y': ('10y', '10 Years'),
+                    'MAX': ('max', 'All Time'),
+                }
+                yf_period, period_display = period_map.get(period, ('1y', '1 Year'))
+
+                # Fetch data using yfinance (runs in thread to not block)
+                def fetch_yfinance():
+                    hist = pd.DataFrame()
+                    info = {}
+
+                    # Try Ticker.history() first (let yfinance handle session)
+                    try:
+                        ticker = yf.Ticker(symbol)
+                        hist = ticker.history(period=yf_period)
+                        try:
+                            info = ticker.info
+                        except Exception:
+                            pass
+                    except Exception as e:
+                        print(f"Ticker.history failed: {e}")
+
+                    # Fallback to download() if history failed
+                    if hist.empty:
+                        try:
+                            hist = yf.download(symbol, period=yf_period, progress=False, auto_adjust=True)
+                        except Exception as e:
+                            print(f"yf.download failed: {e}")
+
+                    return hist, info
+
+                hist, info = await asyncio.to_thread(fetch_yfinance)
+
+                if hist is None or hist.empty:
+                    await ctx.send(f"❌ No historical data found for `{symbol}`. Yahoo Finance may be temporarily unavailable.")
+                    return
+
+                # Get company name
+                company_name = info.get('shortName', info.get('longName', symbol))
+
+                # Handle MultiIndex columns from yf.download() (columns like ('Close', 'TSLA'))
+                if isinstance(hist.columns, pd.MultiIndex):
+                    hist.columns = hist.columns.get_level_values(0)
+
+                # Extract data
+                closes = hist['Close'].tolist()
+                opens = hist['Open'].tolist()
+                highs = hist['High'].tolist()
+                lows = hist['Low'].tolist()
+                volumes = hist['Volume'].tolist()
+                dates = [d.strftime('%m/%d/%y') if period in ['1M', '3M', '6M'] else d.strftime('%m/%y') for d in hist.index]
+
+                # Sample data if there are too many points
+                max_points = 100 if chart_type == "candle" else 80
+                if len(closes) > max_points:
+                    step = len(closes) // max_points
+                    closes = closes[::step]
+                    opens = opens[::step]
+                    highs = highs[::step]
+                    lows = lows[::step]
+                    volumes = volumes[::step]
+                    dates = dates[::step]
+
+                # Calculate price change
+                start_price = closes[0]
+                end_price = closes[-1]
+                change = end_price - start_price
+                change_pct = (change / start_price) * 100 if start_price else 0
+
+                # Create chart based on type
+                if chart_type == "candle":
+                    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 8), height_ratios=[3, 1], sharex=True)
+                    fig.patch.set_facecolor('#1a1a2e')
+
+                    # Candlestick chart
+                    for i in range(len(closes)):
+                        color = '#00C853' if closes[i] >= opens[i] else '#FF5252'
+                        # Wick
+                        ax1.plot([i, i], [lows[i], highs[i]], color=color, linewidth=1)
+                        # Body
+                        body_bottom = min(opens[i], closes[i])
+                        body_height = abs(closes[i] - opens[i])
+                        ax1.bar(i, body_height, bottom=body_bottom, color=color, width=0.8, edgecolor=color)
+
+                    ax1.set_facecolor('#1a1a2e')
+                    ax1.tick_params(colors='white')
+                    ax1.spines['bottom'].set_color('#444')
+                    ax1.spines['left'].set_color('#444')
+                    ax1.spines['top'].set_visible(False)
+                    ax1.spines['right'].set_visible(False)
+                    ax1.grid(True, alpha=0.2, color='white')
+                    ax1.set_ylabel('Price ($)', color='white')
+                    ax1.set_title(f"{company_name} ({symbol}) - {period_display}", fontsize=14, fontweight='bold', color='white')
+
+                    # Volume bars
+                    colors = ['#00C853' if closes[i] >= opens[i] else '#FF5252' for i in range(len(closes))]
+                    ax2.bar(range(len(volumes)), volumes, color=colors, alpha=0.7, width=0.8)
+                    ax2.set_facecolor('#1a1a2e')
+                    ax2.tick_params(colors='white')
+                    ax2.spines['bottom'].set_color('#444')
+                    ax2.spines['left'].set_color('#444')
+                    ax2.spines['top'].set_visible(False)
+                    ax2.spines['right'].set_visible(False)
+                    ax2.set_ylabel('Volume', color='white')
+                    ax2.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'{x/1e6:.0f}M' if x >= 1e6 else f'{x/1e3:.0f}K'))
+                else:
+                    # Line chart with volume subplot
+                    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 8), height_ratios=[3, 1], sharex=True)
+                    fig.patch.set_facecolor('#1a1a2e')
+
+                    # Color based on overall change
+                    line_color = '#00C853' if change >= 0 else '#FF5252'
+
+                    ax1.plot(range(len(closes)), closes, linewidth=2, color=line_color)
+                    ax1.fill_between(range(len(closes)), closes, alpha=0.3, color=line_color)
+                    ax1.set_facecolor('#1a1a2e')
+                    ax1.tick_params(colors='white')
+                    ax1.spines['bottom'].set_color('#444')
+                    ax1.spines['left'].set_color('#444')
+                    ax1.spines['top'].set_visible(False)
+                    ax1.spines['right'].set_visible(False)
+                    ax1.grid(True, alpha=0.2, color='white')
+                    ax1.set_ylabel('Price ($)', color='white')
+                    ax1.set_title(f"{company_name} ({symbol}) - {period_display}", fontsize=14, fontweight='bold', color='white')
+
+                    # Volume bars
+                    colors = ['#00C853' if i == 0 or closes[i] >= closes[i-1] else '#FF5252' for i in range(len(closes))]
+                    ax2.bar(range(len(volumes)), volumes, color=colors, alpha=0.7, width=0.8)
+                    ax2.set_facecolor('#1a1a2e')
+                    ax2.tick_params(colors='white')
+                    ax2.spines['bottom'].set_color('#444')
+                    ax2.spines['left'].set_color('#444')
+                    ax2.spines['top'].set_visible(False)
+                    ax2.spines['right'].set_visible(False)
+                    ax2.set_ylabel('Volume', color='white')
+                    ax2.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'{x/1e6:.0f}M' if x >= 1e6 else f'{x/1e3:.0f}K'))
+
+                # X-axis labels (show ~10 labels)
+                if len(dates) > 10:
+                    step = len(dates) // 10
+                    tick_positions = list(range(0, len(dates), step))
+                    tick_labels = [dates[i] for i in tick_positions]
+                else:
+                    tick_positions = range(len(dates))
+                    tick_labels = dates
+                ax2.set_xticks(tick_positions)
+                ax2.set_xticklabels(tick_labels, rotation=45, ha='right', color='white', fontsize=9)
+
+                plt.tight_layout()
+
+                # Save to buffer
+                buf = BytesIO()
+                plt.savefig(buf, format='png', dpi=150, facecolor='#1a1a2e')
+                plt.close(fig)
+                buf.seek(0)
+
+                # Create embed
+                color = discord.Color.green() if change >= 0 else discord.Color.red()
+                arrow = "📈" if change >= 0 else "📉"
+                change_str = f"+${change:.2f} (+{change_pct:.1f}%)" if change >= 0 else f"-${abs(change):.2f} ({change_pct:.1f}%)"
+
+                # Additional stats from yfinance
+                current_price = info.get('currentPrice', end_price)
+                market_cap = info.get('marketCap', 0)
+                pe_ratio = info.get('trailingPE', None)
+                day_high = info.get('dayHigh', highs[-1] if highs else None)
+                day_low = info.get('dayLow', lows[-1] if lows else None)
+                fifty_two_high = info.get('fiftyTwoWeekHigh', None)
+                fifty_two_low = info.get('fiftyTwoWeekLow', None)
+
+                embed = discord.Embed(
+                    title=f"{arrow} {company_name} ({symbol})",
+                    description=f"**{period_display}:** ${start_price:.2f} → ${end_price:.2f} ({change_str})",
+                    color=color
+                )
+
+                # Add current stats
+                stats_text = f"**Current:** ${current_price:.2f}"
+                if day_high and day_low:
+                    stats_text += f"\n**Day Range:** ${day_low:.2f} - ${day_high:.2f}"
+                if fifty_two_high and fifty_two_low:
+                    stats_text += f"\n**52W Range:** ${fifty_two_low:.2f} - ${fifty_two_high:.2f}"
+                if market_cap:
+                    if market_cap >= 1e12:
+                        cap_str = f"${market_cap/1e12:.2f}T"
+                    elif market_cap >= 1e9:
+                        cap_str = f"${market_cap/1e9:.2f}B"
+                    else:
+                        cap_str = f"${market_cap/1e6:.2f}M"
+                    stats_text += f"\n**Market Cap:** {cap_str}"
+                if pe_ratio:
+                    stats_text += f"\n**P/E Ratio:** {pe_ratio:.2f}"
+
+                embed.add_field(name="Stats", value=stats_text, inline=False)
+                embed.set_image(url="attachment://stock_chart.png")
+                embed.set_footer(text="Data from Yahoo Finance")
+
+                file = discord.File(buf, filename="stock_chart.png")
+                await ctx.send(embed=embed, file=file)
+
+            except Exception as e:
+                print(f"Stock history error for {symbol}: {e}")
+                import traceback
+                traceback.print_exc()
+                await ctx.send(f"❌ Stock history lookup failed: {str(e)}")
+
     @bot.command(name='yt', aliases=['youtube'])
     async def youtube_search(ctx, *, query: str):
         """Search YouTube and return video links: !yt rickroll"""
@@ -816,40 +1110,186 @@ def register_prefix_commands(bot, db, llm, search, help_system, tasks_dict,
                 await ctx.send(f"❌ YouTube search failed: {str(e)}")
 
     @bot.command(name='translate', aliases=['tr'])
-    async def translate_text(ctx, target_lang: str, *, text: str):
-        """Translate text: !translate es Hello, how are you?"""
-        # Using LibreTranslate API (free)
+    async def translate_text(ctx, lang_spec: str, *, text: str):
+        """Translate text: !translate es Hello, !translate en Hola, !translate fi-en moi"""
+        # Using MyMemory API (free, no API key needed for low volume)
         async with ctx.typing():
             try:
+                # Language code mapping for common names
+                lang_map = {
+                    'finnish': 'fi', 'spanish': 'es', 'french': 'fr', 'german': 'de',
+                    'italian': 'it', 'portuguese': 'pt', 'russian': 'ru', 'japanese': 'ja',
+                    'chinese': 'zh', 'korean': 'ko', 'arabic': 'ar', 'dutch': 'nl',
+                    'swedish': 'sv', 'norwegian': 'no', 'danish': 'da', 'polish': 'pl',
+                    'turkish': 'tr', 'greek': 'el', 'hebrew': 'he', 'hindi': 'hi',
+                    'thai': 'th', 'vietnamese': 'vi', 'indonesian': 'id', 'czech': 'cs',
+                    'romanian': 'ro', 'hungarian': 'hu', 'ukrainian': 'uk', 'english': 'en'
+                }
+
+                # Parse language specification (supports: "es", "fi-en", "spanish", "finnish-english")
+                if '-' in lang_spec:
+                    parts = lang_spec.lower().split('-')
+                    source = lang_map.get(parts[0], parts[0])
+                    target = lang_map.get(parts[1], parts[1])
+                else:
+                    target = lang_map.get(lang_spec.lower(), lang_spec.lower())
+                    # If translating TO English, try auto-detecting source
+                    # Otherwise assume source is English
+                    source = 'autodetect' if target == 'en' else 'en'
+
                 def do_translate():
-                    # Try LibreTranslate
-                    url = "https://libretranslate.com/translate"
-                    payload = {
-                        "q": text,
-                        "source": "auto",
-                        "target": target_lang.lower(),
-                        "format": "text"
+                    # MyMemory free translation API
+                    url = "https://api.mymemory.translated.net/get"
+                    params = {
+                        "q": text[:500],  # Limit text length
+                        "langpair": f"{source}|{target}"
                     }
-                    return requests.post(url, json=payload, timeout=15)
+                    return requests.get(url, params=params, timeout=15)
 
                 response = await asyncio.to_thread(do_translate)
 
                 if response.status_code == 200:
                     data = response.json()
-                    translated = data.get('translatedText', '')
+                    translated = data.get('responseData', {}).get('translatedText', '')
+                    detected_lang = data.get('responseData', {}).get('detectedLanguage', source)
 
-                    embed = discord.Embed(
-                        title="🌐 Translation",
-                        color=discord.Color.blue()
-                    )
-                    embed.add_field(name="Original", value=text[:500], inline=False)
-                    embed.add_field(name=f"Translated ({target_lang.upper()})", value=translated[:500], inline=False)
-
-                    await ctx.send(embed=embed)
+                    if translated and translated.upper() != text.upper():
+                        embed = discord.Embed(
+                            title="🌐 Translation",
+                            color=discord.Color.blue()
+                        )
+                        source_display = detected_lang.upper() if source == 'autodetect' else source.upper()
+                        embed.add_field(name=f"Original ({source_display})", value=text[:500], inline=False)
+                        embed.add_field(name=f"Translated ({target.upper()})", value=translated[:500], inline=False)
+                        await ctx.send(embed=embed)
+                    else:
+                        await ctx.send(f"❌ Translation failed. Try: `!translate es Hello` or `!translate en Bonjour` or `!translate fi-en moi`")
                 else:
-                    await ctx.send(f"❌ Translation failed. Try language codes like: en, es, fr, de, ja, zh")
+                    await ctx.send(f"❌ Translation failed. Try: `!translate es Hello` or `!translate fi-en text`")
 
             except Exception as e:
                 await ctx.send(f"❌ Translation failed: {str(e)}")
+
+    @bot.command(name='wiki', aliases=['wikipedia'])
+    async def wikipedia_search(ctx, *, query: str):
+        """Search Wikipedia and get a summary: !wiki Albert Einstein"""
+        async with ctx.typing():
+            try:
+                def do_wiki_search():
+                    # Search Wikipedia for the query
+                    search_url = "https://en.wikipedia.org/w/api.php"
+                    headers = {'User-Agent': 'WompBot/1.0 (Discord Bot; educational project)'}
+                    search_params = {
+                        "action": "query",
+                        "list": "search",
+                        "srsearch": query,
+                        "format": "json",
+                        "srlimit": 1
+                    }
+                    search_resp = requests.get(search_url, params=search_params, headers=headers, timeout=10)
+                    search_data = search_resp.json()
+
+                    if not search_data.get('query', {}).get('search'):
+                        return None, None, None
+
+                    # Get the page title from search results
+                    page_title = search_data['query']['search'][0]['title']
+
+                    # Get the summary/extract for that page
+                    summary_params = {
+                        "action": "query",
+                        "prop": "extracts|info",
+                        "exintro": True,
+                        "explaintext": True,
+                        "exsentences": 4,
+                        "titles": page_title,
+                        "format": "json",
+                        "inprop": "url"
+                    }
+                    summary_resp = requests.get(search_url, params=summary_params, headers=headers, timeout=10)
+                    summary_data = summary_resp.json()
+
+                    pages = summary_data.get('query', {}).get('pages', {})
+                    if not pages:
+                        return None, None, None
+
+                    page = list(pages.values())[0]
+                    title = page.get('title', query)
+                    extract = page.get('extract', 'No summary available.')
+                    url = page.get('fullurl', f"https://en.wikipedia.org/wiki/{url_quote(title)}")
+
+                    return title, extract, url
+
+                title, extract, url = await asyncio.to_thread(do_wiki_search)
+
+                if not title:
+                    await ctx.send(f"❌ No Wikipedia article found for: `{query}`")
+                    return
+
+                # Truncate extract if too long
+                if len(extract) > 1000:
+                    extract = extract[:997] + "..."
+
+                embed = discord.Embed(
+                    title=f"📚 {title}",
+                    description=extract,
+                    url=url,
+                    color=discord.Color.from_rgb(255, 255, 255)
+                )
+                embed.set_footer(text="Source: Wikipedia")
+
+                await ctx.send(embed=embed)
+
+            except Exception as e:
+                await ctx.send(f"❌ Wikipedia search failed: {str(e)}")
+
+    # Wolfram Alpha command (only if wolfram is configured)
+    if wolfram:
+        @bot.command(name='wa', aliases=['wolfram', 'calc', 'calculate'])
+        async def wolfram_query(ctx, *, query: str):
+            """Query Wolfram Alpha: !wa 2+2, !wa convert 5 miles to km, !wa population of Japan"""
+            async with ctx.typing():
+                try:
+                    def do_query():
+                        # Query with both metric and imperial for comparison
+                        metric = wolfram.query(query, units="metric")
+                        imperial = wolfram.query(query, units="imperial")
+                        return metric, imperial
+
+                    metric_result, imperial_result = await asyncio.to_thread(do_query)
+
+                    if not metric_result.get('success') and not imperial_result.get('success'):
+                        await ctx.send(f"❌ Wolfram Alpha couldn't answer: `{query}`\nTry rephrasing or ask something like: `!wa 2+2` or `!wa convert 100 F to C`")
+                        return
+
+                    # Use whichever succeeded
+                    result = metric_result if metric_result.get('success') else imperial_result
+                    answer = result.get('answer', 'No answer available')
+
+                    # Check if metric and imperial answers differ (unit-dependent query)
+                    if (metric_result.get('success') and imperial_result.get('success') and
+                        metric_result.get('answer') != imperial_result.get('answer')):
+                        # Show both for unit-dependent results
+                        embed = discord.Embed(
+                            title="🔢 Wolfram Alpha",
+                            color=discord.Color.orange()
+                        )
+                        embed.add_field(name="Query", value=query[:200], inline=False)
+                        embed.add_field(name="Metric", value=metric_result.get('answer', 'N/A')[:500], inline=True)
+                        embed.add_field(name="Imperial", value=imperial_result.get('answer', 'N/A')[:500], inline=True)
+                    else:
+                        # Single answer
+                        embed = discord.Embed(
+                            title="🔢 Wolfram Alpha",
+                            description=answer[:2000],
+                            color=discord.Color.orange()
+                        )
+                        embed.add_field(name="Query", value=query[:200], inline=False)
+
+                    embed.set_footer(text="Powered by Wolfram Alpha")
+                    await ctx.send(embed=embed)
+
+                except Exception as e:
+                    await ctx.send(f"❌ Wolfram Alpha query failed: {str(e)}")
 
     print("✅ Prefix commands registered")

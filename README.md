@@ -122,7 +122,8 @@ WompBot can automatically invoke tools to provide real-time information:
 The bot can invoke tools through LLM function calling to create visualizations and fetch data.
 
 **Weather Features:**
-- Beautiful weather cards with dual-unit display (Celsius/Fahrenheit)
+- Beautiful weather cards with dual-unit display (Fahrenheit primary, Celsius secondary)
+- Smart US location parsing: "spokane wa", "spokane, wa", "New York, NY" all work
 - Save your default location with /weather_set
 - 5-day forecasts available
 - Just say "wompbot weather" after setting your preference
@@ -517,14 +518,17 @@ Add --limit N to test with a subset or --sleep 1.0 to slow requests.
 
 These commands work without LLM processing (faster and zero token cost):
 
-- !convert <amount> <from> <to>: Currency conversion (e.g., `!convert 100 USD EUR`)
-- !define <word>: Dictionary definition (e.g., `!define serendipity`)
-- !weather [location]: Current weather (e.g., `!weather London`)
-- !time [timezone]: Current time (e.g., `!time Tokyo`, `!time EST`)
-- !roll <dice>: Roll dice (e.g., `!roll d20`, `!roll 2d6+5`, `!roll coin`)
-- !movie <title>: Movie/TV info (e.g., `!movie Inception`)
-- !stock <symbol or name>: Stock/crypto price (e.g., `!stock AAPL`, `!stock Microsoft`, `!stock Bitcoin`)
-- !translate <lang> <text>: Translate text (e.g., `!translate es Hello world`)
+- `!convert <amount> <from> <to>`: Currency conversion (e.g., `!convert 100 USD EUR`)
+- `!define <word>`: Dictionary definition (e.g., `!define serendipity`)
+- `!weather [location]`: Current weather (e.g., `!weather London`, `!weather spokane wa`)
+- `!time [timezone]`: Current time (e.g., `!time Tokyo`, `!time EST`)
+- `!roll <dice>`: Roll dice (e.g., `!roll d20`, `!roll 2d6+5`, `!roll coin`)
+- `!movie <title>`: Movie/TV info (e.g., `!movie Inception`)
+- `!stock <symbol or name>`: Stock/crypto price with history charts (e.g., `!stock AAPL`, `!stock TSLA 1 year`, `!stock NVDA 3m candle`)
+- `!translate <lang> <text>`: Translate text (e.g., `!translate es Hello`, `!translate en Bonjour`, `!translate fi-en moi`)
+- `!wiki <topic>`: Wikipedia summary (e.g., `!wiki Albert Einstein`)
+- `!wa <query>`: Wolfram Alpha calculations and queries (e.g., `!wa 2+2`, `!wa convert 100 F to C`)
+- `!yt <query>`: YouTube search (e.g., `!yt rickroll`)
 
 ## Privacy Features
 
@@ -596,6 +600,9 @@ Comprehensive guides are available in the docs directory.
 - [Event Scheduling](docs/features/EVENTS.md) - Scheduled events
 - [iRacing Integration](docs/features/IRACING.md) - Driver stats, teams
 - [RAG System](docs/features/RAG_SYSTEM.md) - Memory architecture
+- [Trivia System](docs/features/TRIVIA.md) - LLM-powered quiz games
+- [Debate Scorekeeper](docs/features/DEBATE.md) - Debate analysis and scoring
+- [Bug Tracking](docs/features/BUG_TRACKING.md) - Admin bug tracking system
 
 **Configuration and Development:**
 - [Configuration Guide](docs/CONFIGURATION.md) - All settings and variables
@@ -805,11 +812,38 @@ WompBot has three personality modes available via the /personality command (admi
 
 The personality setting is per-server and persists in the database.
 
+### Trivia Games
+
+LLM-powered trivia with multiple categories and difficulty levels.
+
+**Commands:**
+- `/trivia_start [category] [difficulty] [questions]`: Start a trivia game
+- `/trivia_stop`: End current trivia session
+- `/trivia_stats [user]`: View your trivia statistics
+- `/trivia_leaderboard [days]`: Server trivia rankings
+
+**Features:**
+- 20+ categories: Science, History, Geography, Sports, Entertainment, etc.
+- Three difficulty levels: Easy, Medium, Hard
+- Point system with streaks and bonuses
+- Configurable question count (5-20 per session)
+- 30-second timer per question with early answer bonus
+- Server-specific leaderboards
+
+### Bug Tracking
+
+Report and track bugs with an integrated bug tracking system.
+
+**Commands:**
+- `/bug <description>`: Report a new bug
+- `/bug_note <bug_id> <note>`: Add note to existing bug
+- `/bug_resolve <bug_id> [resolution]`: Mark bug as resolved
+- `/bugs [status]`: List all bugs (all/open/resolved)
+
 ## Upcoming Features
 
 - Polls and Voting: Create polls with slash commands and reaction tracking
 - Birthday Tracking: Automatic birthday reminders and celebrations
-- Trivia Games: Quiz system with categories and leaderboards
 - Voice Channel Stats: Track time spent in voice channels
 - Custom Commands: User-created text commands and responses
 
@@ -889,7 +923,11 @@ discord-bot/
     │   ├── gdpr_privacy.py      # GDPR compliance system
     │   ├── iracing.py           # iRacing integration
     │   ├── iracing_teams.py     # iRacing team management
-    │   └── yearly_wrapped.py    # Yearly summaries
+    │   ├── yearly_wrapped.py    # Yearly summaries
+    │   ├── trivia.py            # LLM-powered trivia games
+    │   ├── help_system.py       # Comprehensive help system (67 commands)
+    │   ├── debate_scorekeeper.py # Debate tracking and analysis
+    │   └── bug_tracking.py      # Bug reporting system
     ├── prompts/
     │   ├── system_prompt.txt        # Default personality
     │   ├── system_prompt_concise.txt # Concise personality

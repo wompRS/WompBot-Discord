@@ -1298,3 +1298,273 @@ class HelpSystem:
         embed.set_footer(text="Use /help to see all commands")
 
         return embed
+
+    # Command categories for group-specific help
+    COMMAND_CATEGORIES = {
+        "iracing": {
+            "title": "iRacing Commands",
+            "description": "Comprehensive iRacing integration for driver stats, series analytics, and team management.",
+            "commands": [
+                ("iracing_link", "Link Discord to iRacing account"),
+                ("iracing_profile", "View driver profile and stats"),
+                ("iracing_results", "Recent race results"),
+                ("iracing_schedule", "Race schedules by series"),
+                ("iracing_server_leaderboard", "Server driver rankings"),
+                ("iracing_compare_drivers", "Side-by-side driver comparison"),
+                ("iracing_history", "Rating progression over time"),
+                ("iracing_meta", "Best cars for a series"),
+                ("iracing_win_rate", "Win rates by car"),
+                ("iracing_series_popularity", "Popular series charts"),
+                ("iracing_season_schedule", "Full season rotation"),
+                ("iracing_timeslots", "Race session times"),
+                ("iracing_upcoming_races", "Upcoming official races"),
+            ],
+            "related_categories": ["iracing_teams", "iracing_events"]
+        },
+        "iracing_teams": {
+            "title": "iRacing Team Management",
+            "description": "Create and manage racing teams with roles, invitations, and rosters.",
+            "commands": [
+                ("iracing_team_create", "Create a new racing team"),
+                ("iracing_team_invite", "Invite members to team"),
+                ("iracing_team_leave", "Leave a team"),
+                ("iracing_team_info", "View team details and roster"),
+                ("iracing_team_list", "List all server teams"),
+                ("iracing_my_teams", "View your team memberships"),
+            ],
+            "related_categories": ["iracing", "iracing_events"]
+        },
+        "iracing_events": {
+            "title": "iRacing Team Events",
+            "description": "Schedule team events and track driver availability.",
+            "commands": [
+                ("iracing_event_create", "Create team event"),
+                ("iracing_team_events", "View team events"),
+                ("iracing_event_availability", "Set your availability"),
+                ("iracing_event_roster", "View event roster"),
+            ],
+            "related_categories": ["iracing_teams"]
+        },
+        "stats": {
+            "title": "Statistics Commands",
+            "description": "Server analytics, network graphs, topic trends, and engagement metrics. Zero LLM cost - pure database analytics.",
+            "commands": [
+                ("stats_server", "Network graph and interaction stats"),
+                ("stats_topics", "Trending keywords and topics"),
+                ("stats_primetime", "Activity heatmap by hour/day"),
+                ("stats_engagement", "Engagement and response metrics"),
+            ],
+            "prefix_commands": [
+                ("!stats", "View user statistics"),
+                ("!analyze", "Run behavior analysis (Admin)"),
+                ("!refreshstats", "Refresh stats cache (Admin)"),
+            ],
+            "related_categories": ["analytics"]
+        },
+        "privacy": {
+            "title": "Privacy & GDPR Commands",
+            "description": "GDPR-compliant privacy controls for data management. WompBot operates under Legitimate Interest (GDPR Art. 6.1.f).",
+            "commands": [
+                ("wompbot_optout", "Opt out of data collection"),
+                ("download_my_data", "Export all your data (GDPR Art. 15)"),
+                ("delete_my_data", "Request data deletion (GDPR Art. 17)"),
+                ("cancel_deletion", "Cancel deletion request"),
+                ("my_privacy_status", "View current privacy status"),
+                ("privacy_policy", "View privacy policy"),
+                ("privacy_support", "Get privacy help"),
+                ("tos", "View Terms of Service"),
+                ("privacy_settings", "Server privacy overview (Admin)"),
+                ("privacy_audit", "Download privacy audit (Admin)"),
+            ],
+            "related_categories": []
+        },
+        "debates": {
+            "title": "Debate Commands",
+            "description": "Track and analyze debates with LLM-powered judging, logical fallacy detection, and scoring.",
+            "commands": [
+                ("debate_start", "Start tracking a debate"),
+                ("debate_end", "End debate and show analysis"),
+                ("debate_stats", "View your debate statistics"),
+                ("debate_leaderboard", "Top debaters leaderboard"),
+                ("debate_review", "Analyze uploaded debate transcript"),
+            ],
+            "related_categories": ["hot_takes"]
+        },
+        "trivia": {
+            "title": "Trivia Commands",
+            "description": "LLM-powered trivia games with dynamic question generation, scoring, and leaderboards.",
+            "commands": [
+                ("trivia_start", "Start trivia session"),
+                ("trivia_stop", "Stop current session"),
+                ("trivia_stats", "View your trivia stats"),
+                ("trivia_leaderboard", "Server trivia rankings"),
+            ],
+            "related_categories": []
+        },
+        "reminders": {
+            "title": "Reminders & Events",
+            "description": "Context-aware reminders and event scheduling with natural language time parsing.",
+            "commands": [
+                ("remind", "Set a reminder"),
+                ("reminders", "View active reminders"),
+                ("cancel_reminder", "Cancel a reminder"),
+                ("schedule_event", "Schedule an event"),
+                ("events", "View upcoming events"),
+                ("cancel_event", "Cancel an event"),
+            ],
+            "related_categories": []
+        },
+        "claims": {
+            "title": "Claims & Quotes",
+            "description": "Track predictions, verify claims, and save memorable quotes.",
+            "commands": [
+                ("receipts", "View tracked claims"),
+                ("verify_claim", "Verify a claim as true/false"),
+                ("quotes", "View saved quotes"),
+                ("qotd", "Quote of the Day"),
+            ],
+            "features": [
+                "React with cloud emoji to save quotes",
+                "React with warning emoji to fact-check",
+                "Automatic claim detection for predictions",
+            ],
+            "related_categories": ["hot_takes"]
+        },
+        "hot_takes": {
+            "title": "Hot Takes",
+            "description": "Track controversial claims and monitor how predictions age over time.",
+            "commands": [
+                ("hottakes", "Hot takes leaderboard"),
+                ("mystats_hottakes", "Your hot takes statistics"),
+                ("vindicate", "Mark hot take vindication status (Admin)"),
+            ],
+            "related_categories": ["claims", "debates"]
+        },
+        "weather": {
+            "title": "Weather Commands",
+            "description": "Weather lookups with dual-unit display (Fahrenheit primary, Celsius secondary).",
+            "commands": [
+                ("weather_set", "Set default location and units"),
+                ("weather_clear", "Clear saved location"),
+                ("weather_info", "View saved preferences"),
+            ],
+            "prefix_commands": [
+                ("!weather [location]", "Current weather"),
+            ],
+            "natural_language": [
+                "wompbot weather [location]",
+                "wompbot forecast [location]",
+            ],
+            "related_categories": ["tools"]
+        },
+        "tools": {
+            "title": "Utility Tools & Prefix Commands",
+            "description": "Quick utility commands that work without LLM processing (faster and zero token cost).",
+            "prefix_commands": [
+                ("!convert 100 USD EUR", "Currency conversion"),
+                ("!define word", "Dictionary definition"),
+                ("!time timezone", "Time in any timezone"),
+                ("!roll d20 / !roll coin", "Dice rolls and coin flips"),
+                ("!movie title", "Movie/TV information"),
+                ("!stock symbol", "Stock/crypto prices with charts"),
+                ("!translate lang text", "Translate text"),
+                ("!wiki topic", "Wikipedia summary"),
+                ("!wa query", "Wolfram Alpha calculations"),
+                ("!yt query", "YouTube search"),
+                ("!search query", "Web search"),
+            ],
+            "related_categories": ["weather"]
+        },
+        "admin": {
+            "title": "Admin Commands",
+            "description": "Server administration and bot management commands.",
+            "commands": [
+                ("setadmin", "Add a bot admin"),
+                ("removeadmin", "Remove a bot admin"),
+                ("admins", "List bot admins"),
+                ("personality", "Change bot personality mode"),
+                ("bug", "Report a bug"),
+                ("bugs", "List tracked bugs"),
+                ("bug_resolve", "Resolve a bug"),
+                ("bug_note", "Add note to bug"),
+            ],
+            "prefix_commands": [
+                ("!analyze [days]", "Run behavior analysis"),
+                ("!refreshstats", "Refresh stats cache"),
+            ],
+            "related_categories": ["privacy"]
+        },
+    }
+
+    def get_category_help(self, category: str) -> Optional[discord.Embed]:
+        """Generate detailed help for a command category"""
+        category = category.lower().strip()
+
+        if category not in self.COMMAND_CATEGORIES:
+            return None
+
+        cat = self.COMMAND_CATEGORIES[category]
+
+        embed = discord.Embed(
+            title=cat["title"],
+            description=cat["description"],
+            color=discord.Color.blue()
+        )
+
+        # Slash commands
+        if "commands" in cat and cat["commands"]:
+            commands_text = "\n".join(
+                f"`/{cmd}` - {desc}" for cmd, desc in cat["commands"]
+            )
+            embed.add_field(
+                name="Slash Commands",
+                value=commands_text[:1024],  # Discord field limit
+                inline=False
+            )
+
+        # Prefix commands
+        if "prefix_commands" in cat and cat["prefix_commands"]:
+            prefix_text = "\n".join(
+                f"`{cmd}` - {desc}" if " - " not in cmd else f"`{cmd}`"
+                for cmd, desc in cat["prefix_commands"]
+            )
+            embed.add_field(
+                name="Prefix Commands",
+                value=prefix_text[:1024],
+                inline=False
+            )
+
+        # Natural language options
+        if "natural_language" in cat and cat["natural_language"]:
+            nl_text = "\n".join(f"• {nl}" for nl in cat["natural_language"])
+            embed.add_field(
+                name="Natural Language",
+                value=nl_text[:1024],
+                inline=False
+            )
+
+        # Features
+        if "features" in cat and cat["features"]:
+            features_text = "\n".join(f"• {f}" for f in cat["features"])
+            embed.add_field(
+                name="Features",
+                value=features_text[:1024],
+                inline=False
+            )
+
+        # Related categories
+        if "related_categories" in cat and cat["related_categories"]:
+            related = ", ".join(f"`/help {c}`" for c in cat["related_categories"])
+            embed.add_field(
+                name="Related",
+                value=related,
+                inline=False
+            )
+
+        embed.set_footer(text="Use /help <command> for detailed command help")
+
+        return embed
+
+    def get_available_categories(self) -> list:
+        """Return list of available help categories"""
+        return list(self.COMMAND_CATEGORIES.keys())

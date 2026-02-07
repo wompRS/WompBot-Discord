@@ -46,9 +46,21 @@ MENTION_RATE_STATE = {}
 USER_CONCURRENT_REQUESTS = {}
 _LAST_CLEANUP_TIME = 0
 
+# Channel-level locks to prevent concurrent request processing (causes response mixing)
+CHANNEL_LOCKS = {}
+_CHANNEL_LOCKS_LOCK = asyncio.Lock()
+
 # Locks for thread-safe access to rate limiting state
 _RATE_STATE_LOCK = asyncio.Lock()
 _CONCURRENT_REQUESTS_LOCK = asyncio.Lock()
+
+
+async def get_channel_lock(channel_id: int) -> asyncio.Lock:
+    """Get or create a lock for a specific channel to prevent concurrent processing"""
+    async with _CHANNEL_LOCKS_LOCK:
+        if channel_id not in CHANNEL_LOCKS:
+            CHANNEL_LOCKS[channel_id] = asyncio.Lock()
+        return CHANNEL_LOCKS[channel_id]
 
 async def cleanup_stale_rate_state():
     """Remove stale entries from rate limiting dictionaries to prevent memory leak"""
@@ -228,6 +240,8 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
     print(f"🔔 handle_bot_mention called for {message.author} in #{getattr(message.channel, 'name', 'DM')}")
     # Track placeholder message for cleanup on error
     placeholder_msg = None
+    # Track channel lock for cleanup
+    channel_lock = None
     try:
         # Periodic cleanup of stale rate limiting state
         await cleanup_stale_rate_state()
@@ -265,7 +279,22 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
         supported_image_types = {'image/png', 'image/jpeg', 'image/jpg', 'image/gif', 'image/webp'}
         supported_video_types = {'video/mp4', 'video/webm', 'video/quicktime', 'video/mpeg', 'video/avi'}
 
-        # Check attachments
+        # Helper to check if content suggests user is asking about an image
+        def is_asking_about_image(text):
+            text_lower = text.lower()
+            image_question_patterns = [
+                'what is this', 'what\'s this', 'whats this',
+                'who is this', 'who\'s this', 'whos this',
+                'what is that', 'what\'s that', 'whats that',
+                'who is that', 'who\'s that', 'whos that',
+                'what do you see', 'can you see',
+                'describe this', 'describe that',
+                'what\'s in this', 'what\'s in the',
+                'who is in', 'what is in',
+            ]
+            return any(pattern in text_lower for pattern in image_question_patterns)
+
+        # Check attachments in current message
         for attachment in message.attachments:
             content_type = attachment.content_type or ''
             filename_lower = attachment.filename.lower()
@@ -303,6 +332,48 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
             if not any(yt_url == m[0] for m in raw_media):
                 raw_media.append((yt_url, 'youtube'))
                 print(f"📺 Found YouTube video: {video_id}")
+
+        # If no media in current message but user is asking about an image, check recent messages
+        if not raw_media and is_asking_about_image(content):
+            print(f"🔍 User asking about image but no media in message - checking recent channel history...")
+            try:
+                # Look at the last 10 messages for any media
+                async for recent_msg in message.channel.history(limit=10, before=message):
+                    # Skip bot's own messages
+                    if recent_msg.author.id == bot.user.id:
+                        continue
+
+                    # Check attachments in recent messages
+                    for attachment in recent_msg.attachments:
+                        content_type = attachment.content_type or ''
+                        filename_lower = attachment.filename.lower()
+                        is_image = (
+                            any(img_type in content_type for img_type in supported_image_types) or
+                            filename_lower.endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp'))
+                        )
+                        if is_image and attachment.url:
+                            media_type = 'gif' if filename_lower.endswith('.gif') else 'image'
+                            raw_media.append((attachment.url, media_type))
+                            print(f"🖼️ Found {media_type} in recent message from {recent_msg.author}: {attachment.filename}")
+                            break  # Only get one image
+
+                    # Also check for Tenor/Giphy GIFs in message content or embeds
+                    if not raw_media:
+                        # Check embeds (Tenor/Giphy show as embeds)
+                        for embed in recent_msg.embeds:
+                            if embed.image and embed.image.url:
+                                raw_media.append((embed.image.url, 'image'))
+                                print(f"🖼️ Found embedded image from {recent_msg.author}: {embed.image.url[:50]}...")
+                                break
+                            if embed.thumbnail and embed.thumbnail.url:
+                                raw_media.append((embed.thumbnail.url, 'image'))
+                                print(f"🖼️ Found thumbnail from {recent_msg.author}: {embed.thumbnail.url[:50]}...")
+                                break
+
+                    if raw_media:
+                        break  # Found media, stop searching
+            except Exception as e:
+                print(f"⚠️ Error checking recent messages for media: {e}")
 
         # Process media to extract frames/thumbnails
         processed_images = []  # base64 encoded images
@@ -479,42 +550,6 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
         db.record_feature_usage(message.author.id, 'bot_message')
 
         content_lower = content.lower()
-        normalized_plain = re.sub(r'[^a-z0-9\s]', ' ', content_lower).strip()
-        tokens = [tok for tok in normalized_plain.split() if tok]
-
-        greeting_phrases = {
-            "hi",
-            "hello",
-            "hey",
-            "yo",
-            "sup",
-            "what's up",
-            "whats up",
-            "what is up",
-            "morning",
-            "good morning",
-            "good evening",
-            "good afternoon",
-        }
-        casual_starts = {"hi", "hello", "hey", "yo"}
-
-        basic_greeting = False
-        if normalized_plain in greeting_phrases:
-            basic_greeting = True
-        elif tokens and tokens[0] in casual_starts and len(tokens) <= 3:
-            basic_greeting = True
-        elif len(tokens) <= 4 and tokens[:2] in (["whats", "up"], ["what", "up"], ["what", "is"], ["how", "are"]):
-            basic_greeting = True
-
-        if basic_greeting:
-            responses = [
-                "Not much, just spinning up the servers. What's new with you?",
-                "All systems go! Need anything?",
-                "Living the bot life. How can I help?",
-                "Just crunching data and sipping electrons. You?",
-            ]
-            await message.channel.send(random.choice(responses))
-            return
 
         # Check for leaderboard triggers in natural language
         leaderboard_triggers = {
@@ -571,6 +606,18 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
             await message.channel.send(
                 f"⏱️ Too many requests at once! Please wait for your current request to finish."
             )
+            return
+
+        # Get channel lock to prevent concurrent processing (causes response mixing)
+        channel_lock = await get_channel_lock(message.channel.id)
+
+        # Try to acquire lock with timeout - if channel is busy, queue the request
+        try:
+            # Wait up to 10 seconds for the channel to be free
+            async with asyncio.timeout(10):
+                await channel_lock.acquire()
+        except asyncio.TimeoutError:
+            await message.channel.send("⏳ Channel is busy, please wait a moment and try again.")
             return
 
         # Get conversation context - use CONTEXT_WINDOW_MESSAGES env var
@@ -716,6 +763,16 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                             images_to_send.append(result["image"])
                             tool_results.append(f"Successfully created {tool_name} visualization")
                             print(f"✅ Tool {tool_name} created image")
+                        elif result.get("type") == "image_url":
+                            # Send image as Discord embed
+                            image_url = result.get("url")
+                            image_title = result.get("title", "Image")
+                            if image_url:
+                                embed = discord.Embed(title=image_title, color=0x3498db)
+                                embed.set_image(url=image_url)
+                                await message.channel.send(embed=embed)
+                                tool_results.append(f"Successfully found and displayed image of {image_title}")
+                                print(f"✅ Tool {tool_name} sent image embed: {image_url[:50]}...")
                         elif result.get("type") == "text":
                             text_response = result.get("text", "")
                             # web_search results should only go to LLM for synthesis, not directly to user
@@ -901,6 +958,16 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                                 images_to_send.append(result["image"])
                                 tool_results.append(f"Successfully created {tool_name} visualization")
                                 print(f"✅ Tool {tool_name} created image")
+                            elif result.get("type") == "image_url":
+                                # Send image as Discord embed
+                                image_url = result.get("url")
+                                image_title = result.get("title", "Image")
+                                if image_url:
+                                    embed = discord.Embed(title=image_title, color=0x3498db)
+                                    embed.set_image(url=image_url)
+                                    await message.channel.send(embed=embed)
+                                    tool_results.append(f"Successfully found and displayed image of {image_title}")
+                                    print(f"✅ Tool {tool_name} sent image embed: {image_url[:50]}...")
                             elif result.get("type") == "text":
                                 text_response = result.get("text", "")
                                 # web_search results should only go to LLM for synthesis, not directly to user
@@ -1046,6 +1113,13 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
 
         await message.channel.send(f"Error processing request: {str(e)}")
     finally:
+        # Release channel lock to allow next request
+        try:
+            if channel_lock is not None and channel_lock.locked():
+                channel_lock.release()
+        except Exception as lock_error:
+            print(f"⚠️ Error releasing channel lock: {lock_error}")
+
         # Decrement concurrent request counter (with lock for thread safety)
         try:
             async with _CONCURRENT_REQUESTS_LOCK:

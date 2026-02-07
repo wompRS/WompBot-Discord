@@ -11,6 +11,7 @@ from discord import app_commands
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Literal
 from collections import Counter
+from features.admin_utils import is_bot_admin, is_bot_admin_interaction, is_super_admin, SUPER_ADMIN_IDS
 
 def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                             hot_takes_tracker, reminder_system, event_system,
@@ -177,16 +178,152 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
     @bot.tree.command(name="whoami", description="Show your Discord user information")
     async def whoami_slash(interaction: discord.Interaction):
         """Show user their Discord ID and username"""
+        is_admin = is_bot_admin_interaction(db, interaction)
+        admin_status = "Yes (Bot Admin)" if is_admin else "No"
+
         await interaction.response.send_message(
             f"**Your Discord Information:**\n"
-            f"• Username: {interaction.user.name}\n"
-            f"• Display Name: {interaction.user.display_name}\n"
-            f"• User ID: `{interaction.user.id}`\n"
-            f"• Mention: {interaction.user.mention}",
+            f"- Username: {interaction.user.name}\n"
+            f"- Display Name: {interaction.user.display_name}\n"
+            f"- User ID: `{interaction.user.id}`\n"
+            f"- Mention: {interaction.user.mention}\n"
+            f"- Bot Admin: {admin_status}",
             ephemeral=True
         )
-    
-    @bot.tree.command(name="personality", description="Change bot personality mode (Wompie only)")
+
+    # ==================== Bot Admin Management Commands ====================
+
+    @bot.tree.command(name="setadmin", description="Add a bot admin for this server")
+    @app_commands.describe(user="The user to make a bot admin")
+    async def setadmin_slash(interaction: discord.Interaction, user: discord.Member):
+        """Add a bot admin for this server"""
+        if not interaction.guild:
+            await interaction.response.send_message("This command can only be used in a server.", ephemeral=True)
+            return
+
+        # Check if caller is already an admin or super admin
+        if not is_bot_admin_interaction(db, interaction):
+            # Allow Discord server owner to add first admin
+            if interaction.guild.owner_id != interaction.user.id:
+                await interaction.response.send_message(
+                    "You don't have permission to add bot admins.\n"
+                    "Only existing bot admins or the server owner can add new admins.",
+                    ephemeral=True
+                )
+                return
+
+        # Can't add bots as admins
+        if user.bot:
+            await interaction.response.send_message("Bots cannot be bot admins.", ephemeral=True)
+            return
+
+        # Add the admin
+        success = db.add_server_admin(interaction.guild.id, user.id, interaction.user.id)
+
+        if success:
+            await interaction.response.send_message(
+                f"**{user.display_name}** is now a bot admin for this server.\n"
+                f"They can now use admin-only bot commands like `/personality`, `/bug`, etc."
+            )
+        else:
+            await interaction.response.send_message(
+                f"**{user.display_name}** is already a bot admin for this server.",
+                ephemeral=True
+            )
+
+    @bot.tree.command(name="removeadmin", description="Remove a bot admin from this server")
+    @app_commands.describe(user="The user to remove as bot admin")
+    async def removeadmin_slash(interaction: discord.Interaction, user: discord.Member):
+        """Remove a bot admin from this server"""
+        if not interaction.guild:
+            await interaction.response.send_message("This command can only be used in a server.", ephemeral=True)
+            return
+
+        # Only super admins or the server owner can remove admins
+        if not is_super_admin(interaction.user.id) and interaction.guild.owner_id != interaction.user.id:
+            # Regular admins can't remove other admins (only super admin or owner can)
+            await interaction.response.send_message(
+                "Only super admins or the server owner can remove bot admins.",
+                ephemeral=True
+            )
+            return
+
+        # Can't remove super admins from the list (they're not in the database)
+        if is_super_admin(user.id):
+            await interaction.response.send_message(
+                f"**{user.display_name}** is a super admin and cannot be removed.",
+                ephemeral=True
+            )
+            return
+
+        # Remove the admin
+        success = db.remove_server_admin(interaction.guild.id, user.id)
+
+        if success:
+            await interaction.response.send_message(
+                f"**{user.display_name}** is no longer a bot admin for this server."
+            )
+        else:
+            await interaction.response.send_message(
+                f"**{user.display_name}** was not a bot admin for this server.",
+                ephemeral=True
+            )
+
+    @bot.tree.command(name="admins", description="List bot admins for this server")
+    async def admins_slash(interaction: discord.Interaction):
+        """List all bot admins for this server"""
+        if not interaction.guild:
+            await interaction.response.send_message("This command can only be used in a server.", ephemeral=True)
+            return
+
+        await interaction.response.defer()
+
+        # Get server-specific admins
+        server_admins = db.get_server_admins(interaction.guild.id)
+
+        embed = discord.Embed(
+            title="Bot Admins",
+            description="Users who can use admin-only bot commands in this server",
+            color=discord.Color.blue()
+        )
+
+        # Super admins section
+        super_admin_lines = []
+        for admin_id in SUPER_ADMIN_IDS:
+            member = interaction.guild.get_member(admin_id)
+            if member:
+                super_admin_lines.append(f"- {member.mention} (Super Admin)")
+            else:
+                super_admin_lines.append(f"- User ID `{admin_id}` (Super Admin, not in server)")
+
+        if super_admin_lines:
+            embed.add_field(
+                name="Super Admins",
+                value="\n".join(super_admin_lines) or "None",
+                inline=False
+            )
+
+        # Server admins section
+        admin_lines = []
+        for admin in server_admins:
+            member = interaction.guild.get_member(admin['user_id'])
+            if member:
+                admin_lines.append(f"- {member.mention}")
+            else:
+                admin_lines.append(f"- User ID `{admin['user_id']}` (left server)")
+
+        embed.add_field(
+            name="Server Admins",
+            value="\n".join(admin_lines) if admin_lines else "No server-specific admins set.\nUse `/setadmin` to add one.",
+            inline=False
+        )
+
+        embed.set_footer(text="Server owner can always add/remove admins")
+        await interaction.followup.send(embed=embed)
+
+    # ==================== Personality Command ====================
+
+    @bot.tree.command(name="personality", description="Change bot personality mode (Admin only)")
     @app_commands.describe(
         mode="Personality mode: default, concise, or bogan"
     )
@@ -196,12 +333,12 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
         app_commands.Choice(name="Australian Bogan", value="bogan")
     ])
     async def personality_slash(interaction: discord.Interaction, mode: app_commands.Choice[str]):
-        """Change bot personality mode (Wompie only)"""
-        # Check if user is Wompie (by Discord ID for security)
-        if WOMPIE_USER_ID is None or interaction.user.id != WOMPIE_USER_ID:
+        """Change bot personality mode (Admin only)"""
+        # Check if user is a bot admin
+        if not is_bot_admin_interaction(db, interaction):
             await interaction.response.send_message(
-                f"❌ This command is restricted to Wompie only.\n"
-                f"Your user ID: `{interaction.user.id}`",
+                "You don't have permission to change the bot's personality.\n"
+                "Only bot admins can use this command.",
                 ephemeral=True
             )
             return
@@ -250,18 +387,30 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
         except Exception as e:
             await interaction.response.send_message(f"❌ Error changing personality: {str(e)}", ephemeral=True)
     
-    @bot.tree.command(name="help", description="Show all commands or get detailed help for a specific command")
-    @app_commands.describe(command="Optional: specific command to get detailed help for")
+    @bot.tree.command(name="help", description="Show all commands or get detailed help for a specific command or category")
+    @app_commands.describe(command="Command name or category (iracing, stats, privacy, debates, trivia, claims, weather, tools, admin)")
     async def help_slash(interaction: discord.Interaction, command: str = None):
-        """Show bot commands or detailed help for a specific command"""
+        """Show bot commands or detailed help for a specific command or category"""
         if command:
-            # Show detailed help for specific command
-            embed = help_system.get_command_help(command)
+            command_lower = command.lower().strip()
+
+            # First check if it's a category
+            embed = help_system.get_category_help(command_lower)
+            if embed:
+                await interaction.response.send_message(embed=embed, ephemeral=True)
+                return
+
+            # Then check for specific command
+            embed = help_system.get_command_help(command_lower)
             if embed:
                 await interaction.response.send_message(embed=embed, ephemeral=True)
             else:
+                # List available categories
+                categories = help_system.get_available_categories()
                 await interaction.response.send_message(
-                    f"❌ No help found for command `{command}`. Use `/help` to see all available commands.",
+                    f"❌ No help found for `{command}`.\n\n"
+                    f"**Available categories:** {', '.join(f'`{c}`' for c in categories)}\n\n"
+                    f"Use `/help` to see all commands or `/help <category>` for category help.",
                     ephemeral=True
                 )
         else:
@@ -4528,11 +4677,11 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
     print("✅ Trivia commands registered")
 
     # ==================== BUG TRACKING COMMANDS ====================
-    # Wompie-only bug tracking system
+    # Admin-only bug tracking system
 
     from bug_tracker import report_bug, list_bugs, resolve_bug, add_note, get_bug, get_stats
 
-    @bot.tree.command(name="bug", description="Report a bug (Wompie only)")
+    @bot.tree.command(name="bug", description="Report a bug (Admin only)")
     @app_commands.describe(
         description="Description of the bug",
         priority="Bug priority level"
@@ -4545,9 +4694,9 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
     ])
     async def bug_report(interaction: discord.Interaction, description: str, priority: app_commands.Choice[str] = None):
         """Report a bug to be tracked"""
-        if WOMPIE_USER_ID is None or interaction.user.id != WOMPIE_USER_ID:
+        if not is_bot_admin_interaction(db, interaction):
             await interaction.response.send_message(
-                "❌ Only Wompie can report bugs.",
+                "Only bot admins can report bugs.",
                 ephemeral=True
             )
             return
@@ -4574,7 +4723,7 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
             f"*Use `/bugs` to view all tracked bugs*"
         )
 
-    @bot.tree.command(name="bugs", description="List tracked bugs (Wompie only)")
+    @bot.tree.command(name="bugs", description="List tracked bugs (Admin only)")
     @app_commands.describe(
         status="Filter by status",
         limit="Max bugs to show"
@@ -4587,9 +4736,9 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
     ])
     async def bugs_list(interaction: discord.Interaction, status: app_commands.Choice[str] = None, limit: int = 10):
         """List tracked bugs"""
-        if WOMPIE_USER_ID is None or interaction.user.id != WOMPIE_USER_ID:
+        if not is_bot_admin_interaction(db, interaction):
             await interaction.response.send_message(
-                "❌ Only Wompie can view bugs.",
+                "Only bot admins can view bugs.",
                 ephemeral=True
             )
             return
@@ -4624,7 +4773,7 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
 
         await interaction.response.send_message(embed=embed)
 
-    @bot.tree.command(name="bug_resolve", description="Resolve a bug (Wompie only)")
+    @bot.tree.command(name="bug_resolve", description="Resolve a bug (Admin only)")
     @app_commands.describe(
         bug_id="Bug ID to resolve",
         resolution="How was it resolved?"
@@ -4637,9 +4786,9 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
     ])
     async def bug_resolve_cmd(interaction: discord.Interaction, bug_id: int, resolution: app_commands.Choice[str]):
         """Mark a bug as resolved"""
-        if WOMPIE_USER_ID is None or interaction.user.id != WOMPIE_USER_ID:
+        if not is_bot_admin_interaction(db, interaction):
             await interaction.response.send_message(
-                "❌ Only Wompie can resolve bugs.",
+                "Only bot admins can resolve bugs.",
                 ephemeral=True
             )
             return
@@ -4660,16 +4809,16 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
         else:
             await interaction.response.send_message(f"❌ Failed to resolve bug #{bug_id}", ephemeral=True)
 
-    @bot.tree.command(name="bug_note", description="Add a note to a bug (Wompie only)")
+    @bot.tree.command(name="bug_note", description="Add a note to a bug (Admin only)")
     @app_commands.describe(
         bug_id="Bug ID to add note to",
         note="Note to add"
     )
     async def bug_note_cmd(interaction: discord.Interaction, bug_id: int, note: str):
         """Add a note to a bug"""
-        if WOMPIE_USER_ID is None or interaction.user.id != WOMPIE_USER_ID:
+        if not is_bot_admin_interaction(db, interaction):
             await interaction.response.send_message(
-                "❌ Only Wompie can add bug notes.",
+                "Only bot admins can add bug notes.",
                 ephemeral=True
             )
             return

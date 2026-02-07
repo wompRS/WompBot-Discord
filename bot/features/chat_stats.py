@@ -225,14 +225,19 @@ class ChatStatistics:
             traceback.print_exc()
             return []
 
-    def build_network_graph(self, messages: List[dict]) -> dict:
+    def build_network_graph(self, messages: List[dict], exclude_from_ranking: bool = True) -> dict:
         """
         Build interaction network graph from messages
+
+        Args:
+            messages: List of message dicts with user_id, username, content, channel_id
+            exclude_from_ranking: If True, excludes bot from top rankings (default True)
 
         Returns:
             {
                 'edges': [(user1, user2, weight), ...],
-                'nodes': {user_id: {'username': str, 'degree': int, 'messages': int}}
+                'nodes': {user_id: {'username': str, 'degree': int, 'messages': int}},
+                'bot_stats': {'user_id': int, 'username': str, 'degree': int, 'messages': int} or None
             }
         """
         try:
@@ -240,6 +245,7 @@ class ChatStatistics:
 
             G = nx.DiGraph()
             user_messages = Counter()
+            bot_user_id = self.db.bot_user_id if exclude_from_ranking else None
 
             # Build graph from message sequence (proximity-based connections)
             for i, msg in enumerate(messages):
@@ -292,32 +298,40 @@ class ChatStatistics:
 
             # Calculate metrics
             nodes = {}
+            bot_stats = None
             for node in G.nodes():
                 degree = G.degree(node)
                 # Prioritize: 1) user_profiles username, 2) graph username, 3) fallback to User ID
                 username = username_map.get(node) or G.nodes[node].get('username') or f'User {node}'
-                nodes[node] = {
+                node_data = {
                     'username': username,
                     'degree': degree,
                     'messages': user_messages[node]
                 }
+
+                # Separate bot stats from main rankings
+                if bot_user_id and node == bot_user_id:
+                    bot_stats = {'user_id': node, **node_data}
+                else:
+                    nodes[node] = node_data
 
             # Get edges with weights
             edges = [(u, v, d['weight']) for u, v, d in G.edges(data=True)]
 
             return {
                 'edges': edges,
-                'nodes': nodes
+                'nodes': nodes,
+                'bot_stats': bot_stats  # Tracked separately, not in rankings
             }
 
         except ImportError:
             print("❌ networkx not installed. Install with: pip install networkx")
-            return {'edges': [], 'nodes': {}}
+            return {'edges': [], 'nodes': {}, 'bot_stats': None}
         except Exception as e:
             print(f"❌ Error building network graph: {e}")
             import traceback
             traceback.print_exc()
-            return {'edges': [], 'nodes': {}}
+            return {'edges': [], 'nodes': {}, 'bot_stats': None}
 
     def calculate_primetime(self, messages: List[dict]) -> dict:
         """
@@ -350,9 +364,13 @@ class ChatStatistics:
             'total_messages': len(messages)
         }
 
-    def calculate_engagement(self, messages: List[dict]) -> dict:
+    def calculate_engagement(self, messages: List[dict], exclude_from_ranking: bool = True) -> dict:
         """
         Calculate engagement metrics
+
+        Args:
+            messages: List of message dicts
+            exclude_from_ranking: If True, excludes bot from top_responders ranking
 
         Returns:
             {
@@ -360,14 +378,18 @@ class ChatStatistics:
                 'total_messages': int,
                 'unique_users': int,
                 'avg_messages_per_user': float,
-                'top_responders': [(username, response_count), ...]
+                'top_responders': [(username, response_count), ...],
+                'bot_responses': int or None  # Bot's response count tracked separately
             }
         """
+        bot_user_id = self.db.bot_user_id if exclude_from_ranking else None
+
         total_length = sum(len(msg.get('content', '')) for msg in messages)
-        unique_users = len(set(msg['user_id'] for msg in messages))
+        unique_users = len(set(msg['user_id'] for msg in messages if not (bot_user_id and msg['user_id'] == bot_user_id)))
 
         # Calculate conversation threads (messages within 5 minutes)
         user_responses = Counter()
+        bot_responses = 0
         for i in range(1, len(messages)):
             current = messages[i]
             previous = messages[i-1]
@@ -376,14 +398,19 @@ class ChatStatistics:
             if (current['channel_id'] == previous['channel_id'] and
                 current['user_id'] != previous['user_id'] and
                 (current['timestamp'] - previous['timestamp']).total_seconds() < 300):
-                user_responses[current['username']] += 1
+                # Track bot responses separately
+                if bot_user_id and current['user_id'] == bot_user_id:
+                    bot_responses += 1
+                else:
+                    user_responses[current['username']] += 1
 
         return {
             'avg_message_length': total_length / len(messages) if messages else 0,
             'total_messages': len(messages),
             'unique_users': unique_users,
             'avg_messages_per_user': len(messages) / unique_users if unique_users > 0 else 0,
-            'top_responders': user_responses.most_common(10)
+            'top_responders': user_responses.most_common(10),
+            'bot_responses': bot_responses if bot_user_id else None  # Tracked separately
         }
 
     def format_as_discord_table(self, headers: List[str], rows: List[List[str]]) -> str:

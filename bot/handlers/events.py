@@ -50,6 +50,9 @@ def register_events(bot, db, privacy_manager, claims_tracker, debate_scorekeeper
         print(f'✅ WompBot logged in as {bot.user}')
         print(f'📊 Connected to {len(bot.guilds)} servers')
 
+        # Set bot user ID for stats ranking exclusion (tracks bot messages separately)
+        db.set_bot_user_id(bot.user.id)
+
         # Set Wompie user ID for claims tracker and personality command
         if wompie_user_id[0]:
             # Already set from environment variable

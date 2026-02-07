@@ -30,6 +30,7 @@ services:
       - ./sql/personality_migration.sql:/docker-entrypoint-initdb.d/08_personality.sql
       - ./sql/guild_isolation_migration.sql:/docker-entrypoint-initdb.d/09_guild_isolation.sql
       - ./sql/trivia_migration.sql:/docker-entrypoint-initdb.d/10_trivia.sql
+      - ./sql/server_admins_migration.sql:/docker-entrypoint-initdb.d/11_server_admins.sql
       - ./backups:/backups  # Backup directory
     # SECURITY: Database port NOT exposed to host (only accessible within Docker network)
     # If you need local access for debugging, use: ports: ["127.0.0.1:5432:5432"]
@@ -58,6 +59,7 @@ services:
     environment:
       DISCORD_TOKEN: ${DISCORD_TOKEN}
       WOMPIE_USER_ID: ${WOMPIE_USER_ID}
+      SUPER_ADMIN_IDS: ${SUPER_ADMIN_IDS:-}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
       TAVILY_API_KEY: ${TAVILY_API_KEY}
       OPENAI_API_KEY: ${OPENAI_API_KEY}

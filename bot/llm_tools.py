@@ -633,6 +633,23 @@ COMPUTATIONAL_TOOLS = [
                 "required": ["query"]
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "image_search",
+            "description": "Search for and display an image. Use when user asks to 'show me', 'picture of', 'image of', 'what does X look like', or any request to see a visual. Returns an image that will be displayed in chat.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Search query for the image (e.g., 'Peter Attia', 'golden retriever puppy', 'Eiffel Tower at night')"
+                    }
+                },
+                "required": ["query"]
+            }
+        }
     }
 ]
 

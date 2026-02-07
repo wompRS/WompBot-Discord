@@ -30,6 +30,8 @@ class LLMClient:
         self.api_key = os.getenv('OPENROUTER_API_KEY')
         self.base_url = "https://openrouter.ai/api/v1/chat/completions"
         self.model = os.getenv('MODEL_NAME', 'cognitivecomputations/dolphin-2.9.2-qwen-110b')
+        # Vision model for image analysis (text models can't see images)
+        self.vision_model = os.getenv('VISION_MODEL', 'openai/gpt-4o-mini')
         self.cost_tracker = cost_tracker
 
         # Initialize conversation compressor for token reduction
@@ -463,8 +465,13 @@ Use this history to maintain conversation continuity and remember what was discu
             if max_tokens is None:
                 max_tokens = int(os.getenv('MAX_TOKENS_PER_REQUEST', '1000'))
 
+            # Use vision model for image analysis (text-only models can't see images)
+            model_to_use = self.vision_model if has_images else self.model
+            if has_images and model_to_use != self.model:
+                print(f"   🔄 Switching to vision model: {model_to_use}")
+
             payload = {
-                "model": self.model,
+                "model": model_to_use,
                 "messages": messages,
                 "max_tokens": max_tokens,
                 "temperature": 0.7,
@@ -543,7 +550,7 @@ Use this history to maintain conversation continuity and remember what was discu
             if self.cost_tracker and input_tokens > 0:
                 try:
                     self.cost_tracker.record_costs_sync(
-                        self.model, input_tokens, output_tokens, 'chat', user_id, username
+                        model_to_use, input_tokens, output_tokens, 'chat', user_id, username
                     )
                 except Exception as e:
                     print(f"⚠️  Error tracking costs: {e}")
@@ -558,6 +565,7 @@ Use this history to maintain conversation continuity and remember what was discu
                         conversation_history,
                         user_context,
                         search_results,
+                        rag_context,
                         retry_count + 1,
                         bot_user_id=bot_user_id,
                     )
@@ -576,6 +584,7 @@ Use this history to maintain conversation continuity and remember what was discu
                     conversation_history,
                     user_context,
                     search_results,
+                    rag_context,
                     retry_count + 1,
                     bot_user_id=bot_user_id,
                 )

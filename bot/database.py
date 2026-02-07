@@ -16,6 +16,12 @@ class Database:
         self.pool = None
         self.connect()
         self.current_guild_id = None  # Track current guild context
+        self.bot_user_id = None  # Store bot's user ID to exclude from rankings
+
+    def set_bot_user_id(self, user_id: int):
+        """Set the bot's user ID to exclude from rankings (call after bot is ready)"""
+        self.bot_user_id = user_id
+        logger.info(f"🤖 Bot user ID set for ranking exclusion: {user_id}")
 
     def connect(self):
         """Create PostgreSQL connection pool with retry logic"""
@@ -329,7 +335,7 @@ class Database:
             print(f"❌ Error fetching active users: {e}")
             return []
     
-    def get_message_stats(self, days=7, limit=10, guild_id=None, exclude_bots=True):
+    def get_message_stats(self, days=7, limit=10, guild_id=None, exclude_bots=True, exclude_user_ids=None):
         """Get top users by message count for a specific guild
 
         Args:
@@ -337,6 +343,7 @@ class Database:
             limit: Max number of users to return
             guild_id: Filter to specific Discord server (required for accurate stats)
             exclude_bots: Exclude bot users from results
+            exclude_user_ids: List of specific user IDs to exclude (e.g., [bot_user_id])
         """
         try:
             with self.get_connection() as conn:
@@ -361,10 +368,20 @@ class Database:
                         query += " AND m.guild_id = %s"
                         params.append(guild_id)
 
-                    # Exclude bot messages
+                    # Exclude bot messages by name pattern
                     if exclude_bots:
                         query += " AND LOWER(m.username) NOT LIKE '%%bot%%'"
                         query += " AND LOWER(m.username) NOT LIKE '%%[app]%%'"
+
+                    # Exclude specific user IDs (e.g., bot's own user ID)
+                    # Auto-exclude bot_user_id if set on this Database instance
+                    ids_to_exclude = list(exclude_user_ids) if exclude_user_ids else []
+                    if self.bot_user_id and self.bot_user_id not in ids_to_exclude:
+                        ids_to_exclude.append(self.bot_user_id)
+
+                    if ids_to_exclude:
+                        query += " AND m.user_id NOT IN %s"
+                        params.append(tuple(ids_to_exclude))
 
                     query += """
                         GROUP BY m.user_id, m.username
@@ -378,7 +395,53 @@ class Database:
         except Exception as e:
             print(f"❌ Error fetching message stats: {e}")
             return []
-    
+
+    def get_bot_message_stats(self, days=7, guild_id=None):
+        """Get message stats for the bot itself (for tracking bot activity per server)
+
+        Args:
+            days: Number of days to look back
+            guild_id: Filter to specific Discord server
+
+        Returns:
+            Dict with bot's message count and active days, or None if bot_user_id not set
+        """
+        if not self.bot_user_id:
+            return None
+
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    query = """
+                        SELECT
+                            m.user_id,
+                            m.username,
+                            COUNT(*) as message_count,
+                            COUNT(DISTINCT DATE(m.timestamp)) as active_days
+                        FROM messages m
+                        WHERE m.user_id = %s
+                        AND m.timestamp > CURRENT_TIMESTAMP - INTERVAL '%s days'
+                    """
+                    params = [self.bot_user_id, days]
+
+                    if guild_id:
+                        query += " AND m.guild_id = %s"
+                        params.append(guild_id)
+
+                    query += " GROUP BY m.user_id, m.username"
+
+                    cur.execute(query, params)
+                    result = cur.fetchone()
+                    return dict(result) if result else {
+                        'user_id': self.bot_user_id,
+                        'username': 'WompBot',
+                        'message_count': 0,
+                        'active_days': 0
+                    }
+        except Exception as e:
+            print(f"❌ Error fetching bot message stats: {e}")
+            return None
+
     def get_question_stats(self, days=7, limit=10):
         """Get all messages for question analysis (will be classified by LLM)"""
         try:
@@ -1416,6 +1479,60 @@ class Database:
                     SELECT * FROM ranked WHERE user_id = %s
                 """, (guild_id, days, user_id))
                 return cur.fetchone()
+
+    # ==================== Server Admin Methods ====================
+
+    def get_server_admins(self, guild_id):
+        """Get list of bot admins for a server"""
+        with self.get_connection() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    SELECT user_id, added_by, added_at
+                    FROM server_admins
+                    WHERE guild_id = %s
+                    ORDER BY added_at
+                """, (guild_id,))
+                return cur.fetchall()
+
+    def is_server_admin(self, guild_id, user_id):
+        """Check if a user is a bot admin for a server"""
+        with self.get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT 1 FROM server_admins
+                    WHERE guild_id = %s AND user_id = %s
+                """, (guild_id, user_id))
+                return cur.fetchone() is not None
+
+    def add_server_admin(self, guild_id, user_id, added_by):
+        """Add a bot admin for a server. Returns True if added, False if already exists."""
+        with self.get_connection() as conn:
+            with conn.cursor() as cur:
+                try:
+                    cur.execute("""
+                        INSERT INTO server_admins (guild_id, user_id, added_by)
+                        VALUES (%s, %s, %s)
+                        ON CONFLICT (guild_id, user_id) DO NOTHING
+                        RETURNING id
+                    """, (guild_id, user_id, added_by))
+                    conn.commit()
+                    return cur.fetchone() is not None
+                except Exception as e:
+                    conn.rollback()
+                    logger.error(f"Error adding server admin: {e}")
+                    return False
+
+    def remove_server_admin(self, guild_id, user_id):
+        """Remove a bot admin from a server. Returns True if removed, False if not found."""
+        with self.get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    DELETE FROM server_admins
+                    WHERE guild_id = %s AND user_id = %s
+                    RETURNING id
+                """, (guild_id, user_id))
+                conn.commit()
+                return cur.fetchone() is not None
 
     def close(self):
         """Close database connection pool"""
