@@ -21,28 +21,42 @@ Discord message → on_message (events.py) → handle_bot_mention (conversations
 ## Key Files & What They Do
 
 ### Core Pipeline (edit these carefully)
-- `bot/handlers/conversations.py` — Main message handler, tool selection, synthesis logic, placeholder management (~1000 lines)
-- `bot/llm.py` — LLMClient class: system prompt loading, should_search(), generate_response(), compression (~750 lines)
-- `bot/llm_tools.py` — 26 tool definitions (ALL_TOOLS, COMPUTATIONAL_TOOLS lists), DataRetriever class (~1200 lines)
-- `bot/tool_executor.py` — ToolExecutor: routes tool_call name → implementation (~400 lines)
-- `bot/database.py` — PostgreSQL connection pool, all queries, get_conversation_context() (~1000 lines)
+- `bot/handlers/conversations.py` — Main message handler, tool selection, synthesis logic, placeholder management (~1200 lines)
+- `bot/llm.py` — LLMClient class: system prompt loading, should_search(), generate_response(), compression (~800 lines)
+- `bot/llm_tools.py` — 26 tool definitions (ALL_TOOLS, COMPUTATIONAL_TOOLS lists), DataRetriever class (~850 lines)
+- `bot/tool_executor.py` — ToolExecutor: routes tool_call name → implementation, Redis caching for all external APIs (~1800 lines)
+- `bot/database.py` — PostgreSQL connection pool, all queries, get_conversation_context() (~1550 lines)
 
-### Features
+### Core Support Modules
 - `bot/rag.py` — RAG system: embeddings via OpenAI text-embedding-3-small, pgvector similarity search (threshold: 0.55)
 - `bot/search.py` — Tavily/Google search, format_results_for_llm() (max 5 results, 200 char snippets)
 - `bot/compression.py` — LLMLingua conversation compression (keep_recent=8, min_messages=10)
 - `bot/viz_tools.py` — Matplotlib charts: bar, line, pie, table, comparison (dark theme, MULTI_COLORS palette)
 - `bot/media_processor.py` — Image/video/YouTube frame extraction and analysis
-- `bot/claims.py` — 2-stage claim detection (fast pattern → LLM verify)
-- `bot/claim_detector.py` — Fast keyword pre-filter for claims
-- `bot/fact_check.py` — Emoji-triggered fact checking (requires 2+ sources)
-- `bot/hot_takes.py` — 3-stage controversy scoring (pattern → engagement → LLM)
-- `bot/chat_stats.py` — Network graphs, topic trends, primetime analysis
 - `bot/cost_tracker.py` — Per-request API cost tracking, $1/month alert
 - `bot/weather.py` — OpenWeatherMap integration
 - `bot/wolfram.py` — Wolfram Alpha integration
 - `bot/self_knowledge.py` — Bot self-awareness responses
-- `bot/help_system.py` — Command documentation system (~1700 lines)
+- `bot/data_retriever.py` — Database query engine for visualization tools
+
+### Features (bot/features/)
+- `claims.py` — 2-stage claim detection (fast pattern → LLM verify)
+- `claim_detector.py` — Fast keyword pre-filter for claims
+- `fact_check.py` — Emoji-triggered fact checking (requires 2+ sources)
+- `hot_takes.py` — 3-stage controversy scoring (pattern → engagement → LLM)
+- `chat_stats.py` — Network graphs, topic trends, primetime analysis
+- `help_system.py` — Command documentation system (~1570 lines)
+- `gdpr_privacy.py` — GDPR compliance: opt-out, data export, deletion requests
+- `reminders.py` — Natural language reminders with context links
+- `events.py` — Event scheduling with periodic reminders
+- `debate_scorekeeper.py` — Debate tracking with LLM judging
+- `trivia.py` — LLM-powered trivia games
+- `yearly_wrapped.py` — Spotify-style yearly summaries
+- `quote_of_the_day.py` — Featured quote selection
+- `admin_utils.py` — Admin permission utilities
+- `iracing.py` — iRacing driver stats and comparisons
+- `iracing_teams.py` — iRacing team management
+- `iracing_meta.py` — iRacing meta analysis (best cars/tracks)
 
 ### Commands
 - `bot/commands/slash_commands.py` — All slash commands (~1500 lines)
@@ -60,12 +74,16 @@ Discord message → on_message (events.py) → handle_bot_mention (conversations
 - `bot/tasks/background_jobs.py` — Scheduled jobs (embedding generation, cleanup)
 - `bot/logging_config.py` — Logging setup
 - `docker-compose.yml` — 5 services: bot, postgres, redis, postgres-backup, portainer
-- `migrations/` — 13 SQL files (init.sql through 12_missing_indexes.sql)
+- `sql/` — 13 SQL files (init.sql + 12 migrations including indexes, rate limiting, GDPR, iRacing, etc.)
+- `bot/migrations/` — 3 iRacing-specific migration files
 
-### iRacing Subsystem
-- `bot/iracing.py`, `iracing_client.py`, `iracing_teams.py`, `iracing_meta.py`
-- `bot/iracing_viz.py`, `iracing_graphics.py`
-- `bot/iracing_event_commands.py`, `iracing_team_commands.py`
+### iRacing Subsystem (bot/ root level)
+- `bot/iracing_client.py` — iRacing API client
+- `bot/iracing_viz.py` — iRacing visualizations
+- `bot/iracing_graphics.py` — iRacing chart generation
+- `bot/iracing_event_commands.py` — Event slash commands
+- `bot/iracing_team_commands.py` — Team slash commands
+- Features in `bot/features/`: `iracing.py`, `iracing_teams.py`, `iracing_meta.py`, `team_menu.py`
 
 ## Tool Architecture
 
@@ -105,7 +123,7 @@ WOMPIE_USER_ID=...  SUPER_ADMIN_IDS=...  BOT_ADMIN_IDS=...
 
 Key tables: `messages`, `user_profiles`, `claims`, `fact_checks`, `hot_takes`, `quotes`, `message_embeddings` (vector), `conversation_summaries`, `api_costs`, `rate_limits`, `reminders`, `events`, `iracing_teams`, `gdpr_deletion_requests`, `opt_outs`, `guild_config`, `server_admins`, `stats_cache`
 
-Indexes: 11 composite indexes added in `migrations/12_missing_indexes.sql`
+Indexes: 11 composite indexes added in `sql/12_missing_indexes.sql`
 
 ## Important Design Decisions
 
@@ -134,7 +152,7 @@ docker compose restart bot       # Restart bot only
 - **Adding a new tool**: Define in `llm_tools.py` (add to ALL_TOOLS or COMPUTATIONAL_TOOLS), implement in `tool_executor.py`, add to system prompts if needed
 - **Changing LLM behavior**: Edit `llm.py` for search/compression logic, `conversations.py` for tool selection/synthesis
 - **New slash command**: Add to `commands/slash_commands.py`, register in `main.py`
-- **Database changes**: Create new migration file in `migrations/`, update `database.py`
+- **Database changes**: Create new migration file in `sql/`, update `database.py`
 - **Prompt changes**: Edit files in `bot/prompts/` (gitignored, only on server)
 
 ## Recent Fixes (Session ec0b354)
@@ -165,3 +183,15 @@ docker compose restart bot       # Restart bot only
 - **User context caching** in `conversations.py`: DB lookup cached in Redis for 1 hour
 - Cache key generation via `_cache_key()` helper with MD5 fallback for long keys
 - All caching gracefully degrades if Redis is unavailable (existing RedisCache pattern)
+
+## Documentation Sync (Session 7192e61)
+
+- All docs updated to match actual codebase: model references, tool counts, file structure
+- Outdated "Hermes 70B" and "Claude 3.7 Sonnet" references replaced with configurable MODEL_NAME
+- PERFORMANCE_AUDIT.md and CODE_ANALYSIS_REPORT.md have inline fix status markers
+- CONVERSATIONAL_AI.md has Performance Architecture section documenting all optimizations
+
+## Tool Response Fixes
+
+- **Duplicate response bug fixed**: Most text tools (wikipedia, define_word, movie_info, stock_price, sports_scores, currency_convert, translate, get_time, url_preview, random_choice, stock_history, create_reminder) are now marked self-contained — their output IS the answer, no synthesis LLM call needed. Previously only weather/wolfram were self-contained, causing tools like wikipedia to show raw output + embed + synthesis = triple response.
+- **Translation rewrite**: Fixed auto-detection bug (was defaulting source to "en" when target wasn't English). Added 60+ language mappings, display names, email param for higher rate limits. LLM tool definition updated to accept language names (not just codes).

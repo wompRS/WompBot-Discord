@@ -896,15 +896,21 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                 has_search_results = any("web_search:" in tr for tr in tool_results)
 
                 # Identify self-contained tools that DON'T need LLM commentary
-                # Weather cards and wolfram results already display their own output
-                self_contained_tools = ["get_weather", "get_weather_forecast", "wolfram_query"]
+                # These tools return fully formatted, user-ready output
+                self_contained_tools = [
+                    "get_weather", "get_weather_forecast", "wolfram_query",
+                    "wikipedia", "define_word", "movie_info", "stock_price",
+                    "sports_scores", "currency_convert", "translate", "get_time",
+                    "url_preview", "random_choice", "stock_history",
+                    "fetch_crypto_price", "create_reminder",
+                ]
                 only_self_contained = all(any(st in tn for st in self_contained_tools) for tn in tool_names)
 
                 # Synthesis decision:
                 # 1. Web search was used → always synthesize (LLM must interpret results)
-                # 2. Self-contained tools (weather, wolfram) → skip synthesis (output speaks for itself)
+                # 2. Self-contained tools → skip synthesis (output speaks for itself)
                 # 3. Visualization tools (charts) → synthesize a brief text accompaniment
-                # 4. Other tools → synthesize if no initial response text
+                # 4. Other tools (user_stats, iracing) → synthesize if no initial response text
                 needs_synthesis = has_search_results or (not only_self_contained and not initial_response_text)
 
                 logger.debug("Synthesis decision: self_contained=%s, has_search=%s, needs_synthesis=%s", only_self_contained, has_search_results, needs_synthesis)
@@ -1089,7 +1095,19 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                     # Check if web_search was used - always synthesize search results
                     has_search_results = any("web_search:" in tr for tr in tool_results)
 
-                    if tool_results and (not initial_response_text or has_search_results):
+                    # Check if all tools are self-contained (output speaks for itself)
+                    self_contained_tools = [
+                        "get_weather", "get_weather_forecast", "wolfram_query",
+                        "wikipedia", "define_word", "movie_info", "stock_price",
+                        "sports_scores", "currency_convert", "translate", "get_time",
+                        "url_preview", "random_choice", "stock_history",
+                        "fetch_crypto_price", "create_reminder",
+                    ]
+                    only_self_contained = all(any(st in tn for st in self_contained_tools) for tn in tool_names)
+
+                    needs_synthesis = has_search_results or (not only_self_contained and not initial_response_text)
+
+                    if tool_results and needs_synthesis:
                         # Update status to show we're analyzing
                         await status_msg.edit(content="🤔 Analyzing results...")
 

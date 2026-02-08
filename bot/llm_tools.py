@@ -240,7 +240,7 @@ COMPUTATIONAL_TOOLS = [
         "type": "function",
         "function": {
             "name": "translate",
-            "description": "Translate text between languages. Use for 'translate X to Spanish', 'how do you say X in French', etc.",
+            "description": "Translate text between languages. Use for 'translate X to Spanish', 'how do you say X in French', 'translate from Japanese to English', etc. Supports 60+ languages. Source language is auto-detected if not specified.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -250,11 +250,11 @@ COMPUTATIONAL_TOOLS = [
                     },
                     "target_language": {
                         "type": "string",
-                        "description": "Target language code (e.g., 'es' for Spanish, 'fr' for French, 'de' for German, 'ja' for Japanese, 'zh' for Chinese)"
+                        "description": "Target language name or code (e.g., 'spanish', 'french', 'japanese', 'es', 'fr', 'ja')"
                     },
                     "source_language": {
                         "type": "string",
-                        "description": "Source language code (optional, auto-detected if not provided)"
+                        "description": "Source language name or code (e.g., 'english', 'japanese', 'en', 'ja'). If the user specifies what language to translate FROM, include it here. Leave empty to auto-detect."
                     }
                 },
                 "required": ["text", "target_language"]

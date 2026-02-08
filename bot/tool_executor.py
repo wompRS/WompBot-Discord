@@ -659,8 +659,8 @@ class ToolExecutor:
         import asyncio
 
         text = args["text"]
-        target = args["target_language"].lower()
-        source = args.get("source_language", "auto")
+        target = args["target_language"].lower().strip()
+        source = args.get("source_language", "").lower().strip() or "auto"
 
         # Language code mapping for common names
         lang_codes = {
@@ -671,21 +671,35 @@ class ToolExecutor:
             'polish': 'pl', 'turkish': 'tr', 'greek': 'el', 'hebrew': 'he',
             'thai': 'th', 'vietnamese': 'vi', 'indonesian': 'id', 'malay': 'ms',
             'english': 'en', 'czech': 'cs', 'romanian': 'ro', 'hungarian': 'hu',
-            'ukrainian': 'uk'
+            'ukrainian': 'uk', 'tagalog': 'tl', 'filipino': 'tl', 'swahili': 'sw',
+            'persian': 'fa', 'farsi': 'fa', 'catalan': 'ca', 'croatian': 'hr',
+            'serbian': 'sr', 'slovak': 'sk', 'slovenian': 'sl', 'bulgarian': 'bg',
+            'latvian': 'lv', 'lithuanian': 'lt', 'estonian': 'et', 'icelandic': 'is',
+            'welsh': 'cy', 'irish': 'ga', 'maltese': 'mt', 'basque': 'eu',
+            'galician': 'gl', 'afrikaans': 'af', 'albanian': 'sq', 'macedonian': 'mk',
+            'bosnian': 'bs', 'belarusian': 'be', 'georgian': 'ka', 'armenian': 'hy',
+            'urdu': 'ur', 'bengali': 'bn', 'tamil': 'ta', 'telugu': 'te',
+            'marathi': 'mr', 'gujarati': 'gu', 'kannada': 'kn', 'malayalam': 'ml',
+            'punjabi': 'pa', 'nepali': 'ne', 'sinhala': 'si',
+            'mandarin': 'zh', 'simplified chinese': 'zh', 'traditional chinese': 'zh-TW',
         }
         target = lang_codes.get(target, target)
         if source != "auto":
             source = lang_codes.get(source, source)
 
+        # Reverse lookup for display names
+        code_to_name = {v: k.title() for k, v in lang_codes.items()}
+
         # Use MyMemory API (free, no API key needed for low volume)
         try:
             def do_translate():
                 url = "https://api.mymemory.translated.net/get"
-                # MyMemory uses "autodetect" for auto detection when translating TO English
-                source_param = "autodetect" if source == "auto" and target == "en" else (source if source != "auto" else "en")
+                # MyMemory supports "autodetect" as source language
+                source_param = source if source != "auto" else "autodetect"
                 params = {
                     "q": text[:500],  # Limit text length
-                    "langpair": f"{source_param}|{target}"
+                    "langpair": f"{source_param}|{target}",
+                    "de": "wompbot@discord.bot"  # Email for higher rate limits
                 }
                 return self.session.get(url, params=params, timeout=15)
 
@@ -694,23 +708,38 @@ class ToolExecutor:
             if response.status_code == 200:
                 data = response.json()
                 translated = data.get('responseData', {}).get('translatedText', '')
-                detected_lang = data.get('responseData', {}).get('detectedLanguage', source)
+                match_quality = data.get('responseData', {}).get('match', 0)
+                detected_lang = data.get('responseData', {}).get('detectedLanguage', '')
+
+                # Check for API error messages
+                if data.get('responseStatus') == 403:
+                    return {"success": False, "error": "Translation rate limit reached. Try again in a minute."}
 
                 if translated and translated.upper() != text.upper():
-                    source_display = detected_lang.upper() if source == "auto" else source.upper()
+                    # Build source display name
+                    if source == "auto" and detected_lang:
+                        source_display = code_to_name.get(detected_lang, detected_lang.upper())
+                    elif source != "auto":
+                        source_display = code_to_name.get(source, source.upper())
+                    else:
+                        source_display = "Auto"
+
+                    target_display = code_to_name.get(target, target.upper())
+
                     return {
                         "success": True,
                         "type": "text",
-                        "text": f"**Translation ({source_display} → {target.upper()}):** {translated}",
-                        "description": f"Translated from {source_display} to {target.upper()}"
+                        "text": f"**Translation ({source_display} → {target_display}):**\n{translated}",
+                        "description": f"Translated from {source_display} to {target_display}"
                     }
                 else:
-                    return {"success": False, "error": f"Could not translate text to {target}. The text may already be in the target language."}
+                    target_display = code_to_name.get(target, target.upper())
+                    return {"success": False, "error": f"Could not translate text to {target_display}. The text may already be in the target language, or the language pair is not supported."}
 
         except requests.Timeout:
             return {"success": False, "error": "Translation request timed out. Try again."}
         except Exception as e:
-            print(f"Translation error: {e}")
+            logger.error("Translation error: %s", e)
 
         return {"success": False, "error": "Translation service unavailable. Try again later."}
 
