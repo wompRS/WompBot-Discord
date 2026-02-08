@@ -457,4 +457,8 @@ docker compose restart bot       # Restart bot only
 
 ## Wishlist / Future Features
 
-- **Cross-channel context awareness** — Opt-in `/link_channels` to pull RAG context from linked channels
+- **Cross-channel context awareness** — Opt-in `/link_channels` to pull RAG context from linked channels. When user asks a question in #general, also search for relevant context in linked channels (e.g. #tech, #gaming). Requires new `linked_channels` table and RAG query expansion.
+- **Auto-responses with local LLM** — Use the 8B local model to generate occasional autonomous comments on interesting messages (dropped during planning phase — revisit if local LLM performance improves)
+- **Topic expertise leaderboard** — `/experts [topic]` to show who knows most about a topic, using the `user_topic_expertise` table data already being collected
+- **Debate tournament mode** — Multi-round debate brackets with seeding based on argumentation profiles
+- **Achievement system** — Persistent achievements with Discord role rewards (e.g. "1000 messages", "10 debate wins", "Trivia Champion")
