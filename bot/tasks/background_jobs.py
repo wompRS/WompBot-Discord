@@ -13,7 +13,8 @@ import discord
 
 def register_tasks(bot, db, llm, rag, chat_stats, iracing, iracing_popularity_cache,
                    reminder_system, event_system, privacy_manager, iracing_team_manager=None,
-                   poll_system=None, devils_advocate=None, jeopardy=None):
+                   poll_system=None, devils_advocate=None, jeopardy=None,
+                   message_scheduler=None):
     """
     Register all background tasks with the bot.
 
@@ -873,6 +874,43 @@ def register_tasks(bot, db, llm, rag, chat_stats, iracing, iracing_popularity_ca
         if jeopardy:
             print("🎯 Jeopardy timeout checker started (runs every 5 min)")
 
+    # ── Scheduled message sender ──
+    @tasks.loop(minutes=1)
+    async def check_scheduled_messages():
+        """Send scheduled messages that are due"""
+        if not message_scheduler:
+            return
+
+        try:
+            due_messages = await message_scheduler.get_due_messages()
+            for msg in due_messages:
+                try:
+                    channel = bot.get_channel(msg['channel_id'])
+                    if channel:
+                        # Send as a scheduled message with attribution
+                        user = bot.get_user(msg['user_id'])
+                        username = user.display_name if user else f"User {msg['user_id']}"
+                        await channel.send(
+                            f"⏰ **Scheduled message from {username}:**\n{msg['content']}"
+                        )
+
+                    # Mark as sent regardless (even if channel not found)
+                    await message_scheduler.mark_sent(msg['id'])
+
+                except Exception as e:
+                    print(f"  ❌ Error sending scheduled message {msg['id']}: {e}")
+                    # Still mark as sent to prevent infinite retries
+                    await message_scheduler.mark_sent(msg['id'])
+
+        except Exception as e:
+            print(f"❌ Scheduled message check error: {e}")
+
+    @check_scheduled_messages.before_loop
+    async def before_check_scheduled_messages():
+        await bot.wait_until_ready()
+        if message_scheduler:
+            print("⏰ Scheduled message checker started (runs every 1 min)")
+
     print("✅ Background tasks registered (will start in on_ready)")
 
     # Return task references - they will be started in on_ready event handler
@@ -896,5 +934,8 @@ def register_tasks(bot, db, llm, rag, chat_stats, iracing, iracing_popularity_ca
 
     if jeopardy:
         tasks_dict['check_jeopardy_timeouts'] = check_jeopardy_timeouts
+
+    if message_scheduler:
+        tasks_dict['check_scheduled_messages'] = check_scheduled_messages
 
     return tasks_dict

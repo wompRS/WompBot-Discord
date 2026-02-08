@@ -61,6 +61,7 @@ Discord message → on_message (events.py) → handle_bot_mention (conversations
 - `who_said_it.py` — "Who Said It?" game using real server quotes, GDPR-safe
 - `devils_advocate.py` — Devil's advocate debate mode with LLM counter-arguments
 - `jeopardy.py` — Channel Jeopardy with server-inspired categories, LLM-generated clues
+- `message_scheduler.py` — Message scheduling with abuse prevention limits
 - `yearly_wrapped.py` — Spotify-style yearly summaries
 - `quote_of_the_day.py` — Featured quote selection
 - `admin_utils.py` — Admin permission utilities
@@ -401,6 +402,15 @@ docker compose restart bot       # Restart bot only
 - 15-minute inactivity timeout via background task
 - On_message hook in events.py for answer processing
 - Table: `active_jeopardy` with `session_state` JSONB
+
+### Message Scheduling
+- `/schedule [message] [minutes/hours/days]` — Schedule a message to be sent later
+- `/scheduled` — View your pending scheduled messages (ephemeral)
+- `/schedule_cancel [id]` — Cancel a scheduled message (creator only)
+- `features/message_scheduler.py` — `MessageScheduler(db)` with abuse prevention
+- Limits: max 5 pending per user, no messages within 5 min of each other in same channel, max 30 days out
+- Background task checks every 1 minute for due messages
+- Table: `scheduled_messages` with `sent` and `cancelled` flags
 
 ### Personal Analytics (/mystats)
 - `/mystats [@user] [days]` — Unified personal analytics PIL card (teal/emerald theme)

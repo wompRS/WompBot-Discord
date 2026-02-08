@@ -19,7 +19,8 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                             iracing_viz, iracing_team_manager, help_system,
                             wompie_user_id, series_autocomplete_cache, trivia,
                             rag=None, dashboard=None, poll_system=None,
-                            who_said_it=None, devils_advocate=None, jeopardy=None):
+                            who_said_it=None, devils_advocate=None, jeopardy=None,
+                            message_scheduler=None):
     """
     Register all slash commands with the bot.
 
@@ -5730,6 +5731,117 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                 await interaction.response.send_message(f"❌ Error: {str(e)}", ephemeral=True)
 
         print("✅ Jeopardy commands registered")
+
+    # ===== Message Scheduling =====
+    if message_scheduler:
+        @bot.tree.command(name="schedule", description="Schedule a message to be sent later")
+        @app_commands.describe(
+            message="The message content to send",
+            minutes="Send in X minutes from now",
+            hours="Send in X hours from now",
+            days="Send in X days from now"
+        )
+        async def schedule_message(interaction: discord.Interaction,
+                                    message: str,
+                                    minutes: int = 0,
+                                    hours: int = 0,
+                                    days: int = 0):
+            """Schedule a message"""
+            try:
+                total_minutes = minutes + (hours * 60) + (days * 1440)
+                if total_minutes <= 0:
+                    await interaction.response.send_message(
+                        "❌ You must specify when to send! Use `minutes`, `hours`, or `days` parameters.",
+                        ephemeral=True
+                    )
+                    return
+
+                send_at = datetime.now() + timedelta(minutes=total_minutes)
+
+                result = await message_scheduler.schedule_message(
+                    guild_id=interaction.guild_id,
+                    channel_id=interaction.channel_id,
+                    user_id=interaction.user.id,
+                    content=message,
+                    send_at=send_at
+                )
+
+                if result.get('error'):
+                    await interaction.response.send_message(
+                        f"❌ {result['error']}", ephemeral=True
+                    )
+                    return
+
+                # Format the time nicely
+                time_str = send_at.strftime("%b %d at %I:%M %p")
+                await interaction.response.send_message(
+                    f"⏰ Message scheduled! (#{result['message_id']})\n"
+                    f"📅 Will be sent: **{time_str}**\n"
+                    f"📝 Preview: {result['content_preview']}",
+                    ephemeral=True
+                )
+
+            except Exception as e:
+                await interaction.response.send_message(f"❌ Error: {str(e)}", ephemeral=True)
+
+        @bot.tree.command(name="scheduled", description="View your pending scheduled messages")
+        async def scheduled_list(interaction: discord.Interaction):
+            """List your scheduled messages"""
+            try:
+                messages = await message_scheduler.get_user_scheduled(
+                    interaction.user.id, interaction.guild_id
+                )
+
+                if not messages:
+                    await interaction.response.send_message(
+                        "📭 You have no pending scheduled messages.", ephemeral=True
+                    )
+                    return
+
+                embed = discord.Embed(
+                    title="⏰ Your Scheduled Messages",
+                    color=discord.Color.blue()
+                )
+
+                for msg in messages:
+                    time_str = msg['send_at'].strftime("%b %d at %I:%M %p")
+                    preview = msg['content'][:80] + ('...' if len(msg['content']) > 80 else '')
+                    embed.add_field(
+                        name=f"#{msg['id']} — {time_str}",
+                        value=f"<#{msg['channel_id']}> — {preview}",
+                        inline=False
+                    )
+
+                embed.set_footer(text=f"{len(messages)}/5 slots used • /schedule_cancel <id> to cancel")
+                await interaction.response.send_message(embed=embed, ephemeral=True)
+
+            except Exception as e:
+                await interaction.response.send_message(f"❌ Error: {str(e)}", ephemeral=True)
+
+        @bot.tree.command(name="schedule_cancel", description="Cancel a scheduled message")
+        @app_commands.describe(message_id="The message ID to cancel (from /scheduled)")
+        async def schedule_cancel(interaction: discord.Interaction, message_id: int):
+            """Cancel a scheduled message"""
+            try:
+                result = await message_scheduler.cancel_message(
+                    message_id, interaction.user.id
+                )
+
+                if result.get('error'):
+                    await interaction.response.send_message(
+                        f"❌ {result['error']}", ephemeral=True
+                    )
+                    return
+
+                await interaction.response.send_message(
+                    f"✅ Scheduled message #{message_id} has been cancelled.",
+                    ephemeral=True
+                )
+
+            except Exception as e:
+                await interaction.response.send_message(f"❌ Error: {str(e)}", ephemeral=True)
+
+        print("✅ Message scheduling commands registered")
 
     # ===== Personal Analytics =====
     @bot.tree.command(name="mystats", description="View your personal analytics profile card")

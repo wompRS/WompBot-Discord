@@ -126,6 +126,10 @@ from features.jeopardy import JeopardyGame
 jeopardy = JeopardyGame(db, llm, chat_stats)
 logger.info("Jeopardy game loaded")
 
+from features.message_scheduler import MessageScheduler
+message_scheduler = MessageScheduler(db)
+logger.info("Message scheduler loaded")
+
 # GDPR Privacy Compliance (mandatory per EU regulations)
 from features.gdpr_privacy import GDPRPrivacyManager
 privacy_manager = GDPRPrivacyManager(db)
@@ -201,7 +205,8 @@ tasks_dict = register_tasks(
     iracing_team_manager=iracing_team_manager,
     poll_system=poll_system,
     devils_advocate=devils_advocate,
-    jeopardy=jeopardy
+    jeopardy=jeopardy,
+    message_scheduler=message_scheduler
 )
 
 # Register event handlers
@@ -274,7 +279,8 @@ register_slash_commands(
     poll_system=poll_system,
     who_said_it=who_said_it,
     devils_advocate=devils_advocate,
-    jeopardy=jeopardy
+    jeopardy=jeopardy,
+    message_scheduler=message_scheduler
 )
 
 logger.info("All modules registered successfully!")
