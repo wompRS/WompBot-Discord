@@ -308,6 +308,12 @@ docker compose restart bot       # Restart bot only
 - `/forget <id>` — delete a specific fact
 - Facts automatically included in LLM context via existing `get_relevant_context()`
 
+### Thread Conversation Continuity
+- When bot is mentioned in a thread, it fetches parent channel context around the thread's origin message
+- Prepends up to 5 parent messages with a `[Thread context from #parent-channel]` marker
+- Uses `database.get_thread_parent_context()` — no new tables needed
+- Detects threads via `isinstance(message.channel, discord.Thread)`
+
 ## Wishlist / Future Features
 
 - **Cross-channel context awareness** — Opt-in `/link_channels` to pull RAG context from linked channels

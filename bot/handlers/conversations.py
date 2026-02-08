@@ -945,6 +945,31 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
             # Include bot messages so it can remember what it said
         )
 
+        # ── Thread context continuity ──
+        # If message is in a thread, also fetch parent channel context around the thread's origin
+        if isinstance(message.channel, discord.Thread) and message.channel.parent:
+            try:
+                parent_channel_id = message.channel.parent.id
+                # Thread starter message ID is available via message.channel.id (the thread ID is the starter message ID)
+                starter_msg_id = message.channel.id
+                parent_context = db.get_thread_parent_context(
+                    parent_channel_id, starter_msg_id, limit=5
+                )
+                if parent_context:
+                    # Prepend parent context with a marker so the LLM knows it's from the parent channel
+                    parent_channel_name = getattr(message.channel.parent, 'name', 'parent-channel')
+                    context_marker = {
+                        'username': 'System',
+                        'content': f'[Thread context from #{parent_channel_name} — messages around the thread origin:]',
+                        'user_id': 0,
+                        'timestamp': parent_context[0].get('timestamp') if parent_context else None,
+                        'is_bot': False
+                    }
+                    conversation_history = [context_marker] + parent_context + conversation_history
+                    logger.info("Added %d parent channel messages for thread context", len(parent_context))
+            except Exception as e:
+                logger.warning("Failed to fetch thread parent context: %s", e)
+
         # Debug: Log conversation history
         logger.debug("Retrieved %d messages for context (limit=%d)", len(conversation_history), context_window)
         if len(conversation_history) > 0:

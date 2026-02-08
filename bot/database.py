@@ -252,6 +252,56 @@ class Database:
             print(f"❌ Error fetching messages: {e}")
             return []
     
+    def get_thread_parent_context(self, parent_channel_id, starter_message_id, limit=5):
+        """Get messages around a thread's origin message from the parent channel.
+
+        Args:
+            parent_channel_id: The parent channel ID
+            starter_message_id: The message ID that started the thread
+            limit: Number of surrounding messages to fetch
+
+        Returns:
+            List of message dicts in chronological order
+        """
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    # Get messages around the starter message (2 before, starter itself, 2 after)
+                    # First, get the timestamp of the starter message
+                    cur.execute("""
+                        SELECT timestamp FROM messages
+                        WHERE channel_id = %s AND message_id = %s
+                        LIMIT 1
+                    """, (parent_channel_id, starter_message_id))
+                    starter = cur.fetchone()
+
+                    if not starter:
+                        # Fallback: get most recent messages from parent channel
+                        cur.execute("""
+                            SELECT message_id, user_id, username, content, timestamp
+                            FROM messages
+                            WHERE channel_id = %s
+                            ORDER BY timestamp DESC
+                            LIMIT %s
+                        """, (parent_channel_id, limit))
+                        messages = cur.fetchall()
+                        return list(reversed(messages))
+
+                    # Get messages before and including the starter
+                    cur.execute("""
+                        SELECT message_id, user_id, username, content, timestamp
+                        FROM messages
+                        WHERE channel_id = %s AND timestamp <= %s
+                        ORDER BY timestamp DESC
+                        LIMIT %s
+                    """, (parent_channel_id, starter['timestamp'], limit))
+                    messages = cur.fetchall()
+                    return list(reversed(messages))
+
+        except Exception as e:
+            print(f"❌ Error fetching thread parent context: {e}")
+            return []
+
     def get_user_context(self, user_id):
         """Get user profile and recent behavior"""
         try:
