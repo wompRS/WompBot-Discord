@@ -316,7 +316,7 @@ This document provides an honest assessment of WompBot's GDPR compliance status 
 
 **Evidence**:
 - User commands require data processing by definition
-- `/remind`, `/wrapped`, `/iracing_link` all user-initiated
+- `!remind`, `/wrapped`, `/iracing_link` all user-initiated
 - No processing occurs without user request
 
 **Verification Method**: Feature-by-feature necessity analysis

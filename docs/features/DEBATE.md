@@ -34,7 +34,7 @@ Start tracking a debate in the current channel.
 /debate_start topic:Remote work is better than office work
 ```
 
-### `/debate_end`
+### `!debate_end`
 
 End the current debate and trigger LLM analysis.
 
@@ -44,7 +44,7 @@ End the current debate and trigger LLM analysis.
 - Key arguments summarized
 - Winner announcement with reasoning
 
-### `/debate_stats`
+### `!debate_stats`
 
 View debate statistics for yourself or another user.
 
@@ -58,11 +58,11 @@ View debate statistics for yourself or another user.
 - Average score
 - Most common fallacies committed
 
-### `/debate_leaderboard`
+### `!debate_lb`
 
 View the server's top debaters ranked by wins and average score.
 
-### `/debate_review`
+### `!debate_review`
 
 Analyze an uploaded debate transcript (text file).
 
@@ -93,7 +93,7 @@ Analyze an uploaded debate transcript (text file).
 
 ### Ending the Debate
 
-1. Any participant uses `/debate_end`
+1. Any participant uses `!debate_end`
 2. Bot collects all messages since start
 3. LLM analyzes the full debate
 4. Results are posted with detailed breakdown

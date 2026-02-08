@@ -228,7 +228,7 @@ def register_prefix_commands(bot, db, llm, search, help_system, tasks_dict,
         embed.add_field(
             name="Personality Modes",
             value=(
-                "Three modes available (admin can switch with /personality):\n"
+                "Three modes available (admin can switch with !personality):\n"
                 "• Default - Conversational and helpful with detailed responses\n"
                 "• Concise - Brief, direct answers (1-2 sentences max)\n"
                 "• Bogan - Full Australian slang mode for casual fun"
@@ -277,19 +277,19 @@ def register_prefix_commands(bot, db, llm, search, help_system, tasks_dict,
         embed.add_field(
             name="Other Commands",
             value=(
-                "/stats [@user] - View user statistics and behavior analysis\n"
-                "/receipts [@user] [keyword] - View tracked claims\n"
-                "/quotes [@user] - View saved quotes\n"
+                "!stats [@user] - View user statistics\n"
+                "!receipts [@user] [keyword] - View tracked claims\n"
+                "!quotes [@user] - View saved quotes\n"
                 "!search <query> - Manually search the web\n"
                 "!yt <query> - Search YouTube and get video links\n"
                 "!analyze [days] - (Admin) Analyze user behavior patterns\n"
                 "!refreshstats - (Admin) Manually refresh stats cache\n"
-                "/ping - Check bot latency"
+                "!ping - Check bot latency"
             ),
             inline=False
         )
 
-        embed.set_footer(text="Privacy: Use /wompbot_optout to opt out of data collection. Use /help for full command list.")
+        embed.set_footer(text="Privacy: Use /wompbot_optout to opt out of data collection. Use !help for full command list.")
 
         await ctx.send(embed=embed)
 
@@ -431,7 +431,7 @@ def register_prefix_commands(bot, db, llm, search, help_system, tasks_dict,
             if pref:
                 location = pref['location']
             else:
-                await ctx.send("Please specify a location: `!weather London` or set a default with `/weather_set`")
+                await ctx.send("Please specify a location: `!weather London` or set a default with `!weatherset`")
                 return
 
         async with ctx.typing():

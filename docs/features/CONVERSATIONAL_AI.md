@@ -47,7 +47,7 @@ Simple greetings like "wompbot whats up" now short-circuit the LLM. The bot repl
 
 ## Personality System
 
-WompBot has three personality modes that can be switched per-server using the /personality command (admin only).
+WompBot has three personality modes that can be switched per-server using the !personality command (admin only).
 
 ### Default (Conversational)
 
@@ -115,7 +115,7 @@ Bot: "docker restart container_name"
 
 Admin users can change the personality mode:
 ```
-/personality <mode>
+!personality <mode>
 ```
 
 Options: default, concise, bogan
@@ -555,9 +555,9 @@ docker-compose restart bot
 
 **Test personality switching:**
 ```
-/personality concise
+!personality concise
 @WompBot test
-/personality default
+!personality default
 @WompBot test
 ```
 

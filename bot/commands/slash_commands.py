@@ -738,7 +738,7 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                 f"⚔️ **Debate Started!**\n"
                 f"Topic: **{topic}**\n\n"
                 f"All messages in this channel are now being tracked.\n"
-                f"Use `/debate_end` when finished to see analysis and results!"
+                f"Use `!debate_end` when finished to see analysis and results!"
             )
         else:
             await interaction.response.send_message(

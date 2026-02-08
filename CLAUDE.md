@@ -74,8 +74,13 @@ Discord message → on_message (events.py) → handle_bot_mention (conversations
 - `team_menu.py` — Team menu with pagination for lists > 25 items
 
 ### Commands
-- `bot/commands/slash_commands.py` — All slash commands (~1500 lines)
-- `bot/commands/prefix_commands.py` — !stats, !analyze, !search, !refreshstats
+- `bot/commands/slash_commands.py` — Slash commands: stats, wrapped, debate_start, trivia_start, dashboard, flow, poll, mystats, iRacing, GDPR, set_timezone, help (~3700 lines, ~24 commands)
+- `bot/commands/prefix_commands.py` — Prefix command router, imports sub-modules (~55 prefix commands total)
+- `bot/commands/prefix_utils.py` — Utility prefix commands: !whoami, !personality, !myfacts, !forget, !bug, !bugs, !bugfix, !remind, !reminders, !cancelremind, !event, !events, !cancelevent, !qotd, !schedule, !scheduled, !cancelschedule, !weatherset, !weatherclear
+- `bot/commands/prefix_admin.py` — Admin prefix commands: !setadmin, !removeadmin, !admins, !feedadd, !feedremove, !feeds, !ghwatch, !ghunwatch, !ghwatches, !wladd, !wlremove, !watchlist
+- `bot/commands/prefix_features.py` — Feature prefix commands: !receipts, !quotes, !verify, !hottakes, !myht, !vindicate, !pollresults, !pollclose, debate commands (!debate_end, !debate_stats, !debate_lb, !debate_review, !debate_profile)
+- `bot/commands/prefix_games.py` — Game prefix commands: !triviastop, !triviastats, !trivialeaderboard, !whosaidit, !wsisskip, !wsisend, !da, !daend, !jeopardy, !jpick, !jpass, !jend
+- `bot/commands/prefix_monitoring.py` — Monitoring prefix commands (shared with prefix_admin.py)
 
 ### Prompts (gitignored - live config only)
 - `bot/prompts/system_prompt.txt` — Default personality (has chart guardrails)
@@ -177,7 +182,7 @@ Migrations:
 15. **SQL injection prevention** — DataRetriever INTERVAL queries use parameterized `INTERVAL '1 day' * %s` pattern.
 16. **Prompt injection defense** — Debate transcripts wrapped in XML tags to prevent prompt injection.
 17. **Session persistence** — Trivia and debate sessions persist to database tables, surviving bot restarts.
-18. **Guild timezone support** — `/set_timezone` command stores timezone per guild; reminders and events use guild timezone via `zoneinfo`.
+18. **Guild timezone support** — `/set_timezone` slash command stores timezone per guild; reminders and events use guild timezone via `zoneinfo`.
 19. **Dual chart engine** — Primary: Plotly + Kaleido (premium charts, requires chromium). Fallback: matplotlib (if Plotly fails). Weather card stays PIL-based. Configured in `conversations.py` `get_visualizer()`.
 20. **Shared card primitives** — `card_base.py` provides composable PIL drawing utilities (rounded rects, progress bars, glow effects, gradients, fonts). Feature-specific cards import from here rather than duplicating code.
 
@@ -193,7 +198,8 @@ docker compose restart bot       # Restart bot only
 
 - **Adding a new tool**: Define in `llm_tools.py` (add to ALL_TOOLS or COMPUTATIONAL_TOOLS), add handler to dict registry in `tool_executor.py`, add to `SELF_CONTAINED_TOOLS` in `bot/constants.py` if the tool output is the final answer, add to system prompts if needed
 - **Changing LLM behavior**: Edit `llm.py` for search/compression logic, `conversations.py` for tool selection/synthesis
-- **New slash command**: Add to `commands/slash_commands.py`, register in `main.py`
+- **New slash command**: Add to `commands/slash_commands.py`, register in `main.py` (use for commands needing Discord UI like modals, autocomplete, buttons)
+- **New prefix command**: Add to appropriate `commands/prefix_*.py` sub-module, register in `prefix_commands.py` (use for simple text-in/text-out commands)
 - **Database changes**: Create new migration file in `sql/`, update `database.py`
 - **Prompt changes**: Edit files in `bot/prompts/` (gitignored, only on server)
 
@@ -242,7 +248,7 @@ docker compose restart bot       # Restart bot only
 - Simplified `gdpr_privacy.py` (removed breach logging, policy versioning methods)
 
 ### New Features
-- Guild-level timezone support: `/set_timezone` command, `guild_config` table, reminders/events use guild timezone via `zoneinfo`
+- Guild-level timezone support: `/set_timezone` slash command, `guild_config` table, reminders/events use guild timezone via `zoneinfo`
 - Trivia and debate sessions persist to database (survive bot restarts) via `active_trivia_sessions` and `active_debates` tables
 - Better error messages for reminders (past time, unparseable) and events (invalid dates like "Feb 30")
 - Colorblind-friendly viz palette (Okabe-Ito, enabled via `VIZ_COLORBLIND_MODE=true` env var)
@@ -316,8 +322,8 @@ docker compose restart bot       # Restart bot only
 - Users say `@bot remember that I prefer Python` and bot stores it as explicit fact
 - Uses existing `user_facts` table with `fact_type='explicit'`, `confidence=1.0`
 - Pattern detection in `conversations.py` before LLM call (early return, no API cost)
-- `/myfacts` — view all stored facts (ephemeral)
-- `/forget <id>` — delete a specific fact
+- `!myfacts` — view all stored facts (ephemeral)
+- `!forget <id>` — delete a specific fact
 - Facts automatically included in LLM context via existing `get_relevant_context()`
 
 ### Thread Conversation Continuity
@@ -327,7 +333,7 @@ docker compose restart bot       # Restart bot only
 - Detects threads via `isinstance(message.channel, discord.Thread)`
 
 ### Argumentation Profiles
-- `/debate_profile [@user]` — PIL-based profile card aggregating all debate data
+- `!debate_profile [@user]` (alias `!dp`) — PIL-based profile card aggregating all debate data
 - Radar chart for 4 rhetorical dimensions (Logos, Ethos, Pathos, Factual Accuracy)
 - Aggregates from `debates.analysis` JSONB: per-dimension averages, fallacy counts, claim verdicts
 - Determines argumentation style (Logical Analyst, Authority Builder, Emotional Advocate, etc.)
@@ -364,8 +370,8 @@ docker compose restart bot       # Restart bot only
 
 ### Polls with Analytics
 - `/poll` — Create polls with Discord button voting (single or multi-choice)
-- `/poll_results <id>` — View results with PIL card (amber/gold theme, progress bars per option)
-- `/poll_close <id>` — Creator-only close with final results card
+- `!pollresults <id>` — View results with PIL card (amber/gold theme, progress bars per option)
+- `!pollclose <id>` — Creator-only close with final results card
 - `features/polls.py` — `PollSystem(db)` + `PollView(discord.ui.View)` button interactions
 - `poll_card.py` — PIL results card with winner highlight, vote bars, voter count
 - Tables: `polls` (question, options JSONB, closes_at), `poll_votes` (user_id, option_index)
@@ -373,9 +379,9 @@ docker compose restart bot       # Restart bot only
 - Supports: anonymous voting, multi-choice, timed polls (auto-close)
 
 ### Who Said It? Game
-- `/whosaidit_start [rounds]` — Pulls random anonymous quotes from server history, users guess the author
-- `/whosaidit_skip` — Skip current round and reveal answer
-- `/whosaidit_end` — End game early and show scores
+- `!whosaidit [rounds]` — Pulls random anonymous quotes from server history, users guess the author
+- `!wsisskip` — Skip current round and reveal answer
+- `!wsisend` — End game early and show scores
 - `features/who_said_it.py` — `WhoSaidItGame(db)` with in-memory sessions + DB persistence
 - Respects GDPR opt-outs, strips @mentions from quotes, min 30 / max 500 chars
 - Fuzzy username matching for guesses (case-insensitive, substring match)
@@ -383,8 +389,8 @@ docker compose restart bot       # Restart bot only
 - Table: `active_who_said_it` with `session_state` JSONB
 
 ### Devil's Advocate Mode
-- `/devils_advocate [topic]` — Bot argues the opposing side of any topic using LLM counter-arguments
-- `/devils_advocate_end` — End the session and show exchange count + duration
+- `!da [topic]` — Bot argues the opposing side of any topic using LLM counter-arguments
+- `!daend` — End the session and show exchange count + duration
 - `features/devils_advocate.py` — `DevilsAdvocate(db, llm)` with in-memory sessions + DB persistence
 - Only responds to the session starter (other users' messages ignored)
 - 30-minute inactivity timeout checked by background task (every 5 min)
@@ -393,11 +399,10 @@ docker compose restart bot       # Restart bot only
 - System prompt forces LLM to always argue the opposing position
 
 ### Channel Jeopardy
-- `/jeopardy_start [categories] [clues_per]` — Start Jeopardy with server-inspired categories
-- `/jeopardy_pick [category] [value]` — Select a clue from the board
-- `/jeopardy_pass` — Skip current clue and reveal answer
-- `/jeopardy_board` — Show current board with revealed/available clues
-- `/jeopardy_end` — End game early and show final scores
+- `!jeopardy [categories] [clues_per]` — Start Jeopardy with server-inspired categories
+- `!jpick [category] [value]` — Select a clue from the board
+- `!jpass` — Skip current clue and reveal answer
+- `!jend` — End game early and show final scores
 - `features/jeopardy.py` — `JeopardyGame(db, llm, chat_stats)` with LLM-generated boards
 - Categories drawn from server's actual discussion topics via TF-IDF + general knowledge
 - Correct answer = earn points, wrong answer = lose points (Jeopardy rules)
@@ -407,9 +412,9 @@ docker compose restart bot       # Restart bot only
 - Table: `active_jeopardy` with `session_state` JSONB
 
 ### GitHub Repository Monitoring (Admin Only)
-- `/github_watch [repo] [type] [channel]` — Watch a GitHub repo (admin only)
-- `/github_unwatch [id]` — Stop watching a repo (admin only)
-- `/github_watches` — List watched repos (admin only)
+- `!ghwatch [repo] [type] [channel]` — Watch a GitHub repo (admin only)
+- `!ghunwatch [id]` — Stop watching a repo (admin only)
+- `!ghwatches` — List watched repos (admin only)
 - `features/github_monitor.py` — `GitHubMonitor(db, cache)` with aiohttp
 - Watch types: releases, issues, prs, or all
 - 5-minute polling via background task, max 3 events per check
@@ -418,9 +423,9 @@ docker compose restart bot       # Restart bot only
 - Table: `github_watches` with `last_event_id` tracking
 
 ### Shared Watchlists (Admin Only)
-- `/watchlist_add [symbols] [threshold] [channel]` — Add stock/crypto symbols (admin only)
-- `/watchlist_remove [symbol]` — Remove a symbol (admin only)
-- `/watchlist` — View the server's watchlist (public)
+- `!wladd [symbols] [threshold] [channel]` — Add stock/crypto symbols (admin only)
+- `!wlremove [symbol]` — Remove a symbol (admin only)
+- `!watchlist` (alias `!wl`) — View the server's watchlist (public)
 - `features/watchlists.py` — `WatchlistManager(db, cache)` with Finnhub + CoinGecko
 - Auto-detects stock vs crypto using `STOCK_TICKERS` and `CRYPTO_TICKERS` from constants.py
 - 1-minute alert checking for ±threshold% moves (default 5%, 30-min cooldown between alerts)
@@ -428,9 +433,9 @@ docker compose restart bot       # Restart bot only
 - Table: `watchlists` with `last_price` and `last_alert_at` tracking
 
 ### RSS Feed Monitoring (Admin Only)
-- `/feed_add [url] [channel]` — Add an RSS feed to monitor (admin only)
-- `/feed_remove [id]` — Remove a feed (admin only)
-- `/feeds` — List all monitored feeds (admin only)
+- `!feedadd [url] [channel]` — Add an RSS feed to monitor (admin only)
+- `!feedremove [id]` — Remove a feed (admin only)
+- `!feeds` — List all monitored feeds (admin only)
 - `features/rss_monitor.py` — `RSSMonitor(db, cache)` with feedparser
 - 5-minute polling via background task, max 3 new entries per check
 - Redis caching prevents re-fetching within 5 minutes
@@ -438,9 +443,9 @@ docker compose restart bot       # Restart bot only
 - Table: `rss_feeds` with `last_entry_id` tracking
 
 ### Message Scheduling
-- `/schedule [message] [minutes/hours/days]` — Schedule a message to be sent later
-- `/scheduled` — View your pending scheduled messages (ephemeral)
-- `/schedule_cancel [id]` — Cancel a scheduled message (creator only)
+- `!schedule [message] [minutes/hours/days]` — Schedule a message to be sent later
+- `!scheduled` — View your pending scheduled messages (ephemeral)
+- `!cancelschedule [id]` — Cancel a scheduled message (creator only)
 - `features/message_scheduler.py` — `MessageScheduler(db)` with abuse prevention
 - Limits: max 5 pending per user, no messages within 5 min of each other in same channel, max 30 days out
 - Background task checks every 1 minute for due messages
@@ -454,6 +459,86 @@ docker compose restart bot       # Restart bot only
 - Achievements strip: Night Owl, Early Bird, Conversationalist, Debate Champion, Trivia Wizard, Topic Expert
 - Optional `days` param (1-365) for time-windowed analysis; default is all-time
 - Card rendered by `mystats_card.py` using `card_base.py` primitives
+
+## Slash-to-Prefix Command Migration
+
+Migrated ~55 commands from Discord slash commands (/) to prefix commands (!) to stay under Discord's 100 slash command limit and improve response times. Commands that benefit from Discord's built-in UI (modals, autocomplete, buttons) remain as slash commands (~24 total).
+
+### What Stayed as Slash Commands
+`/help`, `/stats_server`, `/stats_topics`, `/stats_primetime`, `/stats_engagement`, `/wrapped`, `/debate_start`, `/trivia_start`, `/dashboard`, `/flow`, `/poll`, `/mystats`, all `/iracing_*` commands, `/wompbot_optout`, `/download_my_data`, `/delete_my_data`, `/set_timezone`
+
+### Prefix Command Structure
+- `prefix_commands.py` — Router that imports and dispatches to sub-modules
+- `prefix_utils.py` — Utility commands (reminders, events, scheduling, weather, bugs, personality, facts)
+- `prefix_admin.py` — Admin-only commands (server admins, RSS feeds, GitHub watches, watchlists)
+- `prefix_features.py` — Feature commands (claims, quotes, hot takes, polls, debates)
+- `prefix_games.py` — Game commands (trivia, who said it, devil's advocate, jeopardy)
+- `prefix_monitoring.py` — Monitoring commands (shared with prefix_admin.py)
+
+### Key Command Mappings
+| Old Slash | New Prefix | Aliases |
+|-----------|-----------|---------|
+| `/receipts` | `!receipts` | `!claims` |
+| `/quotes` | `!quotes` | |
+| `/verify_claim` | `!verify` | |
+| `/whoami` | `!whoami` | |
+| `/setadmin` | `!setadmin` | |
+| `/removeadmin` | `!removeadmin` | |
+| `/admins` | `!admins` | |
+| `/personality` | `!personality` | |
+| `/hottakes` | `!hottakes` | `!ht` |
+| `/mystats_hottakes` | `!myht` | |
+| `/vindicate` | `!vindicate` | |
+| `/remind` | `!remind` | |
+| `/reminders` | `!reminders` | |
+| `/cancel_reminder` | `!cancelremind` | |
+| `/schedule_event` | `!event` | |
+| `/events` | `!events` | |
+| `/cancel_event` | `!cancelevent` | |
+| `/qotd` | `!qotd` | |
+| `/debate_end` | `!debate_end` | `!de` |
+| `/debate_stats` | `!debate_stats` | `!ds` |
+| `/debate_leaderboard` | `!debate_lb` | `!dlb` |
+| `/debate_review` | `!debate_review` | `!dr` |
+| `/debate_profile` | `!debate_profile` | `!dp` |
+| `/weather_set` | `!weatherset` | |
+| `/weather_clear` | `!weatherclear` | |
+| `/trivia_stop` | `!triviastop` | |
+| `/trivia_stats` | `!triviastats` | |
+| `/trivia_leaderboard` | `!trivialeaderboard` | `!tlb` |
+| `/bug` | `!bug` | |
+| `/bugs` | `!bugs` | |
+| `/bug_resolve` | `!bugfix` | |
+| `/myfacts` | `!myfacts` | |
+| `/forget` | `!forget` | |
+| `/poll_results` | `!pollresults` | |
+| `/poll_close` | `!pollclose` | |
+| `/whosaidit_start` | `!whosaidit` | |
+| `/whosaidit_skip` | `!wsisskip` | |
+| `/whosaidit_end` | `!wsisend` | |
+| `/devils_advocate` | `!da` | |
+| `/devils_advocate_end` | `!daend` | |
+| `/jeopardy_start` | `!jeopardy` | |
+| `/jeopardy_pick` | `!jpick` | |
+| `/jeopardy_pass` | `!jpass` | |
+| `/jeopardy_end` | `!jend` | |
+| `/schedule` | `!schedule` | |
+| `/scheduled` | `!scheduled` | |
+| `/schedule_cancel` | `!cancelschedule` | |
+| `/feed_add` | `!feedadd` | |
+| `/feed_remove` | `!feedremove` | |
+| `/feeds` | `!feeds` | |
+| `/github_watch` | `!ghwatch` | |
+| `/github_unwatch` | `!ghunwatch` | |
+| `/github_watches` | `!ghwatches` | |
+| `/watchlist_add` | `!wladd` | |
+| `/watchlist_remove` | `!wlremove` | |
+| `/watchlist` | `!watchlist` | `!wl` |
+
+### Removed Commands
+- `/jeopardy_board` — removed entirely
+- `/bug_note` — removed entirely (was already removed in prior session)
+- `/weather_info` — removed entirely
 
 ## Wishlist / Future Features
 

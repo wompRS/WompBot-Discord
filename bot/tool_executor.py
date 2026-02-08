@@ -379,7 +379,7 @@ class ToolExecutor:
             else:
                 return {
                     "success": False,
-                    "error": "No location provided. Please specify a location (e.g., 'weather in Tokyo') or set a default location using `/weather_set`."
+                    "error": "No location provided. Please specify a location (e.g., 'weather in Tokyo') or set a default location using `!weatherset`."
                 }
         elif not location:
             return {
@@ -470,7 +470,7 @@ class ToolExecutor:
             else:
                 return {
                     "success": False,
-                    "error": "No location provided. Please specify a location (e.g., 'weather in Tokyo') or set a default location using `/weather_set`."
+                    "error": "No location provided. Please specify a location (e.g., 'weather in Tokyo') or set a default location using `!weatherset`."
                 }
         elif not location:
             return {

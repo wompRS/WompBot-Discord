@@ -14,7 +14,7 @@ The Event Scheduling System allows you to schedule events with automatic periodi
 
 ## Commands
 
-### `/schedule_event`
+### `!event`
 Schedule an event with automatic reminders.
 
 **Parameters:**
@@ -25,16 +25,16 @@ Schedule an event with automatic reminders.
 
 **Examples:**
 ```
-/schedule_event name:"Game Night" date:"Friday at 8pm" description:"Valorant 5-stack"
+!event name:"Game Night" date:"Friday at 8pm" description:"Valorant 5-stack"
 
-/schedule_event name:"Movie Watch Party" date:"tomorrow at 7pm" description:"Watching Inception" reminders:"1 day, 1 hour"
+!event name:"Movie Watch Party" date:"tomorrow at 7pm" description:"Watching Inception" reminders:"1 day, 1 hour"
 
-/schedule_event name:"Clan Meeting" date:"next Monday at 6pm" reminders:"1 week, 3 days, 1 day, 1 hour"
+!event name:"Clan Meeting" date:"next Monday at 6pm" reminders:"1 week, 3 days, 1 day, 1 hour"
 
-/schedule_event name:"Tournament" date:"in 5 days at 3pm" description:"Monthly 1v1 tournament"
+!event name:"Tournament" date:"in 5 days at 3pm" description:"Monthly 1v1 tournament"
 ```
 
-### `/events`
+### `!events`
 View upcoming scheduled events.
 
 **Parameters:**
@@ -42,11 +42,11 @@ View upcoming scheduled events.
 
 **Example:**
 ```
-/events
-/events limit:20
+!events
+!events limit:20
 ```
 
-### `/cancel_event`
+### `!cancelevent`
 Cancel a scheduled event.
 
 **Parameters:**
@@ -56,7 +56,7 @@ Cancel a scheduled event.
 
 **Example:**
 ```
-/cancel_event event_id:5
+!cancelevent event_id:5
 ```
 
 ## Supported Date/Time Formats
@@ -153,7 +153,7 @@ The bot uses Discord's timestamp formatting, which means:
 Future versions will support pinging a specific role when reminders are sent:
 
 ```
-/schedule_event name:"Raid Night" date:"Saturday at 9pm" notify_role:@Raiders
+!event name:"Raid Night" date:"Saturday at 9pm" notify_role:@Raiders
 ```
 
 This will ping @Raiders when each reminder is sent.
@@ -162,37 +162,37 @@ This will ping @Raiders when each reminder is sent.
 
 ### Game Sessions
 ```
-/schedule_event name:"Ranked Grind" date:"tonight at 10pm" description:"Let's climb!" reminders:"2 hours, 30 minutes"
+!event name:"Ranked Grind" date:"tonight at 10pm" description:"Let's climb!" reminders:"2 hours, 30 minutes"
 ```
 
 ### Movie Nights
 ```
-/schedule_event name:"Movie Watch Party" date:"Friday at 8pm" description:"Watching The Matrix" reminders:"1 day, 2 hours"
+!event name:"Movie Watch Party" date:"Friday at 8pm" description:"Watching The Matrix" reminders:"1 day, 2 hours"
 ```
 
 ### Tournaments
 ```
-/schedule_event name:"Monthly 1v1 Tournament" date:"in 2 weeks at 6pm" description:"Sign up in #tournaments" reminders:"2 weeks, 1 week, 3 days, 1 day, 2 hours"
+!event name:"Monthly 1v1 Tournament" date:"in 2 weeks at 6pm" description:"Sign up in #tournaments" reminders:"2 weeks, 1 week, 3 days, 1 day, 2 hours"
 ```
 
 ### Meetings
 ```
-/schedule_event name:"Officer Meeting" date:"next Monday at 7pm" reminders:"3 days, 1 day, 1 hour"
+!event name:"Officer Meeting" date:"next Monday at 7pm" reminders:"3 days, 1 day, 1 hour"
 ```
 
 ### Community Events
 ```
-/schedule_event name:"Community Game Night" date:"Saturday at 8pm" description:"Among Us, Jackbox, and more!" reminders:"1 week, 3 days, 1 day, 4 hours"
+!event name:"Community Game Night" date:"Saturday at 8pm" description:"Among Us, Jackbox, and more!" reminders:"1 week, 3 days, 1 day, 4 hours"
 ```
 
 ## Managing Events
 
 ### Viewing Upcoming Events
 
-Use `/events` to see all upcoming events:
+Use `!events` to see all upcoming events:
 
 ```
-/events
+!events
 ```
 
 This shows:
@@ -208,7 +208,7 @@ This shows:
 Only the event creator can cancel an event using its ID:
 
 ```
-/cancel_event event_id:5
+!cancelevent event_id:5
 ```
 
 The event will be marked as cancelled and no further reminders will be sent.
@@ -242,7 +242,7 @@ Match intervals to the event type:
 ### Testing
 Test with a short interval first:
 ```
-/schedule_event name:"Test Event" date:"in 10 minutes" reminders:"5 minutes, 1 minute"
+!event name:"Test Event" date:"in 10 minutes" reminders:"5 minutes, 1 minute"
 ```
 
 This helps verify the bot is working correctly before scheduling real events.
@@ -342,7 +342,7 @@ The parsed time is in the past. Check:
 
 Check:
 1. Bot has permission to post in the channel
-2. Event hasn't been cancelled (`/events` to check)
+2. Event hasn't been cancelled (`!events` to check)
 3. Reminder intervals are properly formatted
 4. Current time is actually past the reminder time
 
@@ -360,7 +360,7 @@ Here's a complete workflow for scheduling a community event:
 
 ```
 # 1. Schedule the event
-/schedule_event
+!event
   name:"Friday Night Valorant"
   date:"Friday at 9pm"
   description:"5-stack ranked grind. Iron to Radiant, all welcome!"
@@ -375,10 +375,10 @@ Here's a complete workflow for scheduling a community event:
 # Event ID: 12 • Created by YourName
 
 # 2. Check upcoming events
-/events
+!events
 
 # 3. If needed, cancel the event
-/cancel_event event_id:12
+!cancelevent event_id:12
 
 # Bot responds with:
 # ✅ Event #12 cancelled

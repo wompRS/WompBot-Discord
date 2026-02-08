@@ -32,7 +32,7 @@ A natural language reminder system that preserves message context and supports f
 ### Setting a Reminder
 
 ```
-/remind time:"in 5 minutes" message:"Check the oven"
+!remind time:"in 5 minutes" message:"Check the oven"
 ```
 
 **Process:**
@@ -75,9 +75,9 @@ in 1 week
 - weeks
 
 **Examples:**
-- `/remind time:"in 30 minutes" message:"Meeting"`
-- `/remind time:"in 2 hours" message:"Call Mom"`
-- `/remind time:"in 3 days" message:"Check on project"`
+- `!remind time:"in 30 minutes" message:"Meeting"`
+- `!remind time:"in 2 hours" message:"Call Mom"`
+- `!remind time:"in 3 days" message:"Check on project"`
 
 #### Tomorrow
 
@@ -91,9 +91,9 @@ tomorrow at 15:00
 **With time:** Tomorrow at specified time
 
 **Examples:**
-- `/remind time:"tomorrow" message:"Morning standup"`
-- `/remind time:"tomorrow at 9am" message:"Doctor appointment"`
-- `/remind time:"tomorrow at 14:30" message:"Team meeting"`
+- `!remind time:"tomorrow" message:"Morning standup"`
+- `!remind time:"tomorrow at 9am" message:"Doctor appointment"`
+- `!remind time:"tomorrow at 14:30" message:"Team meeting"`
 
 #### Days of Week
 
@@ -117,9 +117,9 @@ Friday at 10am
 **Default time:** 9:00 AM if not specified
 
 **Examples:**
-- `/remind time:"next Monday" message:"Weekly report"`
-- `/remind time:"Friday at 5pm" message:"Happy hour"`
-- `/remind time:"next Wednesday at 2pm" message:"Review PR"`
+- `!remind time:"next Monday" message:"Weekly report"`
+- `!remind time:"Friday at 5pm" message:"Happy hour"`
+- `!remind time:"next Wednesday at 2pm" message:"Review PR"`
 
 #### Specific Time (Today or Tomorrow)
 
@@ -134,8 +134,8 @@ at 9:30am
 - If time already passed → schedules for tomorrow
 
 **Examples:**
-- `/remind time:"at 5pm" message:"End of workday"`
-- `/remind time:"at 08:00" message:"Start work"`
+- `!remind time:"at 5pm" message:"End of workday"`
+- `!remind time:"at 08:00" message:"Start work"`
 
 #### Simple Numbers (Minutes)
 
@@ -148,8 +148,8 @@ at 9:30am
 **Interprets as minutes from now**
 
 **Examples:**
-- `/remind time:"5" message:"Quick break over"` (5 minutes)
-- `/remind time:"30" message:"Pomodoro done"` (30 minutes)
+- `!remind time:"5" message:"Quick break over"` (5 minutes)
+- `!remind time:"30" message:"Pomodoro done"` (30 minutes)
 
 ### Combined Formats
 
@@ -161,7 +161,7 @@ Friday at 2:30pm
 
 ## Commands
 
-### `/remind <time> <message> [recurring]`
+### `!remind <time> <message> [recurring]`
 
 Set a reminder with natural language time.
 
@@ -176,13 +176,13 @@ Set a reminder with natural language time.
 **Examples:**
 
 ```
-/remind time:"in 10 minutes" message:"Take meds"
+!remind time:"in 10 minutes" message:"Take meds"
 
-/remind time:"tomorrow at 9am" message:"Morning standup"
+!remind time:"tomorrow at 9am" message:"Morning standup"
 
-/remind time:"next Friday at 5pm" message:"Submit timesheet" recurring:true
+!remind time:"next Friday at 5pm" message:"Submit timesheet" recurring:true
 
-/remind time:"in 1 hour" message:"Check on build" recurring:true
+!remind time:"in 1 hour" message:"Check on build" recurring:true
 ```
 
 **Success Response:**
@@ -205,7 +205,7 @@ Since `parse_reminder_time()` now returns descriptive error strings, users recei
 • `at 15:00`
 ```
 
-### `/reminders`
+### `!reminders`
 
 View all your active reminders.
 
@@ -236,17 +236,17 @@ Showing 2 of 2 reminders
 
 **Limit:** Shows first 10 reminders if you have more
 
-### `/cancel_reminder <reminder_id>`
+### `!cancelremind <reminder_id>`
 
 Cancel one of your reminders.
 
 **Parameters:**
 - `reminder_id` (required): ID of reminder to cancel
-  - Get from `/reminders` command
+  - Get from `!reminders` command
 
 **Examples:**
 ```
-/cancel_reminder reminder_id:42
+!cancelremind reminder_id:42
 ```
 
 **Success:**
@@ -328,31 +328,31 @@ Recurring reminders now use `last_trigger + interval` instead of `now() + interv
 
 **Daily Standup:**
 ```
-/remind time:"tomorrow at 9am" message:"Daily standup" recurring:true
+!remind time:"tomorrow at 9am" message:"Daily standup" recurring:true
 ```
 Triggers every day at 9 AM.
 
 **Weekly Report:**
 ```
-/remind time:"next Friday at 4pm" message:"Submit weekly report" recurring:true
+!remind time:"next Friday at 4pm" message:"Submit weekly report" recurring:true
 ```
 Triggers every Friday at 4 PM.
 
 **Hourly Check:**
 ```
-/remind time:"in 1 hour" message:"Check build status" recurring:true
+!remind time:"in 1 hour" message:"Check build status" recurring:true
 ```
 Triggers every hour.
 
 ### Stopping Recurring Reminders
 
-Use `/reminders` to get the ID, then `/cancel_reminder`:
+Use `!reminders` to get the ID, then `!cancelremind`:
 
 ```
-/reminders
+!reminders
 // See: ID: 42, 🔄 Recurring
 
-/cancel_reminder reminder_id:42
+!cancelremind reminder_id:42
 ```
 
 **Note:** Cancelling stops future occurrences.
@@ -465,7 +465,7 @@ The new `_parse_interval_to_timedelta()` method supports named intervals for rec
 
 **Example:**
 ```
-/remind time:"tomorrow at 9am" message:"Daily standup" recurring:true
+!remind time:"tomorrow at 9am" message:"Daily standup" recurring:true
 ```
 The recurring interval is parsed via `_parse_interval_to_timedelta()` which handles both named intervals and standard "in X units" format.
 
@@ -608,7 +608,7 @@ Trade-off: Slightly higher CPU usage.
 ### For Users
 
 1. **Use simple language** - "in 5 minutes" is clearer than "5 mins"
-2. **Check /reminders** - Verify reminder was set correctly
+2. **Check !reminders** - Verify reminder was set correctly
 3. **Enable DMs** - Get reminders privately
 4. **Use recurring wisely** - Don't forget to cancel when done
 5. **Keep messages concise** - Easier to read when reminder fires
@@ -655,32 +655,32 @@ Potential improvements (not yet implemented):
 
 **Medication:**
 ```
-/remind time:"in 8 hours" message:"Take evening meds" recurring:true
+!remind time:"in 8 hours" message:"Take evening meds" recurring:true
 ```
 
 **Meetings:**
 ```
-/remind time:"tomorrow at 2pm" message:"Client call with Acme Corp"
+!remind time:"tomorrow at 2pm" message:"Client call with Acme Corp"
 ```
 
 **Breaks:**
 ```
-/remind time:"in 25 minutes" message:"Pomodoro break"
+!remind time:"in 25 minutes" message:"Pomodoro break"
 ```
 
 **Deadlines:**
 ```
-/remind time:"next Friday at 5pm" message:"Submit project proposal"
+!remind time:"next Friday at 5pm" message:"Submit project proposal"
 ```
 
 **Follow-ups:**
 ```
-/remind time:"in 2 days" message:"Follow up with Sarah about PR review"
+!remind time:"in 2 days" message:"Follow up with Sarah about PR review"
 ```
 
 **Weekly Tasks:**
 ```
-/remind time:"next Monday at 9am" message:"Review team metrics" recurring:true
+!remind time:"next Monday at 9am" message:"Review team metrics" recurring:true
 ```
 
 ---

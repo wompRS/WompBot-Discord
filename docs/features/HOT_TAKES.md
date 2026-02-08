@@ -109,7 +109,7 @@ LLM rates controversy on 0-10 scale:
 ## Leaderboard Types
 
 ### 1. Most Controversial 🔥
-**Command:** `/hottakes controversial [days]`
+**Command:** `!hottakes controversial [days]`
 
 Ranks by LLM-scored controversy (0-10 scale).
 
@@ -121,7 +121,7 @@ Ranks by LLM-scored controversy (0-10 scale).
 ```
 
 ### 2. Best Vindicated ✅
-**Command:** `/hottakes vindicated [days]`
+**Command:** `!hottakes vindicated [days]`
 
 Shows hot takes that **aged well** (marked as "won").
 
@@ -135,7 +135,7 @@ Tracks users with the best **track record** of being right.
 ```
 
 ### 3. Worst Takes ❌
-**Command:** `/hottakes worst [days]`
+**Command:** `!hottakes worst [days]`
 
 Shows hot takes that **aged poorly** (marked as "lost").
 
@@ -149,7 +149,7 @@ Hall of shame for terrible predictions.
 ```
 
 ### 4. Community Favorites ⭐
-**Command:** `/hottakes community [days]`
+**Command:** `!hottakes community [days]`
 
 Ranks by community engagement (reactions + replies).
 
@@ -163,7 +163,7 @@ Doesn't require LLM scoring - pure community metrics.
 ```
 
 ### 5. Hot Take Kings 👑
-**Command:** `/hottakes combined [days]`
+**Command:** `!hottakes combined [days]`
 
 Combined score: `controversy_score × age_score`
 
@@ -180,7 +180,7 @@ Rewards controversial takes that were proven right.
 
 ### User Commands
 
-#### `/hottakes [leaderboard_type] [days]`
+#### `!hottakes [leaderboard_type] [days]`
 View hot takes leaderboards.
 
 **Parameters:**
@@ -194,11 +194,11 @@ View hot takes leaderboards.
 
 **Example:**
 ```
-/hottakes controversial 7
+!hottakes controversial 7
 ```
 Shows most controversial hot takes from last 7 days.
 
-#### `/mystats_hottakes`
+#### `!myht`
 View your personal hot takes statistics.
 
 **Shows:**
@@ -224,7 +224,7 @@ Win Rate: 77.8%
 
 ### Admin Commands
 
-#### `/vindicate <hot_take_id> <status> [notes]`
+#### `!vindicate <hot_take_id> <status> [notes]`
 Mark a hot take as vindicated or proven wrong (admin only).
 
 **Parameters:**
@@ -238,7 +238,7 @@ Mark a hot take as vindicated or proven wrong (admin only).
 
 **Example:**
 ```
-/vindicate 42 won This prediction came true on 3/15/2024
+!vindicate 42 won This prediction came true on 3/15/2024
 ```
 
 **How to find hot take IDs:**
@@ -527,7 +527,7 @@ EOF
 1. **Be specific in hot takes** - Vague opinions won't trigger detection
 2. **Use bold language** - "X is better than Y" triggers detection
 3. **Engage with others' hot takes** - React and reply to boost community scores
-4. **Track your win rate** - Use `/mystats_hottakes` to see your record
+4. **Track your win rate** - Use `!myht` to see your record
 
 ### For Admins
 

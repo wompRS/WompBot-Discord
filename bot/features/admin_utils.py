@@ -132,5 +132,5 @@ def format_admin_check_error(include_how_to: bool = True) -> str:
     if include_how_to:
         msg += "\n\nBot admins can be set by:\n"
         msg += "- Super admins (set in bot config)\n"
-        msg += "- Existing server admins using `/setadmin`"
+        msg += "- Existing server admins using `!setadmin`"
     return msg

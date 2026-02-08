@@ -35,7 +35,7 @@ The bot automatically loads all personality prompts at startup:
 3. Looks for system_prompt_concise.txt for the concise personality
 4. Falls back to built-in defaults if files don't exist
 
-Users with admin permissions can switch personalities using the /personality command. The setting is per-server and persists in the database.
+Users with admin permissions can switch personalities using the `!personality` command. The setting is per-server and persists in the database.
 
 ## File Structure
 
@@ -138,7 +138,7 @@ PERSONALITY:
 - system_prompt.txt is gitignored - your customizations stay private
 - The bot falls back to built-in defaults if files are missing or corrupted
 - All personalities are loaded at startup and cached for performance
-- Personality changes take effect immediately when switched via /personality command
+- Personality changes take effect immediately when switched via `!personality` command
 - You can reload prompts by restarting: docker-compose restart bot
 
 ## Current Personalities

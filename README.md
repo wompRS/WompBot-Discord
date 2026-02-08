@@ -127,7 +127,7 @@ The bot can invoke tools through LLM function calling to create visualizations a
 **Weather Features:**
 - Beautiful weather cards with dual-unit display (Fahrenheit primary, Celsius secondary)
 - Smart US location parsing: "spokane wa", "spokane, wa", "New York, NY" all work
-- Save your default location with /weather_set
+- Save your default location with !weatherset
 - 5-day forecasts available
 - Just say "wompbot weather" after setting your preference
 
@@ -151,15 +151,15 @@ The bot automatically detects when people make bold predictions, factual claims,
 - Edit tracking preserves original text
 - Deletion tracking saves deleted claims
 - Contradiction detection identifies when users contradict previous claims
-- Use /receipts to view tracked claims for any user
-- Verify claims as true/false/mixed with /verify_claim
+- Use !receipts to view tracked claims for any user (alias: !claims)
+- Verify claims as true/false/mixed with !verify
 
 ### Quotes System
 
 React with a cloud emoji to any message to save it as a memorable quote.
 
 **Commands:**
-- /quotes to view saved quotes for a user
+- !quotes to view saved quotes for a user
 - Tracks reaction counts and timestamps
 - Auto-categorizes quotes by context
 
@@ -208,7 +208,7 @@ Tracks controversial claims and monitors how they age.
 - Multiple leaderboard types: Controversial, Vindicated, Worst, Community Favorites, Combined
 - Vindication system tracks which predictions aged well or poorly
 - Three-stage hybrid system keeps costs under $1/month
-- View your personal stats with /mystats_hottakes
+- View your personal stats with !myht
 
 ### Context-Aware Reminders
 
@@ -420,21 +420,20 @@ Prefix commands (faster, no LLM cost):
 
 - "wompbot weather [location]": Get weather with visualization
 - "wompbot forecast [location]": Get 5-day forecast
-- /weather_set <location> [units]: Set your default location
-- /weather_clear: Clear saved weather preference
-- /weather_info: View current preference
+- !weatherset <location> [units]: Set your default location
+- !weatherclear: Clear saved weather preference
 - "wompbot [math question]": Ask Wolfram Alpha
 - "wompbot show me a chart of...": Create visualizations
 
 ### Claims and Receipts
 
-- /receipts [@user] [keyword]: View tracked claims
-- /verify_claim <id> <status> [notes]: Verify a claim
+- !receipts [@user] [keyword]: View tracked claims (alias: !claims)
+- !verify <id> <status> [notes]: Verify a claim
 
 ### Quotes
 
 - React with cloud emoji to save a quote
-- /quotes [@user]: View saved quotes
+- !quotes [@user]: View saved quotes
 
 ### Fact-Checking
 
@@ -450,21 +449,21 @@ Prefix commands (faster, no LLM cost):
 
 ### Hot Takes
 
-- /hottakes [type] [days]: View leaderboards
-- /mystats_hottakes: Your personal stats
-- /vindicate <id> <status> [notes]: (Admin) Mark vindication status
+- !hottakes [type] [days]: View leaderboards (alias: !ht)
+- !myht: Your personal hot takes stats
+- !vindicate <id> <status> [notes]: (Admin) Mark vindication status
 
 ### Reminders
 
-- /remind <time> <message> [recurring]: Set reminder
-- /reminders: View active reminders
-- /cancel_reminder <id>: Cancel a reminder
+- !remind <time> <message> [recurring]: Set reminder
+- !reminders: View active reminders
+- !cancelremind <id>: Cancel a reminder
 
 ### Events
 
-- /schedule_event <name> <date> [description] [reminders]: Schedule event
-- /events [limit]: View upcoming events
-- /cancel_event <id>: Cancel event
+- !event <name> <date> [description] [reminders]: Schedule event
+- !events [limit]: View upcoming events
+- !cancelevent <id>: Cancel event
 
 ### Yearly Wrapped
 
@@ -472,20 +471,21 @@ Prefix commands (faster, no LLM cost):
 
 ### Quote of the Day
 
-- /qotd [mode]: View featured quotes
+- !qotd [mode]: View featured quotes
 
 ### Debate Scorekeeper
 
 - /debate_start <topic>: Start tracking debate
-- /debate_end: End debate and show analysis
-- /debate_stats [user]: View debate statistics
-- /debate_leaderboard: Top debaters
-- /debate_review <file>: Analyze uploaded transcript
+- !debate_end: End debate and show analysis (alias: !de)
+- !debate_stats [user]: View debate statistics (alias: !ds)
+- !debate_lb: Top debaters (alias: !dlb)
+- !debate_review <file>: Analyze uploaded transcript (alias: !dr)
+- !debate_profile [@user]: View argumentation profile card (alias: !dp)
 
 ### Utility
 
-- /whoami: Show your Discord information
-- /personality <mode>: Change bot personality (default/concise/bogan) - Admin only
+- !whoami: Show your Discord information
+- !personality <mode>: Change bot personality (default/concise/bogan) - Admin only
 - /set_timezone <timezone>: Set guild-level timezone for reminders and events
 
 ### iRacing Integration
@@ -593,7 +593,7 @@ New members automatically receive a welcome DM outlining privacy commands and op
 
 ## Behavior Analysis
 
-Weekly or on-demand analysis tracks profanity frequency, conversational tone, honesty patterns, and communication style. Use the /analyze command to run analysis.
+Weekly or on-demand analysis tracks profanity frequency, conversational tone, honesty patterns, and communication style. Use the !analyze command to run analysis.
 
 ## Documentation
 
@@ -803,7 +803,7 @@ MODEL_NAME=deepseek/deepseek-chat
 
 ## Personality System
 
-WompBot has three personality modes available via the /personality command (admin only).
+WompBot has three personality modes available via the !personality command (admin only).
 
 **Default (Conversational):**
 - Conversational and helpful responses
@@ -836,9 +836,9 @@ LLM-powered trivia with multiple categories and difficulty levels.
 
 **Commands:**
 - `/trivia_start [category] [difficulty] [questions]`: Start a trivia game
-- `/trivia_stop`: End current trivia session
-- `/trivia_stats [user]`: View your trivia statistics
-- `/trivia_leaderboard [days]`: Server trivia rankings
+- `!triviastop`: End current trivia session
+- `!triviastats [user]`: View your trivia statistics
+- `!trivialeaderboard [days]`: Server trivia rankings (alias: `!tlb`)
 
 **Features:**
 - 20+ categories: Science, History, Geography, Sports, Entertainment, etc.
@@ -854,14 +854,72 @@ LLM-powered trivia with multiple categories and difficulty levels.
 Report and track bugs with an integrated bug tracking system.
 
 **Commands:**
-- `/bug <description>`: Report a new bug
-- `/bug_note <bug_id> <note>`: Add note to existing bug
-- `/bug_resolve <bug_id> [resolution]`: Mark bug as resolved
-- `/bugs [status]`: List all bugs (all/open/resolved)
+- `!bug <description>`: Report a new bug
+- `!bugfix <bug_id> [resolution]`: Mark bug as resolved
+- `!bugs [status]`: List all bugs (all/open/resolved)
+
+### User Facts (Remember This)
+
+- `!myfacts`: View all stored facts about you
+- `!forget <id>`: Delete a specific stored fact
+- Or say "@WompBot remember that I prefer Python" to store a fact
+
+### Polls
+
+- `/poll`: Create a poll with button voting (single or multi-choice)
+- `!pollresults <id>`: View poll results card
+- `!pollclose <id>`: Close a poll (creator only)
+
+### Who Said It? Game
+
+- `!whosaidit [rounds]`: Start a "Who Said It?" game with real server quotes
+- `!wsisskip`: Skip current round and reveal answer
+- `!wsisend`: End game early and show scores
+
+### Devil's Advocate
+
+- `!da [topic]`: Start a devil's advocate debate session
+- `!daend`: End the session and show exchange count
+
+### Channel Jeopardy
+
+- `!jeopardy [categories] [clues_per]`: Start Jeopardy with server-inspired categories
+- `!jpick [category] [value]`: Select a clue from the board
+- `!jpass`: Skip current clue and reveal answer
+- `!jend`: End game early and show final scores
+
+### Message Scheduling
+
+- `!schedule <message> <minutes/hours/days>`: Schedule a message to be sent later
+- `!scheduled`: View your pending scheduled messages
+- `!cancelschedule <id>`: Cancel a scheduled message (creator only)
+
+### RSS Feed Monitoring (Admin Only)
+
+- `!feedadd <url> <channel>`: Add an RSS feed to monitor
+- `!feedremove <id>`: Remove a feed
+- `!feeds`: List all monitored feeds
+
+### GitHub Monitoring (Admin Only)
+
+- `!ghwatch <repo> <type> <channel>`: Watch a GitHub repo (releases/issues/prs/all)
+- `!ghunwatch <id>`: Stop watching a repo
+- `!ghwatches`: List watched repos
+
+### Watchlists (Admin Only)
+
+- `!wladd <symbols> [threshold] [channel]`: Add stock/crypto symbols to watchlist
+- `!wlremove <symbol>`: Remove a symbol
+- `!watchlist`: View the server's watchlist (alias: `!wl`)
+
+### Admin
+
+- `!setadmin <@user>`: Add a server admin
+- `!removeadmin <@user>`: Remove a server admin
+- `!admins`: List server admins
 
 ## Upcoming Features
 
-- Polls and Voting: Create polls with slash commands and reaction tracking
 - Birthday Tracking: Automatic birthday reminders and celebrations
 - Voice Channel Stats: Track time spent in voice channels
 - Custom Commands: User-created text commands and responses
@@ -938,8 +996,8 @@ discord-bot/
     │   ├── conversations.py     # Message handling and LLM conversations
     │   └── events.py            # Discord event handlers
     ├── commands/
-    │   ├── prefix_commands.py   # Prefix commands (!ping, !stats)
-    │   └── slash_commands.py    # Slash commands (/help, /wrapped)
+    │   ├── prefix_commands.py   # Prefix commands (~55 commands: !ping, !stats, !receipts, !remind, etc.)
+    │   └── slash_commands.py    # Slash commands (~43 commands: /help, /wrapped, /stats_*, /iracing_*, etc.)
     ├── features/
     │   ├── claims.py            # Claims tracking system
     │   ├── fact_check.py        # Fact-check feature

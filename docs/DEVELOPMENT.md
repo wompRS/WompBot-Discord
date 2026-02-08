@@ -153,9 +153,9 @@ python3
 Allow users to set reminders that bot will DM them
 
 ## Commands
-- /remind <time> <message> - Set reminder
-- /reminders - List active reminders
-- /cancel_reminder <id> - Cancel reminder
+- !remind <time> <message> - Set reminder
+- !reminders - List active reminders
+- !cancelremind <id> - Cancel reminder
 
 ## Database
 - Table: reminders (id, user_id, message, remind_at, created_at)
@@ -361,7 +361,7 @@ def get_due_reminders(self):
 
 ```python
 embed.add_field(
-    name="/remind <time> <message>",
+    name="!remind <time> <message>",
     value="Set a reminder. Examples: '30m', '2h', 'tomorrow 9am'",
     inline=False
 )
@@ -407,9 +407,9 @@ embed.add_field(
 
 ```markdown
 ### ⏰ Reminder System
-- **Set Reminders**: `/remind <time> <message>` - Get DM at specified time
-- **List Reminders**: `/reminders` - View active reminders
-- **Cancel**: `/cancel_reminder <id>` - Cancel a reminder
+- **Set Reminders**: `!remind <time> <message>` - Get DM at specified time
+- **List Reminders**: `!reminders` - View active reminders
+- **Cancel**: `!cancelremind <id>` - Cancel a reminder
 ```
 
 **Link to docs:**

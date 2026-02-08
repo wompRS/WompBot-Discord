@@ -1,20 +1,20 @@
 # Debate Review Guide
 
-This guide explains how to use the `/debate_review` command to analyze debate transcripts from text files.
+This guide explains how to use the `!debate_review` command to analyze debate transcripts from text files.
 
 ## Overview
 
-The `/debate_review` command allows you to:
+The `!debate_review` command allows you to:
 - Upload a debate transcript as a text file
 - Get AI-powered analysis including scores, fallacies, and winner determination
-- Review past debates that weren't tracked with `/debate_start`
+- Review past debates that weren't tracked with `/debate_start` (stays as slash command)
 - Analyze debates from external sources (Discord exports, chat logs, etc.)
 
 ## Quick Start
 
 1. Create or export a debate transcript in the proper format (see below)
 2. Save it as a `.txt`, `.log`, or `.md` file
-3. Run `/debate_review` in Discord
+3. Run `!debate_review` in Discord
 4. Upload your file and optionally provide a topic
 5. Get detailed analysis with scores and winner
 
@@ -68,7 +68,7 @@ Alice: I agree regulation is important, but we also need to avoid overregulation
 ### Basic Usage
 
 ```
-/debate_review
+!debate_review
 - file: [Upload your transcript file]
 - topic: (Optional) "AI Ethics Debate"
 ```
@@ -229,7 +229,7 @@ If exporting from Discord:
 
 ## Comparison with Live Debates
 
-| Feature | Live Debate (`/debate_start`) | File Review (`/debate_review`) |
+| Feature | Live Debate (`/debate_start`) | File Review (`!debate_review`) |
 |---------|-------------------------------|--------------------------------|
 | Real-time tracking | ✅ Yes | ❌ No |
 | Requires active debate | ✅ Yes | ❌ No |
@@ -239,7 +239,7 @@ If exporting from Discord:
 | Flexible format | ❌ No | ✅ Yes |
 | Historical analysis | ❌ No | ✅ Yes |
 
-**When to use `/debate_review`:**
+**When to use `!debate_review`:**
 - Analyzing past debates that weren't tracked
 - Reviewing debates from other platforms
 - Testing the analysis system
@@ -253,20 +253,20 @@ If exporting from Discord:
 
 ## Privacy & Data
 
-- `/debate_review` does **NOT** save the debate to the database
+- `!debate_review` does **NOT** save the debate to the database
 - Analysis is temporary and only shown in Discord
 - The uploaded file is processed and discarded immediately
 - No participant stats are affected
 - This is purely for analysis purposes
 
-If you want the debate saved and counted toward stats, use the live tracking commands (`/debate_start` and `/debate_end`) instead.
+If you want the debate saved and counted toward stats, use the live tracking commands (`/debate_start` and `!debate_end`) instead.
 
 ## Related Commands
 
 - `/debate_start <topic>` - Start tracking a live debate
-- `/debate_end` - End live debate and show analysis
-- `/debate_stats` - View your debate statistics
-- `/debate_leaderboard` - See top debaters
+- `!debate_end` - End live debate and show analysis
+- `!debate_stats` - View your debate statistics
+- `!debate_lb` - See top debaters
 
 ## Examples
 
@@ -287,7 +287,7 @@ Plato2024: Then how do we recognize imperfect circles as circles at all? We must
 Aristotle2024: We recognize patterns through experience and categorization. No mystical forms required.
 ```
 
-**Command:** `/debate_review file:philosophy_debate.txt topic:Philosophy - Forms vs Empiricism`
+**Command:** `!debate_review file:philosophy_debate.txt topic:Philosophy - Forms vs Empiricism`
 
 ### Example 2: Tech Debate (Markdown Format)
 
@@ -308,7 +308,7 @@ DevMike: Because switching applications is faster than loading Emacs. Vim starts
 DevSarah: Modern computers handle Emacs fine. And once it's loaded, you never close it. The "eight megs and constantly swapping" joke is decades old.
 ```
 
-**Command:** `/debate_review file:vim_vs_emacs.md`
+**Command:** `!debate_review file:vim_vs_emacs.md`
 
 ## Support
 

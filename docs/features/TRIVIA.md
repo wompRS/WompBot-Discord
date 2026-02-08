@@ -34,11 +34,11 @@ Start a new trivia session in the current channel.
 /trivia_start
 ```
 
-### `/trivia_stop`
+### `!triviastop`
 
 End the current trivia session early. Shows final results and leaderboard.
 
-### `/trivia_stats`
+### `!triviastats`
 
 View trivia statistics for yourself or another user.
 
@@ -52,7 +52,7 @@ View trivia statistics for yourself or another user.
 - Server rank
 - Session wins
 
-### `/trivia_leaderboard`
+### `!trivialeaderboard`
 
 View the server's trivia leaderboard.
 
@@ -123,7 +123,7 @@ Active trivia sessions now **persist to the database**, surviving bot restarts a
 1. When a trivia session starts, its state is saved to the database
 2. After each question/answer cycle, the session state is updated in the database
 3. On bot restart, `_load_sessions_from_db()` restores all active sessions
-4. When a session ends (naturally or via `/trivia_stop`), `_deactivate_session_in_db()` cleans it up
+4. When a session ends (naturally or via `!triviastop`), `_deactivate_session_in_db()` cleans it up
 
 **Benefits:**
 - No more lost trivia sessions when the bot restarts or crashes

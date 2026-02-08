@@ -335,7 +335,7 @@ React with ⚠️ to any message >10 chars
 
 **Solutions:**
 1. Adjust temperature (see Configuration)
-2. Use `/verify_claim` to manually correct
+2. Use `!verify` to manually correct
 3. Report false verdicts to improve prompts
 
 ---

@@ -30,12 +30,12 @@ The Quotes system allows users to save memorable messages by reacting with a ☁
 
 ### View Quotes
 
-**Command:** `/quotes [@user]`
+**Command:** `!quotes [@user]`
 
 **Examples:**
 ```
-/quotes                    # Your saved quotes
-/quotes @username          # Someone's quotes
+!quotes                    # Your saved quotes
+!quotes @username          # Someone's quotes
 ```
 
 **Output:**
@@ -276,7 +276,7 @@ Should see: `☁️ Quote #X saved from username`
 ## Privacy
 
 - **Opted-out users**: Quotes ARE saved (quotes feature exempt from opt-out)
-- **Public visibility**: Anyone can view quotes with `/quotes`
+- **Public visibility**: Anyone can view quotes with `!quotes`
 - **No deletion**: Quotes persist even if original message deleted
 - **Attribution**: Shows who said it and who saved it
 
@@ -314,7 +314,7 @@ This prevents the same popular old quotes from dominating forever and gives newe
 ## Future Enhancements
 
 1. **Categories** - Auto-classify as funny, wise, savage, etc.
-2. **Quote search** - `/quotes @user keyword` or `/searchquotes keyword`
+2. **Quote search** - `!quotes @user keyword` or `!searchquotes keyword`
 3. ~~**Quote of the Day** - Daily random quote feature~~ (Implemented with calendar day boundary and freshness-weighted scoring)
 4. **Ranking** - Leaderboard of most quoted users
 5. **Export** - Download all quotes as JSON/CSV

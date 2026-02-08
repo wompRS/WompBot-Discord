@@ -22,14 +22,14 @@ The Claims Tracking feature automatically detects and stores trackable claims fr
 
 ## Commands
 
-### `/receipts [@user] [keyword]`
+### `!receipts [@user] [keyword]`
 View tracked claims for a user.
 
 **Examples:**
 ```
-/receipts                           # Your own claims
-/receipts @username                 # Someone else's claims
-/receipts @username bitcoin         # Filter by keyword
+!receipts                           # Your own claims
+!receipts @username                 # Someone else's claims
+!receipts @username bitcoin         # Filter by keyword
 ```
 
 **Output:**
@@ -40,7 +40,7 @@ View tracked claims for a user.
 
 ---
 
-### `/verify_claim <id> <status> [notes]` (Admin Only)
+### `!verify <id> <status> [notes]` (Admin Only)
 Manually verify or fact-check a claim.
 
 **Status options:**
@@ -51,9 +51,9 @@ Manually verify or fact-check a claim.
 
 **Examples:**
 ```
-/verify_claim 42 true Bitcoin did reach $100k
-/verify_claim 15 false No evidence found
-/verify_claim 23 mixed Partially accurate with caveats
+!verify 42 true Bitcoin did reach $100k
+!verify 15 false No evidence found
+!verify 23 mixed Partially accurate with caveats
 ```
 
 ---
@@ -123,7 +123,7 @@ NOT trackable:
 3. Text preserved in `deleted_text` column
 4. Deletion timestamp recorded
 
-**Deleted claims still show in `/receipts` unless `include_deleted=False`**
+**Deleted claims still show in `!receipts` unless `include_deleted=False`**
 
 ---
 

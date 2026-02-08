@@ -182,10 +182,10 @@ Shows 5-day forecast with:
 - Precipitation probability
 
 ### Save Your Location
-Use `/weather_set` to save your default location:
+Use `!weatherset` to save your default location:
 ```
-/weather_set London
-/weather_set "New York" imperial
+!weatherset London
+!weatherset "New York" imperial
 ```
 
 Then just say "wompbot weather" for quick updates.

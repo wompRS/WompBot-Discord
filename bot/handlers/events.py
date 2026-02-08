@@ -408,7 +408,7 @@ def register_events(bot, db, privacy_manager, claims_tracker, debate_scorekeeper
                                 )
                                 feedback += f"\n\n**Final Scores:**\n{board}"
                         else:
-                            feedback += f"\n📋 {result['clues_remaining']} clues remaining. Use `/jeopardy_pick` to select another!"
+                            feedback += f"\n📋 {result['clues_remaining']} clues remaining. Use `!jpick` to select another!"
                         await message.channel.send(feedback)
                     else:
                         await message.add_reaction("❌")

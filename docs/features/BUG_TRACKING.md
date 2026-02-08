@@ -16,7 +16,7 @@ The bug tracking system provides a simple way for bot administrators to track is
 
 ## Commands
 
-### `/bug`
+### `!bug`
 
 Report a new bug or issue.
 
@@ -26,11 +26,11 @@ Report a new bug or issue.
 
 **Example:**
 ```
-/bug description:Weather command fails with non-US locations priority:high
-/bug description:Typo in help message for /remind command
+!bug description:Weather command fails with non-US locations priority:high
+!bug description:Typo in help message for !remind command
 ```
 
-### `/bugs`
+### `!bugs`
 
 List tracked bugs.
 
@@ -40,12 +40,12 @@ List tracked bugs.
 
 **Example:**
 ```
-/bugs
-/bugs status:open
-/bugs status:resolved limit:20
+!bugs
+!bugs status:open
+!bugs status:resolved limit:20
 ```
 
-### `/bug_resolve`
+### `!bugfix`
 
 Mark a bug as resolved.
 
@@ -55,23 +55,11 @@ Mark a bug as resolved.
 
 **Example:**
 ```
-/bug_resolve bug_id:42 resolution:fixed
-/bug_resolve bug_id:15 resolution:wont_fix
+!bugfix bug_id:42 resolution:fixed
+!bugfix bug_id:15 resolution:wont_fix
 ```
 
-### `/bug_note`
-
-Add a note or update to an existing bug.
-
-**Parameters:**
-- `bug_id` (required): ID of the bug
-- `note` (required): Note text to add
-
-**Example:**
-```
-/bug_note bug_id:42 note:Identified root cause - API rate limiting issue
-/bug_note bug_id:42 note:Fix deployed to production
-```
+*Note: The `/bug_note` command has been removed. Bug notes are no longer supported as a standalone command.*
 
 ## Priority Levels
 
@@ -105,7 +93,7 @@ Add a note or update to an existing bug.
 ```
 1. User reports issue in support channel
 
-Admin: /bug description:Translation command returns error for Japanese priority:high
+Admin: !bug description:Translation command returns error for Japanese priority:high
 
 Bot: 🐛 Bug #47 created
      Priority: High
@@ -116,11 +104,9 @@ Bot: 🐛 Bug #47 created
 
 2. Admin investigates and adds notes
 
-Admin: /bug_note bug_id:47 note:Reproduced - API returns 403 for ja language code
-
 3. Admin fixes and resolves
 
-Admin: /bug_resolve bug_id:47 resolution:fixed
+Admin: !bugfix bug_id:47 resolution:fixed
 
 Bot: ✅ Bug #47 resolved
      Resolution: Fixed

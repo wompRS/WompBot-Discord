@@ -257,7 +257,7 @@ class JeopardyGame:
             return {'error': 'No active Jeopardy game in this channel!'}
 
         if session['status'] == 'answering':
-            return {'error': 'A clue is already active! Answer it first or use `/jeopardy_pass` to skip.'}
+            return {'error': 'A clue is already active! Answer it first or use `!jpass` to skip.'}
 
         # Find the category (fuzzy match)
         cat_idx = None
