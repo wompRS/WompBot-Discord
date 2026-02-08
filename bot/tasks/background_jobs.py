@@ -14,7 +14,8 @@ import discord
 def register_tasks(bot, db, llm, rag, chat_stats, iracing, iracing_popularity_cache,
                    reminder_system, event_system, privacy_manager, iracing_team_manager=None,
                    poll_system=None, devils_advocate=None, jeopardy=None,
-                   message_scheduler=None, rss_monitor=None):
+                   message_scheduler=None, rss_monitor=None,
+                   github_monitor=None):
     """
     Register all background tasks with the bot.
 
@@ -951,6 +952,47 @@ def register_tasks(bot, db, llm, rag, chat_stats, iracing, iracing_popularity_ca
         if rss_monitor:
             print("📡 RSS feed checker started (runs every 5 min)")
 
+    # ── GitHub repo checker ──
+    @tasks.loop(minutes=5)
+    async def check_github_repos():
+        """Check GitHub repos for new events"""
+        if not github_monitor:
+            return
+
+        try:
+            results = await github_monitor.check_repos()
+            for repo_result in results:
+                try:
+                    channel = bot.get_channel(repo_result['channel_id'])
+                    if not channel:
+                        continue
+
+                    for event in repo_result['events']:
+                        import discord
+                        embed_data = github_monitor.format_event_embed(
+                            event, repo_result['repo']
+                        )
+                        embed = discord.Embed(
+                            title=embed_data['title'],
+                            url=embed_data.get('url'),
+                            description=embed_data.get('description'),
+                            color=embed_data.get('color', 0x24292e)
+                        )
+                        embed.set_footer(text=embed_data.get('footer', ''))
+                        await channel.send(embed=embed)
+
+                except Exception as e:
+                    print(f"  ❌ Error posting GitHub event from {repo_result.get('repo', '?')}: {e}")
+
+        except Exception as e:
+            print(f"❌ GitHub repo check error: {e}")
+
+    @check_github_repos.before_loop
+    async def before_check_github_repos():
+        await bot.wait_until_ready()
+        if github_monitor:
+            print("🐙 GitHub repo checker started (runs every 5 min)")
+
     print("✅ Background tasks registered (will start in on_ready)")
 
     # Return task references - they will be started in on_ready event handler
@@ -980,5 +1022,8 @@ def register_tasks(bot, db, llm, rag, chat_stats, iracing, iracing_popularity_ca
 
     if rss_monitor:
         tasks_dict['check_rss_feeds'] = check_rss_feeds
+
+    if github_monitor:
+        tasks_dict['check_github_repos'] = check_github_repos
 
     return tasks_dict

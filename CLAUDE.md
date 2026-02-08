@@ -63,6 +63,7 @@ Discord message → on_message (events.py) → handle_bot_mention (conversations
 - `jeopardy.py` — Channel Jeopardy with server-inspired categories, LLM-generated clues
 - `message_scheduler.py` — Message scheduling with abuse prevention limits
 - `rss_monitor.py` — RSS feed monitoring with feedparser, admin only
+- `github_monitor.py` — GitHub repo monitoring for releases/issues/PRs, admin only
 - `yearly_wrapped.py` — Spotify-style yearly summaries
 - `quote_of_the_day.py` — Featured quote selection
 - `admin_utils.py` — Admin permission utilities
@@ -403,6 +404,17 @@ docker compose restart bot       # Restart bot only
 - 15-minute inactivity timeout via background task
 - On_message hook in events.py for answer processing
 - Table: `active_jeopardy` with `session_state` JSONB
+
+### GitHub Repository Monitoring (Admin Only)
+- `/github_watch [repo] [type] [channel]` — Watch a GitHub repo (admin only)
+- `/github_unwatch [id]` — Stop watching a repo (admin only)
+- `/github_watches` — List watched repos (admin only)
+- `features/github_monitor.py` — `GitHubMonitor(db, cache)` with aiohttp
+- Watch types: releases, issues, prs, or all
+- 5-minute polling via background task, max 3 events per check
+- Optional `GITHUB_TOKEN` env var for higher API rate limits
+- Color-coded embeds: green (open/release), red (closed), purple (merged PR)
+- Table: `github_watches` with `last_event_id` tracking
 
 ### RSS Feed Monitoring (Admin Only)
 - `/feed_add [url] [channel]` — Add an RSS feed to monitor (admin only)

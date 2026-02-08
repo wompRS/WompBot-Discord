@@ -20,7 +20,8 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                             wompie_user_id, series_autocomplete_cache, trivia,
                             rag=None, dashboard=None, poll_system=None,
                             who_said_it=None, devils_advocate=None, jeopardy=None,
-                            message_scheduler=None, rss_monitor=None):
+                            message_scheduler=None, rss_monitor=None,
+                            github_monitor=None):
     """
     Register all slash commands with the bot.
 
@@ -5946,6 +5947,118 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                 await interaction.response.send_message(f"❌ Error: {str(e)}", ephemeral=True)
 
         print("✅ RSS feed monitoring commands registered")
+
+    # ===== GitHub Monitoring (Admin Only) =====
+    if github_monitor:
+        @bot.tree.command(name="github_watch", description="[Admin] Watch a GitHub repo for releases/issues/PRs")
+        @app_commands.describe(
+            repo="Repository in owner/repo format (e.g. discord/discord-api-docs)",
+            watch_type="What to watch: releases, issues, prs, or all",
+            channel="Channel to post updates in (defaults to current)"
+        )
+        @app_commands.choices(watch_type=[
+            app_commands.Choice(name="Releases", value="releases"),
+            app_commands.Choice(name="Issues", value="issues"),
+            app_commands.Choice(name="Pull Requests", value="prs"),
+            app_commands.Choice(name="All", value="all"),
+        ])
+        async def github_watch(interaction: discord.Interaction,
+                               repo: str,
+                               watch_type: app_commands.Choice[str],
+                               channel: discord.TextChannel = None):
+            """Watch a GitHub repo"""
+            if not is_bot_admin_interaction(db, interaction):
+                await interaction.response.send_message("❌ Admin only.", ephemeral=True)
+                return
+
+            await interaction.response.defer(ephemeral=True)
+
+            try:
+                target_channel = channel or interaction.channel
+                result = await github_monitor.add_watch(
+                    guild_id=interaction.guild_id,
+                    channel_id=target_channel.id,
+                    repo=repo,
+                    watch_type=watch_type.value,
+                    added_by=interaction.user.id
+                )
+
+                if result.get('error'):
+                    await interaction.followup.send(f"❌ {result['error']}")
+                    return
+
+                status = "Reactivated" if result.get('reactivated') else "Now watching"
+                await interaction.followup.send(
+                    f"🐙 {status}: **{result['repo']}** ({result['watch_type']})\n"
+                    f"📢 Updates will post to <#{target_channel.id}>\n"
+                    f"Watch ID: #{result['watch_id']}"
+                )
+
+            except Exception as e:
+                await interaction.followup.send(f"❌ Error: {str(e)}")
+
+        @bot.tree.command(name="github_unwatch", description="[Admin] Stop watching a GitHub repo")
+        @app_commands.describe(watch_id="Watch ID to remove (from /github_watches)")
+        async def github_unwatch(interaction: discord.Interaction, watch_id: int):
+            """Stop watching a GitHub repo"""
+            if not is_bot_admin_interaction(db, interaction):
+                await interaction.response.send_message("❌ Admin only.", ephemeral=True)
+                return
+
+            try:
+                result = await github_monitor.remove_watch(interaction.guild_id, watch_id)
+
+                if result.get('error'):
+                    await interaction.response.send_message(
+                        f"❌ {result['error']}", ephemeral=True
+                    )
+                    return
+
+                await interaction.response.send_message(
+                    f"✅ Stopped watching: **{result['repo']}** ({result['watch_type']}) (#{watch_id})",
+                    ephemeral=True
+                )
+
+            except Exception as e:
+                await interaction.response.send_message(f"❌ Error: {str(e)}", ephemeral=True)
+
+        @bot.tree.command(name="github_watches", description="[Admin] List all watched GitHub repos")
+        async def github_watches_list(interaction: discord.Interaction):
+            """List GitHub watches"""
+            if not is_bot_admin_interaction(db, interaction):
+                await interaction.response.send_message("❌ Admin only.", ephemeral=True)
+                return
+
+            try:
+                watches = await github_monitor.list_watches(interaction.guild_id)
+
+                if not watches:
+                    await interaction.response.send_message(
+                        "🐙 No GitHub repos being watched. Use `/github_watch` to add one!",
+                        ephemeral=True
+                    )
+                    return
+
+                embed = discord.Embed(
+                    title="🐙 Watched GitHub Repos",
+                    color=discord.Color.dark_grey()
+                )
+
+                for watch in watches:
+                    last_check = watch['last_checked'].strftime("%b %d %I:%M %p") if watch['last_checked'] else "Never"
+                    embed.add_field(
+                        name=f"#{watch['id']} — {watch['repo_full_name']}",
+                        value=f"👀 {watch['watch_type']} • 📢 <#{watch['channel_id']}> • Last checked: {last_check}",
+                        inline=False
+                    )
+
+                embed.set_footer(text=f"{len(watches)} watches • Checked every 5 minutes")
+                await interaction.response.send_message(embed=embed, ephemeral=True)
+
+            except Exception as e:
+                await interaction.response.send_message(f"❌ Error: {str(e)}", ephemeral=True)
+
+        print("✅ GitHub monitoring commands registered")
 
     # ===== Personal Analytics =====
     @bot.tree.command(name="mystats", description="View your personal analytics profile card")
