@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 # Tool system imports
 from viz_tools import GeneralVisualizer
-from llm_tools import VISUALIZATION_TOOLS, ALL_TOOLS, DataRetriever
+from llm_tools import VISUALIZATION_TOOLS, COMPUTATIONAL_TOOLS, ALL_TOOLS, DataRetriever
 from tool_executor import ToolExecutor
 from media_processor import get_media_processor
 
@@ -43,6 +43,36 @@ THINKING_STATUS_MESSAGES = [
     "💬 Working on it...",
     "✨ Give me a sec...",
 ]
+
+
+# Visualization intent signals - user must use one of these to get chart tools
+_VIZ_INTENT_KEYWORDS = [
+    'chart', 'graph', 'plot', 'visualize', 'visualise', 'visualization',
+    'bar chart', 'line chart', 'pie chart', 'table', 'comparison chart',
+    'show me a chart', 'show me a graph', 'create a chart', 'create a graph',
+    'make a chart', 'make a graph', 'draw a chart', 'draw a graph',
+    'server stats', 'server activity', 'message stats', 'user activity',
+    'top users', 'most active', 'activity chart', 'leaderboard chart',
+]
+
+def _select_tools_for_message(message_content: str) -> list:
+    """Select which tools to pass to the LLM based on message intent.
+
+    Only includes visualization tools when the user explicitly asks for
+    charts/graphs/data visualization. This prevents the LLM from generating
+    charts for knowledge questions like 'what is a write down'.
+    """
+    content_lower = message_content.lower()
+
+    # Check if the message has data visualization intent
+    wants_viz = any(keyword in content_lower for keyword in _VIZ_INTENT_KEYWORDS)
+
+    if wants_viz:
+        logger.debug("Visualization intent detected, passing ALL tools")
+        return ALL_TOOLS
+    else:
+        logger.debug("No visualization intent, passing COMPUTATIONAL tools only")
+        return COMPUTATIONAL_TOOLS
 
 
 # Rate limiting state for mention handling
@@ -721,6 +751,11 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
             tool_executor = get_tool_executor(db, wolfram, weather, search,
                                               iracing_manager, reminder_system, bot)
 
+            # Intent-based tool filtering: only pass visualization tools when the user
+            # explicitly asks for charts/graphs/data visualization. This prevents the
+            # LLM from generating charts for knowledge questions like "what is a write down"
+            tools_for_request = _select_tools_for_message(content)
+
             response = await asyncio.to_thread(
                 llm.generate_response,
                 content,
@@ -734,30 +769,32 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                 str(message.author) if is_text_mention else None,
                 None,  # max_tokens (use default)
                 personality,  # personality setting
-                ALL_TOOLS,  # Enable all tools (visualization + computational)
+                tools_for_request,  # Intent-filtered tools (viz only when explicitly requested)
                 image_urls if image_urls else None,  # Direct image URLs
                 base64_images if base64_images else None,  # Processed frames (GIFs, YouTube thumbnails)
             )
 
             # Check if LLM wants to use tools
             if isinstance(response, dict) and response.get("type") == "tool_calls":
-                # Delete the placeholder message before showing tool-specific status
-                if placeholder_msg:
-                    await placeholder_msg.delete()
-                    placeholder_msg = None
-
                 # Determine what kind of tools are being called
                 tool_names = [tc.get("function", {}).get("name", "") for tc in response["tool_calls"]]
                 has_search = "web_search" in tool_names
                 has_viz = any(name in ["create_bar_chart", "create_line_chart", "create_pie_chart", "create_table", "create_comparison_chart"] for name in tool_names)
 
-                # Show appropriate status message
+                # Edit the existing placeholder to show tool-specific status (avoids flicker)
                 if has_search:
-                    status_msg = await message.channel.send(random.choice(SEARCH_STATUS_MESSAGES))
+                    status_text = random.choice(SEARCH_STATUS_MESSAGES)
                 elif has_viz:
-                    status_msg = await message.channel.send("📊 Creating visualization...")
+                    status_text = "📊 Creating visualization..."
                 else:
-                    status_msg = await message.channel.send("⚙️ Processing...")
+                    status_text = "⚙️ Processing..."
+
+                if placeholder_msg:
+                    await placeholder_msg.edit(content=status_text)
+                    status_msg = placeholder_msg
+                    placeholder_msg = None
+                else:
+                    status_msg = await message.channel.send(status_text)
 
                 # Execute all tool calls in parallel for better latency (P12 fix)
                 images_to_send = []
@@ -849,19 +886,19 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                 # Check if web_search was used - always synthesize search results
                 has_search_results = any("web_search:" in tr for tr in tool_results)
 
-                # Check if only visualization/self-explanatory tools were used
-                # These tools don't need LLM commentary (the image/output speaks for itself)
-                visualization_tools = ["get_weather", "get_weather_forecast", "create_bar_chart",
-                                      "create_line_chart", "create_pie_chart", "create_table",
-                                      "create_comparison_chart", "wolfram_query"]
-                only_viz_tools = all(any(vt in tn for vt in visualization_tools) for tn in tool_names)
+                # Identify self-contained tools that DON'T need LLM commentary
+                # Weather cards and wolfram results already display their own output
+                self_contained_tools = ["get_weather", "get_weather_forecast", "wolfram_query"]
+                only_self_contained = all(any(st in tn for st in self_contained_tools) for tn in tool_names)
 
-                # Only synthesize if:
-                # 1. Web search was used (always needs synthesis), OR
-                # 2. Non-visualization tools were used AND no initial response
-                needs_synthesis = has_search_results or (not only_viz_tools and not initial_response_text)
+                # Synthesis decision:
+                # 1. Web search was used → always synthesize (LLM must interpret results)
+                # 2. Self-contained tools (weather, wolfram) → skip synthesis (output speaks for itself)
+                # 3. Visualization tools (charts) → synthesize a brief text accompaniment
+                # 4. Other tools → synthesize if no initial response text
+                needs_synthesis = has_search_results or (not only_self_contained and not initial_response_text)
 
-                logger.debug("Synthesis decision: viz_tools=%s, has_search=%s, needs_synthesis=%s", only_viz_tools, has_search_results, needs_synthesis)
+                logger.debug("Synthesis decision: self_contained=%s, has_search=%s, needs_synthesis=%s", only_self_contained, has_search_results, needs_synthesis)
 
                 if tool_results and needs_synthesis:
                     logger.info("Synthesizing %d tool results...", len(tool_results))
@@ -871,8 +908,11 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                     # Feed tool results back to LLM for commentary
                     tool_results_summary = "\n".join(tool_results)
 
-                    # Create a follow-up message to get LLM to synthesize the results
-                    follow_up_prompt = f"The user asked: {content}\n\nTool execution results:\n{tool_results_summary}\n\nBased on the tool results above, provide a clear, concise answer to the user's question."
+                    # For chart tools, ask for a brief text accompaniment
+                    if has_viz:
+                        follow_up_prompt = f"The user asked: {content}\n\nYou created a visualization. Tool results:\n{tool_results_summary}\n\nProvide a brief 1-2 sentence text summary to accompany the chart. Keep it short since the chart is already shown."
+                    else:
+                        follow_up_prompt = f"The user asked: {content}\n\nTool execution results:\n{tool_results_summary}\n\nBased on the tool results above, provide a clear, concise answer to the user's question."
 
                     response = await asyncio.to_thread(
                         llm.generate_response,
@@ -893,15 +933,14 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                     # Delete status message after synthesis
                     await status_msg.delete()
                     logger.info("Synthesis complete")
-                elif initial_response_text and not only_viz_tools:
-                    # LLM provided commentary along with tool call
-                    # But skip for visualization tools (weather, charts, etc.) - the output speaks for itself
-                    logger.debug("Using initial LLM response (non-viz tools)")
+                elif initial_response_text:
+                    # LLM provided commentary along with tool call - use it
+                    logger.debug("Using initial LLM response text")
                     response = initial_response_text
                     await status_msg.delete()
                 else:
-                    # No output from tools, or visualization tools completed
-                    logger.debug("Visualization tools complete, skipping synthesis")
+                    # Self-contained tools completed (weather, wolfram) - output speaks for itself
+                    logger.debug("Self-contained tools complete, skipping synthesis")
                     response = None
                     await status_msg.delete()
 

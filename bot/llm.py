@@ -150,23 +150,42 @@ RULES:
 Be useful and real. That's the balance."""
     
     def should_search(self, message_content, conversation_context):
-        """Determine if web search is needed - only for genuine factual queries"""
+        """Determine if web search is needed - only for genuine factual queries
+        that the LLM likely cannot answer from its training data alone."""
 
-        # Only trigger on explicit factual question patterns
+        message_lower = message_content.lower().strip()
+
+        # NEGATIVE filters first - skip search for conversational/knowledge questions
+        # the LLM can answer from training data
+        no_search_patterns = [
+            'what is your', 'what are your', 'what is a ', 'what is an ',  # Definitions
+            'what is going on', 'what is up', 'what is that', 'what is this',
+            'what are you', 'who are you', 'how are you',
+            'explain how', 'explain why', 'explain what', 'explain the',
+            'how does', 'how do i', 'how do you', 'how can i', 'how to',
+            'tell me about yourself', 'talk about yourself',
+            'what do you think', 'what would you', 'what should i',
+            'what did you say', 'what did i say', 'what did we',
+            'do you remember', 'did you say', 'you said',
+            'can you', 'could you', 'would you', 'will you',
+        ]
+
+        if any(pattern in message_lower for pattern in no_search_patterns):
+            logger.debug("Search skipped: matched conversational pattern")
+            return False
+
+        # Only trigger on explicit factual query patterns that need current data
         search_triggers = [
-            'what is', 'what are', 'who is', 'who are', 'when did', 'when was', 'how many', 'how much',
             'current', 'latest', 'recent', 'today\'s', 'this week', 'this month', 'this year',
             'current price', 'latest news', 'recent data',
             'price of', 'cost of', 'statistics on', 'data on', 'study on',
             'fact check', 'is it true that', 'verify that', 'look up', 'search for',
             'who won', 'who is the president', 'who is the ceo',
-            'what happened', 'score of', 'result of', 'standings', 'leaderboard', 'rankings',
-            'tell me about', 'talk about', 'explain', 'how good is', 'how great',
-            'review of', 'reviews of', 'comparison', 'compare', 'vs',
-            'specs on', 'specifications'
+            'what happened to', 'score of', 'result of', 'standings', 'leaderboard', 'rankings',
+            'how good is', 'how great',
+            'review of', 'reviews of',
+            'specs on', 'specifications',
         ]
-
-        message_lower = message_content.lower()
 
         # Trigger only on specific factual query keywords
         if any(trigger in message_lower for trigger in search_triggers):
@@ -339,11 +358,11 @@ Be useful and real. That's the balance."""
             history_window = int(os.getenv('CONTEXT_WINDOW_MESSAGES', '50'))  # Increased from 6 due to compression
             recent_messages = conversation_history[-history_window:]
 
-            if self.compressor.is_enabled() and len(recent_messages) >= 8:
+            if self.compressor.is_enabled() and len(recent_messages) >= 10:
                 # Use compression for longer conversations
                 compressed_history = self.compressor.compress_history(
                     recent_messages,
-                    keep_recent=5,  # Keep last 5 messages verbatim for better context
+                    keep_recent=8,  # Keep last 8 messages verbatim for better context
                     bot_user_id=bot_user_id  # Pass bot ID to identify bot messages
                 )
                 # Add as a single user message block with clear instruction
@@ -446,6 +465,8 @@ Use this history to maintain conversation continuity and remember what was discu
 
             if messages_removed > 0:
                 logger.warning("Context truncated: removed %d old messages (was %d tokens, now ~%d)", messages_removed, estimated_tokens + messages_removed * 100, estimated_tokens)
+                # Insert a notice so the LLM knows context was truncated
+                messages.insert(1, {"role": "user", "content": f"[Note: {messages_removed} earlier messages were omitted for brevity. The conversation started before the history shown below.]"})
 
             # Also enforce character limit as fallback
             while total_chars > self.MAX_HISTORY_CHARS and len(messages) > 3:

@@ -479,22 +479,22 @@ class SearchEngine:
         return topic_keywords
 
     def format_results_for_llm(self, results):
-        """Format search results for inclusion in LLM prompt"""
+        """Format search results for inclusion in LLM prompt.
+        Limits to top 5 results with truncated snippets to save tokens."""
         if not results:
             return "No search results found."
 
-        formatted_lines = ["Search Results (cross-reference at least 2 sources):\n\n"]
+        formatted_lines = ["Search Results (use these to answer, cross-reference sources):\n\n"]
         total_chars = len(formatted_lines[0])
-        max_chars = 2000  # Increased to fit more sources for corroboration
+        max_chars = 1500  # Keep compact to leave room for conversation history
+        max_results = 5   # Top 5 most relevant results
 
-        for i, result in enumerate(results, 1):
-            snippet = result.get("content", "")[:350].strip()
+        for i, result in enumerate(results[:max_results], 1):
+            snippet = result.get("content", "")[:200].strip()
             source_domain = result.get('url', 'N/A').split('/')[2] if result.get('url') else 'Unknown'
             entry = (
-                f"[{i}] {result.get('title', 'Untitled')}\n"
-                f"    Source: {source_domain}\n"
-                f"    URL: {result.get('url', 'N/A')}\n"
-                f"    Content: {snippet}...\n\n"
+                f"[{i}] {result.get('title', 'Untitled')} ({source_domain})\n"
+                f"    {snippet}\n\n"
             )
             formatted_lines.append(entry)
             total_chars += len(entry)

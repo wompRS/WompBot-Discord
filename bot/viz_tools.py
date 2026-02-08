@@ -41,6 +41,31 @@ class GeneralVisualizer:
         plt.rcParams['grid.color'] = '#334155'
         plt.rcParams['font.family'] = 'sans-serif'
 
+    # Multi-color palette for bar charts with multiple categories
+    MULTI_COLORS = [
+        '#60a5fa',  # blue
+        '#22c55e',  # green
+        '#f97316',  # orange
+        '#a855f7',  # purple
+        '#ef4444',  # red
+        '#eab308',  # yellow
+        '#06b6d4',  # cyan
+        '#ec4899',  # pink
+    ]
+
+    def _smart_rotation(self, labels: list) -> tuple:
+        """Determine optimal x-axis label rotation based on label length.
+        Returns (rotation_angle, horizontal_alignment)."""
+        max_label_len = max((len(str(l)) for l in labels), default=0)
+        num_labels = len(labels)
+
+        if max_label_len <= 8 and num_labels <= 10:
+            return 0, 'center'  # Short labels: no rotation
+        elif max_label_len <= 15:
+            return 30, 'right'  # Medium labels: slight angle
+        else:
+            return 45, 'right'  # Long labels: 45 degrees
+
     def create_bar_chart(
         self,
         data: Dict[str, Union[int, float]],
@@ -51,7 +76,7 @@ class GeneralVisualizer:
         color: str = None
     ) -> BytesIO:
         """
-        Create a bar chart
+        Create a bar chart with value labels, smart rotation, and multi-color support.
 
         Args:
             data: Dictionary of {label: value}
@@ -59,30 +84,45 @@ class GeneralVisualizer:
             xlabel: X-axis label
             ylabel: Y-axis label
             horizontal: If True, create horizontal bar chart
-            color: Color for bars (default: accent_blue)
+            color: Color for bars (default: multi-color for 2+ categories)
 
         Returns:
             BytesIO buffer containing the chart image
         """
-        fig, ax = plt.subplots(figsize=(12, 8))
+        fig, ax = plt.subplots(figsize=(10, 6))
 
         labels = list(data.keys())
         values = list(data.values())
 
-        bar_color = color or self.COLORS['accent_blue']
+        # Use multi-color palette for multiple categories, single color for one
+        if color:
+            bar_colors = color
+        elif len(labels) > 1:
+            bar_colors = [self.MULTI_COLORS[i % len(self.MULTI_COLORS)] for i in range(len(labels))]
+        else:
+            bar_colors = self.COLORS['accent_blue']
 
         if horizontal:
-            ax.barh(labels, values, color=bar_color)
+            bars = ax.barh(labels, values, color=bar_colors)
             ax.set_xlabel(ylabel)
             ax.set_ylabel(xlabel)
+            # Add value labels on horizontal bars
+            ax.bar_label(bars, fmt=lambda v: f'{v:,.1f}' if isinstance(v, float) and v != int(v) else f'{int(v):,}',
+                        padding=5, color=self.COLORS['text_white'], fontsize=10)
         else:
-            ax.bar(labels, values, color=bar_color)
+            bars = ax.bar(labels, values, color=bar_colors)
             ax.set_xlabel(xlabel)
             ax.set_ylabel(ylabel)
-            plt.xticks(rotation=45, ha='right')
+            # Smart x-axis label rotation
+            rotation, ha = self._smart_rotation(labels)
+            if rotation > 0:
+                plt.xticks(rotation=rotation, ha=ha)
+            # Add value labels on top of bars
+            ax.bar_label(bars, fmt=lambda v: f'{v:,.1f}' if isinstance(v, float) and v != int(v) else f'{int(v):,}',
+                        padding=3, color=self.COLORS['text_white'], fontsize=10, fontweight='bold')
 
         ax.set_title(title, fontsize=16, fontweight='bold', color=self.COLORS['text_white'])
-        ax.grid(True, alpha=0.3)
+        ax.grid(True, alpha=0.3, axis='y' if not horizontal else 'x')
 
         plt.tight_layout()
 
@@ -103,7 +143,7 @@ class GeneralVisualizer:
         x_labels: Optional[List[str]] = None
     ) -> BytesIO:
         """
-        Create a line chart (supports multiple lines)
+        Create a line chart (supports multiple lines) with data point labels for small datasets.
 
         Args:
             data: Dictionary of {series_name: [values]}
@@ -115,7 +155,7 @@ class GeneralVisualizer:
         Returns:
             BytesIO buffer containing the chart image
         """
-        fig, ax = plt.subplots(figsize=(12, 8))
+        fig, ax = plt.subplots(figsize=(10, 6))
 
         colors = [
             self.COLORS['accent_blue'],
@@ -128,17 +168,37 @@ class GeneralVisualizer:
 
         for i, (series_name, values) in enumerate(data.items()):
             x = x_labels if x_labels else list(range(len(values)))
-            ax.plot(x, values, marker='o', linewidth=2,
+            # Only show markers for datasets with <= 30 points
+            marker = 'o' if len(values) <= 30 else None
+            markersize = 4 if len(values) > 15 else 6
+            ax.plot(x, values, marker=marker, markersize=markersize, linewidth=2,
                    label=series_name, color=colors[i % len(colors)])
+
+            # Add value labels for small datasets (15 or fewer points)
+            if len(values) <= 15:
+                for j, v in enumerate(values):
+                    label_text = f'{v:,.1f}' if isinstance(v, float) and v != int(v) else f'{int(v):,}'
+                    ax.annotate(label_text, (x[j], v), textcoords="offset points",
+                              xytext=(0, 10), ha='center', fontsize=8,
+                              color=self.COLORS['text_white'], fontweight='bold')
 
         ax.set_title(title, fontsize=16, fontweight='bold', color=self.COLORS['text_white'])
         ax.set_xlabel(xlabel)
         ax.set_ylabel(ylabel)
-        ax.legend()
+        if len(data) > 1:
+            ax.legend()
         ax.grid(True, alpha=0.3)
 
         if x_labels:
-            plt.xticks(rotation=45, ha='right')
+            rotation, ha = self._smart_rotation(x_labels)
+            if rotation > 0:
+                plt.xticks(rotation=rotation, ha=ha)
+            # Reduce label density for many x-axis labels
+            if len(x_labels) > 20:
+                step = max(1, len(x_labels) // 15)
+                ax.set_xticks(range(0, len(x_labels), step))
+                ax.set_xticklabels([x_labels[i] for i in range(0, len(x_labels), step)],
+                                  rotation=rotation, ha=ha)
 
         plt.tight_layout()
 
@@ -167,24 +227,18 @@ class GeneralVisualizer:
         Returns:
             BytesIO buffer containing the chart image
         """
-        fig, ax = plt.subplots(figsize=(10, 8))
+        fig, ax = plt.subplots(figsize=(10, 7))
 
         labels = list(data.keys())
         values = list(data.values())
 
-        colors = [
-            self.COLORS['accent_blue'],
-            self.COLORS['accent_green'],
-            self.COLORS['accent_red'],
-            self.COLORS['accent_yellow'],
-            self.COLORS['accent_purple'],
-            self.COLORS['accent_orange']
-        ]
+        colors = self.MULTI_COLORS[:len(labels)]
 
         autopct = '%1.1f%%' if show_percentages else None
 
         ax.pie(values, labels=labels, autopct=autopct, colors=colors,
-               textprops={'color': self.COLORS['text_white']})
+               textprops={'color': self.COLORS['text_white']},
+               startangle=90, pctdistance=0.8)
 
         ax.set_title(title, fontsize=16, fontweight='bold',
                     color=self.COLORS['text_white'], pad=20)
@@ -291,29 +345,26 @@ class GeneralVisualizer:
         Returns:
             BytesIO buffer containing the chart image
         """
-        fig, ax = plt.subplots(figsize=(12, 8))
+        fig, ax = plt.subplots(figsize=(10, 6))
 
         x = np.arange(len(categories))
         width = 0.8 / len(datasets)
 
-        colors = [
-            self.COLORS['accent_blue'],
-            self.COLORS['accent_green'],
-            self.COLORS['accent_red'],
-            self.COLORS['accent_yellow'],
-            self.COLORS['accent_purple']
-        ]
-
         for i, (name, values) in enumerate(datasets.items()):
             offset = (i - len(datasets)/2 + 0.5) * width
-            ax.bar(x + offset, values, width, label=name,
-                  color=colors[i % len(colors)])
+            bars = ax.bar(x + offset, values, width, label=name,
+                  color=self.MULTI_COLORS[i % len(self.MULTI_COLORS)])
+            # Add value labels on comparison bars
+            ax.bar_label(bars, fmt=lambda v: f'{int(v):,}' if v == int(v) else f'{v:,.1f}',
+                        padding=2, color=self.COLORS['text_white'], fontsize=8)
 
         ax.set_title(title, fontsize=16, fontweight='bold',
                     color=self.COLORS['text_white'])
         ax.set_ylabel(ylabel)
         ax.set_xticks(x)
-        ax.set_xticklabels(categories, rotation=45, ha='right')
+        # Smart rotation for comparison chart labels
+        rotation, ha = self._smart_rotation(categories)
+        ax.set_xticklabels(categories, rotation=rotation, ha=ha)
         ax.legend()
         ax.grid(True, alpha=0.3, axis='y')
 

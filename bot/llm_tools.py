@@ -680,25 +680,35 @@ class DataRetriever:
         # Parse time range from query
         days = self._extract_time_range(query_lower)
 
-        # Determine query type and fetch data
-        if 'top' in query_lower and 'user' in query_lower and 'message' in query_lower:
+        # Determine query type and fetch data (expanded pattern matching)
+        # Top users / most active
+        if any(kw in query_lower for kw in ['top user', 'most active', 'most message', 'who chat',
+                                              'who talk', 'leaderboard', 'rankings']):
             return self._get_top_users_by_messages(days, limit=self._extract_limit(query_lower), guild_id=guild_id)
 
-        elif 'message' in query_lower and 'hour' in query_lower:
+        # Messages by hour of day
+        elif any(kw in query_lower for kw in ['by hour', 'per hour', 'hourly', 'time of day',
+                                                'busiest hour', 'active hour']):
             return self._get_messages_by_hour(days, channel_id, guild_id)
 
-        elif 'message' in query_lower and 'day' in query_lower:
+        # Messages by day (trend over time)
+        elif any(kw in query_lower for kw in ['per day', 'by day', 'daily', 'over time',
+                                                'messages per', 'activity over']):
             return self._get_messages_by_day(days, channel_id, guild_id)
 
         elif 'activity' in query_lower and 'trend' in query_lower:
             return self._get_activity_trend(days, channel_id, guild_id)
 
-        elif 'personality' in query_lower or 'distribution' in query_lower:
+        elif any(kw in query_lower for kw in ['personality', 'distribution', 'mode breakdown']):
             return self._get_personality_distribution()
 
         else:
-            # Default: top users
-            return self._get_top_users_by_messages(days, limit=10, guild_id=guild_id)
+            # Return error instead of silently defaulting
+            return {
+                'type': 'bar',
+                'data': {},
+                'metadata': {'error': f'Could not understand data query: {query}. Try: "top users by messages", "messages by hour", "messages per day", "personality distribution"'}
+            }
 
     def _extract_time_range(self, query: str) -> int:
         """Extract time range in days from query"""
