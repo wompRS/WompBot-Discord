@@ -4,6 +4,7 @@ Transcript-first approach: prioritize audio/text content over frame extraction
 """
 
 import io
+import logging
 import os
 import re
 import base64
@@ -13,6 +14,8 @@ import subprocess
 from typing import List, Dict, Any, Optional, Tuple
 from PIL import Image
 import requests
+
+logger = logging.getLogger(__name__)
 
 
 class MediaProcessor:
@@ -165,11 +168,11 @@ class MediaProcessor:
                     # Try English first
                     try:
                         transcript = transcript_list.find_transcript(['en', 'en-US', 'en-GB'])
-                    except:
+                    except Exception:
                         # Try auto-generated
                         try:
                             transcript = transcript_list.find_generated_transcript(['en'])
-                        except:
+                        except Exception:
                             # Get any available and translate
                             for t in transcript_list:
                                 transcript = t.translate('en')
@@ -214,7 +217,7 @@ class MediaProcessor:
                 resp = await asyncio.to_thread(fetch)
                 if resp.status_code == 200 and len(resp.content) > 1000:
                     return base64.b64encode(resp.content).decode('utf-8')
-            except:
+            except Exception:
                 continue
         return None
 
@@ -260,8 +263,8 @@ class MediaProcessor:
                 try:
                     import shutil
                     shutil.rmtree(temp_dir)
-                except:
-                    pass
+                except OSError as e:
+                    logger.warning("Failed to clean up temp dir %s: %s", temp_dir, e)
 
     async def analyze_video_file(self, url: str, need_visuals: bool = False) -> Dict[str, Any]:
         """
@@ -333,8 +336,8 @@ class MediaProcessor:
                 try:
                     import shutil
                     shutil.rmtree(temp_dir)
-                except:
-                    pass
+                except OSError as e:
+                    logger.warning("Failed to clean up temp dir %s: %s", temp_dir, e)
 
     async def _transcribe_video_audio(self, video_path: str, audio_path: str) -> Optional[str]:
         """Extract audio and transcribe with Whisper API"""
@@ -421,7 +424,7 @@ class MediaProcessor:
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
             try:
                 return float(result.stdout.strip())
-            except:
+            except (ValueError, AttributeError):
                 return 30.0
 
         return await asyncio.to_thread(probe)
@@ -464,7 +467,7 @@ class MediaProcessor:
                 if frame_data:
                     frames.append(base64.b64encode(frame_data).decode('utf-8'))
                     timestamps.append(ts_str)
-            except:
+            except Exception:
                 continue
 
         return frames, timestamps
@@ -519,7 +522,7 @@ class MediaProcessor:
                     buf = io.BytesIO()
                     frame.save(buf, format='JPEG', quality=85)
                     frames.append(base64.b64encode(buf.getvalue()).decode('utf-8'))
-                except:
+                except Exception:
                     continue
 
             return {

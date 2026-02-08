@@ -99,7 +99,7 @@ class iRacingGraphics:
                         bold_font = path
                     else:
                         regular_font = path
-                except:
+                except (OSError, RuntimeError):
                     pass
 
         try:
@@ -138,7 +138,7 @@ class iRacingGraphics:
         self.cache_dir = Path('/app/.image_cache')
         try:
             self.cache_dir.mkdir(exist_ok=True)
-        except:
+        except OSError:
             self.cache_dir = Path('./.image_cache')
             self.cache_dir.mkdir(exist_ok=True)
 
@@ -748,7 +748,7 @@ class iRacingGraphics:
         if cache_path.exists():
             try:
                 return Image.open(cache_path)
-            except:
+            except (OSError, IOError):
                 pass
 
         try:

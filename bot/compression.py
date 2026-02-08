@@ -5,8 +5,11 @@ Reduces token usage by 50-80% by removing less important tokens
 while preserving semantic meaning.
 """
 
+import logging
 import os
 from typing import List, Dict, Optional
+
+logger = logging.getLogger(__name__)
 
 
 class ConversationCompressor:
@@ -19,7 +22,7 @@ class ConversationCompressor:
         self._compression_rate = float(os.getenv('COMPRESSION_RATE', '0.5'))  # 50% default
         self._min_messages_to_compress = int(os.getenv('MIN_MESSAGES_TO_COMPRESS', '8'))
 
-        print(f"📦 Compression initialized (enabled: {self._enabled}, rate: {self._compression_rate})")
+        logger.info("Compression initialized (enabled: %s, rate: %s)", self._enabled, self._compression_rate)
 
     def _get_compressor(self):
         """Lazy-load the compression model"""
@@ -39,10 +42,10 @@ class ConversationCompressor:
                     device_map="cpu",  # Use CPU to avoid GPU memory issues
                     use_llmlingua2=True,  # Enable LLMLingua-2 mode
                 )
-                print(f"✅ Compression model loaded: {model_name}")
+                logger.info("Compression model loaded: %s", model_name)
             except Exception as e:
-                print(f"⚠️ Failed to load compression model: {e}")
-                print("   Compression will be disabled")
+                logger.warning("Failed to load compression model: %s", e)
+                logger.warning("Compression will be disabled")
                 self._enabled = False
 
         return self._compressor
@@ -113,7 +116,7 @@ class ConversationCompressor:
             compressed_tokens = len(compressed_text.split())
             savings = (1 - compressed_tokens / original_tokens) * 100 if original_tokens > 0 else 0
 
-            print(f"📦 Compressed {len(messages_to_compress)} messages: {original_tokens} → {compressed_tokens} tokens ({savings:.0f}% savings)")
+            logger.info("Compressed %d messages: %d -> %d tokens (%.0f%% savings)", len(messages_to_compress), original_tokens, compressed_tokens, savings)
 
             # Combine compressed older messages with recent verbatim messages
             result = f"[Earlier conversation (compressed) - [YOU/WompBot] = your previous responses]:\n{compressed_text}\n\n[Recent messages (verbatim)]:\n"
@@ -122,8 +125,8 @@ class ConversationCompressor:
             return result
 
         except Exception as e:
-            print(f"⚠️ Compression failed: {e}")
-            print("   Falling back to uncompressed")
+            logger.warning("Compression failed: %s", e)
+            logger.warning("Falling back to uncompressed")
             return self._format_uncompressed(conversation_history, bot_user_id)
 
     def _format_uncompressed(self, conversation_history: List[Dict], bot_user_id: int = None) -> str:

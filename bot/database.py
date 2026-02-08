@@ -56,12 +56,26 @@ class Database:
 
     @contextmanager
     def get_connection(self):
-        """Get a connection from the pool (context manager for automatic return)"""
+        """Get a transactional connection from the pool"""
+        conn = self.pool.getconn()
+        try:
+            yield conn
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            self.pool.putconn(conn)
+
+    @contextmanager
+    def get_autocommit_connection(self):
+        """Get a connection with autocommit for simple single-statement reads"""
         conn = self.pool.getconn()
         conn.autocommit = True
         try:
             yield conn
         finally:
+            conn.autocommit = False
             self.pool.putconn(conn)
     
     def get_job_last_run(self, job_name: str):
@@ -1290,7 +1304,6 @@ class Database:
                             enabled_by = EXCLUDED.enabled_by,
                             enabled_at = CURRENT_TIMESTAMP
                     """, (server_id, personality, user_id))
-                    conn.commit()
                     return True
         except Exception as e:
             print(f"Error setting server personality: {e}")
@@ -1506,21 +1519,19 @@ class Database:
 
     def add_server_admin(self, guild_id, user_id, added_by):
         """Add a bot admin for a server. Returns True if added, False if already exists."""
-        with self.get_connection() as conn:
-            with conn.cursor() as cur:
-                try:
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor() as cur:
                     cur.execute("""
                         INSERT INTO server_admins (guild_id, user_id, added_by)
                         VALUES (%s, %s, %s)
                         ON CONFLICT (guild_id, user_id) DO NOTHING
                         RETURNING id
                     """, (guild_id, user_id, added_by))
-                    conn.commit()
                     return cur.fetchone() is not None
-                except Exception as e:
-                    conn.rollback()
-                    logger.error(f"Error adding server admin: {e}")
-                    return False
+        except Exception as e:
+            logger.error(f"Error adding server admin: {e}")
+            return False
 
     def remove_server_admin(self, guild_id, user_id):
         """Remove a bot admin from a server. Returns True if removed, False if not found."""
@@ -1531,7 +1542,6 @@ class Database:
                     WHERE guild_id = %s AND user_id = %s
                     RETURNING id
                 """, (guild_id, user_id))
-                conn.commit()
                 return cur.fetchone() is not None
 
     def close(self):

@@ -1,8 +1,14 @@
+import asyncio
 import discord
 from discord.ext import commands
 import json
+import logging
+import re
+import requests
 from datetime import datetime
 from features.claim_detector import ClaimDetector
+
+logger = logging.getLogger(__name__)
 
 class ClaimsTracker:
     """Tracks user claims and quotes"""
@@ -25,12 +31,13 @@ class ClaimsTracker:
 
             if not pre_filter_result['is_likely']:
                 # Not a claim - skip LLM analysis (SAVES MONEY!)
-                print(f"⏭️  Skipped (not claim-like): {message.content[:50]}... | {pre_filter_result['reasoning']}")
+                logger.debug("Skipped (not claim-like): %s... | %s", message.content[:50], pre_filter_result['reasoning'])
                 return None
 
             # STAGE 2: LLM verification (PAID, only for likely claims)
-            print(f"🔍 LLM analyzing likely claim: {message.content[:50]}... | Confidence: {pre_filter_result['confidence']:.2f}")
-            
+            logger.info("LLM analyzing likely claim: %s... | Confidence: %.2f",
+                        message.content[:50], pre_filter_result['confidence'])
+
             prompt = f"""Analyze this message and determine if it contains a trackable claim.
 
 A trackable claim is:
@@ -61,7 +68,7 @@ Respond in JSON format:
                 "Authorization": f"Bearer {self.llm.api_key}",
                 "Content-Type": "application/json"
             }
-            
+
             payload = {
                 "model": self.llm.model,
                 "messages": [
@@ -71,36 +78,34 @@ Respond in JSON format:
                 "max_tokens": 300,
                 "temperature": 0.2
             }
-            
-            import requests
-            response = requests.post(
+
+            response = await asyncio.to_thread(
+                requests.post,
                 "https://openrouter.ai/api/v1/chat/completions",
                 headers=headers,
                 json=payload,
                 timeout=30
             )
             response.raise_for_status()
-            
+
             result_text = response.json()['choices'][0]['message']['content'].strip()
-            print(f"🤖 LLM Response: {result_text[:200]}")
-            
-            # Parse JSON response
-            # Try to extract JSON even if there's extra text
-            import re
+            logger.debug("LLM Response: %s", result_text[:200])
+
+            # Parse JSON response - extract JSON even if there's extra text
             json_match = re.search(r'\{.*\}', result_text, re.DOTALL)
             if json_match:
                 result = json.loads(json_match.group())
-                
+
                 if result.get('is_trackable'):
-                    print(f"✅ Trackable claim detected: {result['claim_text']}")
+                    logger.info("Trackable claim detected: %s", result['claim_text'])
                     return result
                 else:
-                    print(f"❌ Not trackable: {result.get('reasoning', 'No reason given')}")
-            
+                    logger.debug("Not trackable: %s", result.get('reasoning', 'No reason given'))
+
             return None
-            
+
         except Exception as e:
-            print(f"❌ Error analyzing claim: {e}")
+            logger.error("Error analyzing claim: %s", e)
             return None
     
     async def store_claim(self, message, claim_data):
@@ -135,13 +140,13 @@ Respond in JSON format:
                     result = cur.fetchone()
                     if result:
                         claim_id = result[0]
-                        print(f"📝 Tracked claim #{claim_id} from {message.author}")
+                        logger.info("Tracked claim #%d from %s", claim_id, message.author)
                         return claim_id
 
             return None
             
         except Exception as e:
-            print(f"❌ Error storing claim: {e}")
+            logger.error("Error storing claim: %s", e)
             return None
     
     async def handle_claim_edit(self, before, after):
@@ -176,10 +181,10 @@ Respond in JSON format:
                             WHERE id = %s
                         """, (original_text, json.dumps(edit_history), after.content, claim_id))
 
-                        print(f"✏️  Claim #{claim_id} edited - history preserved")
+                        logger.info("Claim #%d edited - history preserved", claim_id)
         
         except Exception as e:
-            print(f"❌ Error tracking claim edit: {e}")
+            logger.error("Error tracking claim edit: %s", e)
     
     async def handle_claim_deletion(self, message):
         """Track when a tracked claim is deleted"""
@@ -195,10 +200,10 @@ Respond in JSON format:
                     """, (datetime.now(), message.id))
 
                     if cur.rowcount > 0:
-                        print(f"🗑️  Claim from message {message.id} marked as deleted")
+                        logger.info("Claim from message %s marked as deleted", message.id)
         
         except Exception as e:
-            print(f"❌ Error tracking claim deletion: {e}")
+            logger.error("Error tracking claim deletion: %s", e)
     
     async def get_user_claims(self, user_id, include_deleted=False):
         """Get all claims by a user"""
@@ -224,7 +229,7 @@ Respond in JSON format:
                     return [dict(zip(columns, row)) for row in results]
         
         except Exception as e:
-            print(f"❌ Error fetching user claims: {e}")
+            logger.error("Error fetching user claims: %s", e)
             return []
     
     async def check_contradiction(self, new_claim, user_id):
@@ -265,7 +270,7 @@ If no contradiction, respond with:
                 "Authorization": f"Bearer {self.llm.api_key}",
                 "Content-Type": "application/json"
             }
-            
+
             payload = {
                 "model": self.llm.model,
                 "messages": [
@@ -275,33 +280,32 @@ If no contradiction, respond with:
                 "max_tokens": 200,
                 "temperature": 0.1
             }
-            
-            import requests
-            response = requests.post(
+
+            response = await asyncio.to_thread(
+                requests.post,
                 "https://openrouter.ai/api/v1/chat/completions",
                 headers=headers,
                 json=payload,
                 timeout=30
             )
             response.raise_for_status()
-            
+
             result_text = response.json()['choices'][0]['message']['content'].strip()
-            
-            import re
+
             json_match = re.search(r'\{.*\}', result_text, re.DOTALL)
             if json_match:
                 result = json.loads(json_match.group())
-                
+
                 if result.get('contradicts'):
                     return {
                         'contradicted_claim': past_claims[result['claim_number'] - 1],
                         'explanation': result['explanation']
                     }
-            
+
             return None
-            
+
         except Exception as e:
-            print(f"❌ Error checking contradictions: {e}")
+            logger.error("Error checking contradictions: %s", e)
             return None
     
     async def store_quote(self, message, added_by_user):
@@ -346,13 +350,13 @@ If no contradiction, respond with:
                     result = cur.fetchone()
                     if result:
                         quote_id = result[0]
-                        print(f"☁️  Quote #{quote_id} saved from {message.author}")
+                        logger.info("Quote #%d saved from %s", quote_id, message.author)
                         return quote_id
 
             return None
             
         except Exception as e:
-            print(f"❌ Error storing quote: {e}")
+            logger.error("Error storing quote: %s", e)
             return None
     
     def get_user_quotes(self, user_id, limit=None):
@@ -367,10 +371,12 @@ If no contradiction, respond with:
                         WHERE user_id = %s
                         ORDER BY timestamp DESC
                     """
+                    params = [user_id]
                     if limit:
-                        query += f" LIMIT {limit}"
+                        query += " LIMIT %s"
+                        params.append(limit)
 
-                    cur.execute(query, (user_id,))
+                    cur.execute(query, params)
 
                     columns = [desc[0] for desc in cur.description]
                     results = cur.fetchall()
@@ -378,5 +384,5 @@ If no contradiction, respond with:
                     return [dict(zip(columns, row)) for row in results]
         
         except Exception as e:
-            print(f"❌ Error fetching quotes: {e}")
+            logger.error("Error fetching quotes: %s", e)
             return []

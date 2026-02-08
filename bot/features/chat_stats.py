@@ -93,8 +93,17 @@ class ChatStatistics:
             print(f"❌ Error caching stats: {e}")
 
     def get_messages_for_analysis(self, channel_id: Optional[int], start_date: datetime,
-                                  end_date: datetime, exclude_opted_out: bool = True) -> List[dict]:
-        """Get messages for analysis, excluding opted-out users"""
+                                  end_date: datetime, exclude_opted_out: bool = True,
+                                  max_messages: int = 50000) -> List[dict]:
+        """Get messages for analysis, excluding opted-out users
+
+        Args:
+            channel_id: Optional channel ID to filter by
+            start_date: Start of date range
+            end_date: End of date range
+            exclude_opted_out: Whether to exclude opted-out users
+            max_messages: Maximum number of messages to return (default 50000)
+        """
         try:
             with self.db.get_connection() as conn:
                 with conn.cursor() as cur:
@@ -114,7 +123,8 @@ class ChatStatistics:
                         query += " AND m.channel_id = %s"
                         params.append(channel_id)
 
-                    query += " ORDER BY m.timestamp ASC"
+                    query += " ORDER BY m.timestamp ASC LIMIT %s"
+                    params.append(max_messages)
 
                     cur.execute(query, params)
 

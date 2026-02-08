@@ -1,8 +1,12 @@
 """
 Cost tracking and alerting system for LLM API usage
 """
-import discord
+import logging
 import os
+
+import discord
+
+logger = logging.getLogger(__name__)
 
 # Model pricing per million tokens (input/output)
 MODEL_PRICING = {
@@ -55,8 +59,9 @@ class CostTracker:
         # Only log detailed costs if username is provided (text mentions only)
         if username:
             model_short = model.split('/')[-1] if '/' in model else model
-            print(f"💸 Request Cost: ${total_cost:.6f} | In: ${input_cost:.6f} ({input_tokens}tok) | Out: ${output_cost:.6f} ({output_tokens}tok) | {model_short} | {request_type} | User: {username}")
-            print(f"💰 Monthly Total: ${monthly_total:.4f}")
+            logger.info("Request Cost: $%.6f | In: $%.6f (%dtok) | Out: $%.6f (%dtok) | %s | %s | User: %s",
+                        total_cost, input_cost, input_tokens, output_cost, output_tokens, model_short, request_type, username)
+            logger.info("Monthly Total: $%.4f", monthly_total)
 
         # Return alert info for async handling
         alert_check = self.db.check_cost_alert_threshold(1.00)
@@ -88,7 +93,7 @@ class CostTracker:
                     break
 
             if not wompie_user:
-                print(f"⚠️  Could not find user {self.wompie_username} to send cost alert")
+                logger.warning("Could not find user %s to send cost alert", self.wompie_username)
                 return
 
             # Get breakdown by model
@@ -121,12 +126,12 @@ class CostTracker:
             embed.set_footer(text="Cost tracking updates every $1")
 
             await wompie_user.send(embed=embed)
-            print(f"💸 Sent cost alert to {self.wompie_username}: ${total_cost:.2f}")
+            logger.info("Sent cost alert to %s: $%.2f", self.wompie_username, total_cost)
 
         except discord.Forbidden:
-            print(f"❌ Cannot send DM to {self.wompie_username} (DMs closed)")
+            logger.error("Cannot send DM to %s (DMs closed)", self.wompie_username)
         except Exception as e:
-            print(f"❌ Error sending cost alert: {e}")
+            logger.error("Error sending cost alert: %s", e)
 
     def get_cost_breakdown(self):
         """Get cost breakdown by model"""
@@ -142,5 +147,5 @@ class CostTracker:
                     results = cur.fetchall()
                     return {row[0]: float(row[1]) for row in results}
         except Exception as e:
-            print(f"❌ Error getting cost breakdown: {e}")
+            logger.error("Error getting cost breakdown: %s", e)
             return {}

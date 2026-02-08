@@ -5,12 +5,15 @@ Provides semantic search, conversation summarization, and intelligent context re
 
 import os
 import asyncio
+import logging
 from typing import List, Dict, Optional, Tuple
 from datetime import datetime, timedelta
 import openai
 from pgvector.psycopg2 import register_vector
 from psycopg2.extras import RealDictCursor
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 
 class RAGSystem:
@@ -30,7 +33,7 @@ class RAGSystem:
         # Get OpenAI API key from environment
         self.openai_api_key = os.getenv('OPENAI_API_KEY')
         if not self.openai_api_key:
-            print("⚠️  Warning: OPENAI_API_KEY not set - RAG system will be disabled")
+            logger.warning("OPENAI_API_KEY not set - RAG system will be disabled")
             self.enabled = False
             return
 
@@ -39,8 +42,8 @@ class RAGSystem:
             self.client = openai.OpenAI(api_key=self.openai_api_key)
             self.enabled = True
         except Exception as e:
-            print(f"⚠️  Error initializing OpenAI client: {e}")
-            print("⚠️  RAG system will be disabled")
+            logger.error("Error initializing OpenAI client: %s", e)
+            logger.warning("RAG system will be disabled")
             self.enabled = False
             return
 
@@ -50,7 +53,7 @@ class RAGSystem:
         self.max_embedding_batch_size = 200  # Increased for dedicated server (was 100)
         self.similarity_threshold = float(os.getenv('RAG_SIMILARITY_THRESHOLD', '0.7'))
 
-        print(f"✅ RAG system initialized (model: {self.embedding_model})")
+        logger.info("RAG system initialized (model: %s)", self.embedding_model)
 
     async def generate_embedding(self, text: str) -> Optional[List[float]]:
         """
@@ -74,7 +77,7 @@ class RAGSystem:
             )
             return response.data[0].embedding
         except Exception as e:
-            print(f"❌ Error generating embedding: {e}")
+            logger.error("Error generating embedding: %s", e)
             return None
 
     async def generate_embeddings_batch(self, texts: List[str]) -> List[Optional[List[float]]]:
@@ -114,7 +117,7 @@ class RAGSystem:
                     embeddings[original_idx] = embedding_data.embedding
 
             except Exception as e:
-                print(f"❌ Error generating embeddings batch: {e}")
+                logger.error("Error generating embeddings batch: %s", e)
 
         return embeddings
 
@@ -143,7 +146,7 @@ class RAGSystem:
                     conn.commit()
             return True
         except Exception as e:
-            print(f"❌ Error storing embedding: {e}")
+            logger.error("Error storing embedding: %s", e)
             return False
 
     async def process_embedding_queue(self, limit: int = 50) -> int:
@@ -176,7 +179,7 @@ class RAGSystem:
             if not queue_items:
                 return 0
 
-            print(f"🔄 Processing {len(queue_items)} messages for embedding...")
+            logger.info("Processing %d messages for embedding...", len(queue_items))
 
             # Generate embeddings
             texts = [item['content'] for item in queue_items]
@@ -205,11 +208,11 @@ class RAGSystem:
                             """, (item['id'],))
                             conn.commit()
 
-            print(f"✅ Generated {success_count}/{len(queue_items)} embeddings")
+            logger.info("Generated %d/%d embeddings", success_count, len(queue_items))
             return success_count
 
         except Exception as e:
-            print(f"❌ Error processing embedding queue: {e}")
+            logger.error("Error processing embedding queue: %s", e)
             return 0
 
     async def semantic_search(
@@ -262,6 +265,11 @@ class RAGSystem:
             # Add query_embedding again for ORDER BY and limit at the end
             params.extend([query_embedding, limit])
 
+            # SAFETY: where_clauses only contains hardcoded SQL fragments defined above
+            # (e.g., "m.channel_id = %s", "m.user_id = %s", "m.timestamp >= %s").
+            # No user input is ever interpolated into the clause structure itself;
+            # all user-supplied values are passed via parameterized %s placeholders
+            # in the params list, which are handled safely by psycopg2.
             where_clause = " AND " + " AND ".join(where_clauses) if where_clauses else ""
 
             # Perform vector similarity search
@@ -294,7 +302,7 @@ class RAGSystem:
             return filtered_results
 
         except Exception as e:
-            print(f"❌ Error in semantic search: {e}")
+            logger.error("Error in semantic search: %s", e)
             return []
 
     async def summarize_conversation(
@@ -385,7 +393,7 @@ Summary:"""
             return summary
 
         except Exception as e:
-            print(f"❌ Error summarizing conversation: {e}")
+            logger.error("Error summarizing conversation: %s", e)
             return None
 
     async def extract_user_facts(self, user_id: int, message_content: str, message_id: int) -> List[str]:
@@ -464,12 +472,12 @@ Facts:"""
 
                             conn.commit()
                 except Exception as e:
-                    print(f"⚠️  Error storing fact: {e}")
+                    logger.warning("Error storing fact: %s", e)
 
             return facts
 
         except Exception as e:
-            print(f"❌ Error extracting user facts: {e}")
+            logger.error("Error extracting user facts: %s", e)
             return []
 
     async def get_relevant_context(
@@ -542,7 +550,7 @@ Facts:"""
             }
 
         except Exception as e:
-            print(f"❌ Error getting relevant context: {e}")
+            logger.error("Error getting relevant context: %s", e)
             return {
                 'semantic_matches': [],
                 'user_facts': [],

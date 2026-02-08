@@ -1,6 +1,11 @@
+import logging
 import os
+import re
+
 import requests
 from tavily import TavilyClient
+
+logger = logging.getLogger(__name__)
 
 class SearchEngine:
     def __init__(self):
@@ -11,13 +16,13 @@ class SearchEngine:
             self.google_api_key = os.getenv('GOOGLE_SEARCH_API_KEY')
             self.google_cx = os.getenv('GOOGLE_SEARCH_CX')
             if not self.google_api_key or not self.google_cx:
-                print("⚠️ Google Search API key or CX not configured, falling back to Tavily")
+                logger.warning("Google Search API key or CX not configured, falling back to Tavily")
                 self.provider = 'tavily'
 
         if self.provider == 'tavily':
             self.tavily_client = TavilyClient(api_key=os.getenv('TAVILY_API_KEY'))
 
-        print(f"🔍 Search provider: {self.provider.upper()}")
+        logger.info("Search provider: %s", self.provider.upper())
 
     def search(self, query, max_results=7):
         """Search the web using configured provider"""
@@ -29,7 +34,7 @@ class SearchEngine:
     def _search_google(self, query, max_results=7):
         """Search using Google Custom Search API"""
         try:
-            print(f"🔍 Google Search: {query}")
+            logger.info("Google Search: %s", query)
 
             # Google Custom Search API endpoint
             url = "https://www.googleapis.com/customsearch/v1"
@@ -59,20 +64,20 @@ class SearchEngine:
                         'score': 1.0  # Google doesn't provide relevance scores
                     })
 
-            print(f"✅ Found {len(results)} Google results")
+            logger.info("Found %d Google results", len(results))
             return results
 
         except requests.exceptions.RequestException as e:
-            print(f"❌ Google Search error: {type(e).__name__}: {e}")
+            logger.error("Google Search error: %s: %s", type(e).__name__, e)
             return []
         except Exception as e:
-            print(f"❌ Search error: {type(e).__name__}: {e}")
+            logger.error("Search error: %s: %s", type(e).__name__, e)
             return []
 
     def _search_tavily(self, query, max_results=7):
         """Search using Tavily (fallback/default)"""
         try:
-            print(f"🔍 Tavily Search: {query}")
+            logger.info("Tavily Search: %s", query)
             response = self.tavily_client.search(
                 query=query,
                 search_depth="advanced",
@@ -89,10 +94,10 @@ class SearchEngine:
                         'score': result.get('score', 0)
                     })
 
-            print(f"✅ Found {len(results)} Tavily results")
+            logger.info("Found %d Tavily results", len(results))
             return results
         except Exception as e:
-            print(f"❌ Tavily search error: {type(e).__name__}: {e}")
+            logger.error("Tavily search error: %s: %s", type(e).__name__, e)
             return []
 
     def build_contextual_query(self, user_message, conversation_history=None, max_context_msgs=5):
@@ -113,8 +118,6 @@ class SearchEngine:
         Returns:
             Enhanced search query string
         """
-        import re
-
         # Start with the user's message, cleaned up
         query = user_message.strip()
 
@@ -153,7 +156,7 @@ class SearchEngine:
                 # Combine the original question with the clarification
                 combined_query = self._merge_question_with_clarification(original_question, query)
                 if combined_query != query:
-                    print(f"🔍 Clarification detected: '{query}' → merged with original question → '{combined_query}'")
+                    logger.info("Clarification detected: '%s' -> merged with original question -> '%s'", query, combined_query)
                     return combined_query
 
         # Build context from recent messages (including bot responses!)
@@ -182,7 +185,7 @@ class SearchEngine:
             if unique_keywords:
                 # Prepend context keywords for better search relevance
                 enhanced_query = ' '.join(unique_keywords[:4]) + ' ' + query
-                print(f"🔍 Enhanced search query: '{query}' → '{enhanced_query}'")
+                logger.info("Enhanced search query: '%s' -> '%s'", query, enhanced_query)
                 return enhanced_query
 
         return query
@@ -198,8 +201,6 @@ class SearchEngine:
         - "last week" (clarifying a time)
         - "python 3.11" (clarifying a version)
         """
-        import re
-
         # Very short messages are likely clarifications
         if len(query_lower) < 30:
             # Check if it lacks question words (what, when, where, how, why, who, which, is, are, do, does, can, will)
@@ -228,8 +229,6 @@ class SearchEngine:
         Find the most recent question from conversation history that the current
         clarification might be answering.
         """
-        import re
-
         # Look through recent messages (reverse order - most recent first)
         for msg in reversed(conversation_history[-10:]):
             content = msg.get('content', '').lower()
@@ -265,8 +264,6 @@ class SearchEngine:
 
     def _topics_related(self, question, clarification):
         """Check if a clarification seems related to a question."""
-        import re
-
         # Check for location clarifications (e.g., "in scotland" clarifying "aberdeen")
         location_patterns = [
             (r'\b(in|at|from)\s+(\w+)', r'\b\2\b'),  # "in scotland" -> look for that place in question
@@ -301,8 +298,6 @@ class SearchEngine:
         - clarification: "aberdeen in scotland"
         - result: "when did it last not rain aberdeen scotland"
         """
-        import re
-
         # Clean up the original question
         question_clean = original_question.strip()
         # Remove bot name mentions
@@ -331,8 +326,6 @@ class SearchEngine:
 
     def _is_followup_question(self, query_lower):
         """Detect if a query is likely a follow-up question needing context."""
-        import re
-
         # Very short queries are almost always follow-ups
         if len(query_lower) < 20:
             return True
@@ -370,8 +363,6 @@ class SearchEngine:
 
     def _extract_topic_keywords(self, context_text, query_lower):
         """Extract relevant topic keywords from conversation context."""
-        import re
-
         topic_keywords = []
 
         # Static topic patterns - common subjects that should carry forward

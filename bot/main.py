@@ -103,12 +103,12 @@ yearly_wrapped = YearlyWrapped(db)
 qotd = QuoteOfTheDay(db)
 debate_scorekeeper = DebateScorekeeper(db, llm, search)
 trivia = TriviaSystem(db, llm)
-print("✅ Trivia system loaded")
+logger.info("Trivia system loaded")
 
 # GDPR Privacy Compliance (mandatory per EU regulations)
 from features.gdpr_privacy import GDPRPrivacyManager
 privacy_manager = GDPRPrivacyManager(db)
-print("✅ GDPR Privacy Manager loaded")
+logger.info("GDPR Privacy Manager loaded")
 
 # iRacing integration (optional - only if encrypted credentials provided)
 credential_manager = CredentialManager()
@@ -118,18 +118,18 @@ iracing_viz = None
 try:
     from iracing_viz import iRacingVisualizer
     iracing_viz = iRacingVisualizer()
-    print("✅ iRacing visualizer loaded")
+    logger.info("iRacing visualizer loaded")
 except Exception as e:
-    print(f"⚠️ Failed to load iRacing visualizer: {e}")
+    logger.warning("Failed to load iRacing visualizer: %s", e)
 
 stats_viz = None
 
 try:
     from stats_viz import StatsVisualizer
     stats_viz = StatsVisualizer()
-    print("✅ Stats visualizer loaded")
+    logger.info("Stats visualizer loaded")
 except Exception as e:
-    print(f"⚠️ Failed to load Stats visualizer: {e}")
+    logger.warning("Failed to load Stats visualizer: %s", e)
 
 iracing_credentials = credential_manager.get_iracing_credentials()
 if iracing_credentials:
@@ -140,14 +140,14 @@ if iracing_credentials:
         client_id=iracing_credentials.get('client_id'),
         client_secret=iracing_credentials.get('client_secret')
     )
-    print("✅ iRacing integration enabled (using encrypted credentials)")
+    logger.info("iRacing integration enabled (using encrypted credentials)")
 else:
-    print("⚠️ iRacing integration disabled (no encrypted credentials found)")
-    print("   Run 'python encrypt_credentials.py' to set up credentials")
+    logger.warning("iRacing integration disabled (no encrypted credentials found)")
+    logger.warning("Run 'python encrypt_credentials.py' to set up credentials")
 
 # iRacing Team Management (always available, independent of iRacing API)
 iracing_team_manager = iRacingTeamManager(db)
-print("✅ iRacing Team Manager loaded")
+logger.info("iRacing Team Manager loaded")
 
 WOMPIE_USERNAME = "wompie__"  # Discord username (lowercase)
 # Get Wompie's Discord user ID from environment (permanent, can't be spoofed)
@@ -165,7 +165,7 @@ series_autocomplete_cache = {'data': None, 'time': 0}
 # =========================================================================
 
 # Register background tasks
-print("\n🔧 Registering background tasks...")
+logger.info("Registering background tasks...")
 tasks_dict = register_tasks(
     bot=bot,
     db=db,
@@ -181,7 +181,7 @@ tasks_dict = register_tasks(
 )
 
 # Register event handlers
-print("🔧 Registering event handlers...")
+logger.info("Registering event handlers...")
 register_events(
     bot=bot,
     db=db,
@@ -208,7 +208,7 @@ register_events(
 )
 
 # Register prefix commands
-print("🔧 Registering prefix commands...")
+logger.info("Registering prefix commands...")
 register_prefix_commands(
     bot=bot,
     db=db,
@@ -221,7 +221,7 @@ register_prefix_commands(
 )
 
 # Register slash commands
-print("🔧 Registering slash commands...")
+logger.info("Registering slash commands...")
 register_slash_commands(
     bot=bot,
     db=db,
@@ -244,7 +244,7 @@ register_slash_commands(
     trivia=trivia
 )
 
-print("\n✅ All modules registered successfully!\n")
+logger.info("All modules registered successfully!")
 
 # =========================================================================
 # Error handling
@@ -258,7 +258,7 @@ async def on_command_error(ctx, error):
         await ctx.send("❌ User not found.")
     else:
         await ctx.send(f"❌ Error: {str(error)}")
-        print(f"Command error: {error}")
+        logger.error("Command error: %s", error)
 
 # =========================================================================
 # Run bot
@@ -267,8 +267,8 @@ async def on_command_error(ctx, error):
 if __name__ == "__main__":
     token = os.getenv('DISCORD_TOKEN')
     if not token:
-        print("❌ DISCORD_TOKEN not found in environment variables!")
+        logger.error("DISCORD_TOKEN not found in environment variables!")
         exit(1)
     
-    print("🚀 Starting WompBot...")
+    logger.info("Starting WompBot...")
     bot.run(token)

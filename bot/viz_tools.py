@@ -400,7 +400,7 @@ class GeneralVisualizer:
             response = requests.get(icon_url, timeout=5)
             if response.status_code == 200:
                 weather_icon = Image.open(BytesIO(response.content))
-        except:
+        except (requests.RequestException, OSError, IOError):
             pass
 
         # === LEFT SIDE ===

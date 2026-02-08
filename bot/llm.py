@@ -1,6 +1,12 @@
+import logging
 import os
+import re
+import time
+
 import requests
 from compression import ConversationCompressor
+
+logger = logging.getLogger(__name__)
 
 
 def _get_text_content(content):
@@ -72,13 +78,13 @@ class LLMClient:
                 with open(prompt_path, 'r', encoding='utf-8') as f:
                     prompt = f.read().strip()
                     if prompt:
-                        print(f"✅ Loaded {personality} personality prompt from {prompt_file}")
+                        logger.info("Loaded %s personality prompt from %s", personality, prompt_file)
                         return prompt
             except Exception as e:
-                print(f"⚠️  Error loading {personality} prompt from file: {e}")
+                logger.warning("Error loading %s prompt from file: %s", personality, e)
 
         # Fallback to default
-        print(f"📝 Using fallback prompt for {personality} personality")
+        logger.info("Using fallback prompt for %s personality", personality)
         return """You are WompBot, a conversational Discord bot with personality and substance.
 
 CORE PRINCIPLE:
@@ -139,7 +145,6 @@ Be useful and real. That's the balance."""
     
     def should_search(self, message_content, conversation_context):
         """Determine if web search is needed - only for genuine factual queries"""
-        import re
 
         # Only trigger on explicit factual question patterns
         search_triggers = [
@@ -198,13 +203,13 @@ Be useful and real. That's the balance."""
                 if any(trigger in msg_content for trigger in search_triggers):
                     # Found a search-worthy question in recent history
                     # Current short message is likely a clarification, so trigger search
-                    print(f"🔍 Clarification detected - triggering search for follow-up to: '{msg_content[:50]}...'")
+                    logger.info("Clarification detected - triggering search for follow-up to: '%.50s...'", msg_content)
                     return True
 
                 # Also check for specific patterns in user messages
                 for pattern in specific_factual_patterns:
                     if re.search(pattern, msg_content):
-                        print(f"🔍 Clarification detected - triggering search for follow-up to: '{msg_content[:50]}...'")
+                        logger.info("Clarification detected - triggering search for follow-up to: '%.50s...'", msg_content)
                         return True
 
         return False
@@ -249,7 +254,6 @@ Be useful and real. That's the balance."""
             images: List of image URLs to include in the message (for vision models)
             base64_images: List of base64-encoded images (for processed GIF frames, YouTube thumbnails)
         """
-        import time
 
         # Select appropriate system prompt based on personality
         if personality == 'bogan':
@@ -404,7 +408,7 @@ Use this history to maintain conversation continuity and remember what was discu
                 messages.append({"role": "user", "content": content_parts})
                 url_count = len(images) if images else 0
                 b64_count = len(base64_images) if base64_images else 0
-                print(f"   🖼️ Including {url_count} image URL(s) and {b64_count} processed frame(s) in message")
+                logger.info("Including %d image URL(s) and %d processed frame(s) in message", url_count, b64_count)
             else:
                 messages.append({"role": "user", "content": user_message_with_context})
 
@@ -435,7 +439,7 @@ Use this history to maintain conversation continuity and remember what was discu
                 messages_removed += 1
 
             if messages_removed > 0:
-                print(f"⚠️ Context truncated: removed {messages_removed} old messages (was {estimated_tokens + messages_removed * 100} tokens, now ~{estimated_tokens})")
+                logger.warning("Context truncated: removed %d old messages (was %d tokens, now ~%d)", messages_removed, estimated_tokens + messages_removed * 100, estimated_tokens)
 
             # Also enforce character limit as fallback
             while total_chars > self.MAX_HISTORY_CHARS and len(messages) > 3:
@@ -444,17 +448,17 @@ Use this history to maintain conversation continuity and remember what was discu
                 estimated_tokens = int(total_chars / 3.5)
 
             retry_text = f" (retry {retry_count + 1}/3)" if retry_count > 0 else ""
-            print(f"🤖 Sending to {self.model}{retry_text}")
-            print(f"   📊 Messages in context: {len(messages)}")
-            print(f"   📝 Estimated tokens: ~{estimated_tokens}")
-            # Debug: Print last few messages to verify history is included
+            logger.info("Sending to %s%s", self.model, retry_text)
+            logger.info("Messages in context: %d", len(messages))
+            logger.info("Estimated tokens: ~%d", estimated_tokens)
+            # Debug: Log last few messages to verify history is included
             if len(messages) > 1:
-                print(f"   💬 Recent context messages:")
+                logger.debug("Recent context messages:")
                 for i, msg in enumerate(messages[-4:]):  # Show last 4 messages
                     role = msg['role']
                     content_text = _get_text_content(msg['content'])
                     content_preview = content_text[:80].replace('\n', ' ') if content_text else "[image]"
-                    print(f"      [{i}] {role}: {content_preview}...")
+                    logger.debug("[%d] %s: %s...", i, role, content_preview)
 
             headers = {
                 "Authorization": f"Bearer {self.api_key}",
@@ -468,7 +472,7 @@ Use this history to maintain conversation continuity and remember what was discu
             # Use vision model for image analysis (text-only models can't see images)
             model_to_use = self.vision_model if has_images else self.model
             if has_images and model_to_use != self.model:
-                print(f"   🔄 Switching to vision model: {model_to_use}")
+                logger.info("Switching to vision model: %s", model_to_use)
 
             payload = {
                 "model": model_to_use,
@@ -494,7 +498,7 @@ Use this history to maintain conversation continuity and remember what was discu
                 if response.status_code == 429:
                     rate_limit_retry += 1
                     if rate_limit_retry > max_rate_limit_retries:
-                        print(f"❌ Rate limited by API after {max_rate_limit_retries} retries")
+                        logger.error("Rate limited by API after %d retries", max_rate_limit_retries)
                         raise requests.HTTPError(f"Rate limited after {max_rate_limit_retries} retries", response=response)
 
                     # Check for Retry-After header
@@ -508,7 +512,7 @@ Use this history to maintain conversation continuity and remember what was discu
                         # Exponential backoff: 2, 4, 8 seconds
                         wait_time = 2 ** rate_limit_retry
 
-                    print(f"⏱️ Rate limited by API. Waiting {wait_time}s (attempt {rate_limit_retry}/{max_rate_limit_retries})")
+                    logger.warning("Rate limited by API. Waiting %ds (attempt %d/%d)", wait_time, rate_limit_retry, max_rate_limit_retries)
                     time.sleep(wait_time)
                     continue
 
@@ -519,7 +523,7 @@ Use this history to maintain conversation continuity and remember what was discu
                 response.raise_for_status()
             except requests.HTTPError as http_err:
                 body_preview = response.text[:500] if hasattr(response, "text") else "no body"
-                print(f"❌ LLM HTTP error {response.status_code}: {body_preview}")
+                logger.error("LLM HTTP error %d: %s", response.status_code, body_preview)
                 raise http_err
 
             result = response.json()
@@ -529,7 +533,7 @@ Use this history to maintain conversation continuity and remember what was discu
             # Check if LLM wants to call a tool
             tool_calls = message.get("tool_calls")
             if tool_calls:
-                print(f"🛠️  LLM requested {len(tool_calls)} tool call(s)")
+                logger.info("LLM requested %d tool call(s)", len(tool_calls))
                 # Return tool calls for execution
                 return {
                     "type": "tool_calls",
@@ -542,7 +546,7 @@ Use this history to maintain conversation continuity and remember what was discu
             input_tokens = usage.get("prompt_tokens", 0)
             output_tokens = usage.get("completion_tokens", 0)
 
-            print(f"✅ LLM response length: {len(response_text)} chars (tokens: {input_tokens} in / {output_tokens} out)")
+            logger.info("LLM response length: %d chars (tokens: %d in / %d out)", len(response_text), input_tokens, output_tokens)
 
             # Record costs if cost tracker is available
             # This function is called from asyncio.to_thread(), so we're always in a worker thread
@@ -553,12 +557,12 @@ Use this history to maintain conversation continuity and remember what was discu
                         model_to_use, input_tokens, output_tokens, 'chat', user_id, username
                     )
                 except Exception as e:
-                    print(f"⚠️  Error tracking costs: {e}")
+                    logger.warning("Error tracking costs: %s", e)
 
             if not response_text or len(response_text.strip()) == 0:
-                print(f"⚠️  WARNING: Empty response from LLM. Full result: {result}")
+                logger.warning("Empty response from LLM. Full result: %s", result)
                 if retry_count < 2:
-                    print("🔄 Retrying in 2 seconds...")
+                    logger.info("Retrying in 2 seconds...")
                     time.sleep(2)
                     return self.generate_response(
                         user_message,
@@ -570,14 +574,14 @@ Use this history to maintain conversation continuity and remember what was discu
                         bot_user_id=bot_user_id,
                     )
                 else:
-                    print(f"❌ Failed after {retry_count + 1} attempts")
+                    logger.error("Failed after %d attempts", retry_count + 1)
                     return None
 
             return response_text
         except Exception as e:
-            print(f"❌ LLM error: {type(e).__name__}: {e}")
+            logger.error("LLM error: %s: %s", type(e).__name__, e)
             if retry_count < 2:
-                print("🔄 Retrying in 2 seconds due to error...")
+                logger.info("Retrying in 2 seconds due to error...")
                 time.sleep(2)
                 return self.generate_response(
                     user_message,
@@ -641,12 +645,11 @@ Be objective and base your analysis only on observable patterns."""
                 'conversation_style': self._extract_section(analysis_text, 'style')
             }
         except Exception as e:
-            print(f"❌ Behavior analysis error: {e}")
+            logger.error("Behavior analysis error: %s", e)
             return None
     
     def _extract_score(self, text):
         """Extract profanity score from analysis"""
-        import re
         match = re.search(r'(\d+)/10', text)
         return int(match.group(1)) if match else 0
     
@@ -745,5 +748,5 @@ If no questions, respond with: NONE"""
             return results
         
         except Exception as e:
-            print(f"❌ Question classification error: {e}")
+            logger.error("Question classification error: %s", e)
             return {}

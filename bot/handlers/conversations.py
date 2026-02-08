@@ -5,12 +5,16 @@ This module contains conversation-related functions including bot mention handli
 and leaderboard generation.
 """
 
-import os
-import re
-import random
 import asyncio
+import logging
+import os
+import random
+import re
+
 import discord
 from datetime import datetime, timezone
+
+logger = logging.getLogger(__name__)
 
 # Tool system imports
 from viz_tools import GeneralVisualizer
@@ -84,7 +88,23 @@ async def cleanup_stale_rate_state():
             del MENTION_RATE_STATE[uid]
 
     if stale_users:
-        print(f"🧹 Cleaned up {len(stale_users)} stale rate limit entries")
+        logger.debug("Cleaned up %d stale rate limit entries", len(stale_users))
+
+    # Cleanup CHANNEL_LOCKS - remove locks for channels no longer in active rate state
+    # and not currently locked (i.e., not actively processing a request)
+    async with _CHANNEL_LOCKS_LOCK:
+        active_channels = set()
+        # Keep locks for channels that are currently locked (in-use)
+        stale_channels = [
+            ch_id for ch_id, lock in CHANNEL_LOCKS.items()
+            if not lock.locked()
+        ]
+        # Only clean up if we have more than 1000 entries to avoid unbounded growth
+        if len(CHANNEL_LOCKS) > 1000:
+            for ch_id in stale_channels:
+                del CHANNEL_LOCKS[ch_id]
+            if stale_channels:
+                logger.debug("Cleaned up %d stale channel locks", len(stale_channels))
 
 # Initialize visualization tools (module-level, reused across calls)
 _visualizer = None
@@ -190,8 +210,8 @@ async def generate_leaderboard_response(channel, stat_type, days, db, llm):
                 await thinking_msg.edit(content="No messages available for this period.")
                 return
 
-            # Classify questions using LLM
-            results = llm.classify_questions(messages)
+            # Classify questions using LLM (run in thread to avoid blocking event loop)
+            results = await asyncio.to_thread(llm.classify_questions, messages)
 
             if not results:
                 await thinking_msg.edit(content="Error analyzing questions.")
@@ -230,14 +250,14 @@ async def generate_leaderboard_response(channel, stat_type, days, db, llm):
 
     except Exception as e:
         await channel.send(f"Error generating stats: {str(e)}")
-        print(f"Leaderboard generation error: {e}")
+        logger.error("Leaderboard generation error: %s", e)
 
 
 async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, search=None,
                              self_knowledge=None, rag=None, wolfram=None, weather=None,
                              iracing_manager=None, reminder_system=None):
     """Handle when bot is mentioned/tagged"""
-    print(f"🔔 handle_bot_mention called for {message.author} in #{getattr(message.channel, 'name', 'DM')}")
+    logger.info("handle_bot_mention called for %s in #%s", message.author, getattr(message.channel, 'name', 'DM'))
     # Track placeholder message for cleanup on error
     placeholder_msg = None
     # Track channel lock for cleanup
@@ -247,11 +267,10 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
         await cleanup_stale_rate_state()
 
         # Check if user is admin (bypass all rate limits)
-        # Admin IDs from env (comma-separated) or legacy username check
+        # Admin IDs from env (comma-separated)
         admin_ids_str = os.getenv('BOT_ADMIN_IDS', '')
         admin_ids = set(int(x.strip()) for x in admin_ids_str.split(',') if x.strip().isdigit())
-        admin_username = os.getenv('BOT_ADMIN_USERNAME', '').lower()
-        is_admin = message.author.id in admin_ids or (admin_username and str(message.author).lower() == admin_username)
+        is_admin = message.author.id in admin_ids
 
         # Check if this is a text mention ("wompbot") vs @mention only
         # Cost logging will only appear for text mentions to reduce log noise
@@ -311,10 +330,10 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
             if is_image and attachment.url:
                 media_type = 'gif' if filename_lower.endswith('.gif') else 'image'
                 raw_media.append((attachment.url, media_type))
-                print(f"🖼️ Found {media_type} attachment: {attachment.filename}")
+                logger.debug("Found %s attachment: %s", media_type, attachment.filename)
             elif is_video and attachment.url:
                 raw_media.append((attachment.url, 'video'))
-                print(f"🎬 Found video attachment: {attachment.filename}")
+                logger.debug("Found video attachment: %s", attachment.filename)
 
         # Check for embedded image URLs
         image_url_pattern = r'https?://[^\s<>"]+?\.(?:png|jpg|jpeg|gif|webp)(?:\?[^\s<>"]*)?'
@@ -322,7 +341,7 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
             if not any(url == m[0] for m in raw_media):
                 media_type = 'gif' if url.lower().endswith('.gif') else 'image'
                 raw_media.append((url, media_type))
-                print(f"🖼️ Found embedded {media_type}: {url[:50]}...")
+                logger.debug("Found embedded %s: %s...", media_type, url[:50])
 
         # Check for YouTube URLs in message content
         youtube_pattern = r'(?:https?://)?(?:www\.)?(?:youtube\.com/watch\?v=|youtu\.be/|youtube\.com/shorts/)([a-zA-Z0-9_-]{11})'
@@ -331,11 +350,11 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
             yt_url = f"https://www.youtube.com/watch?v={video_id}"
             if not any(yt_url == m[0] for m in raw_media):
                 raw_media.append((yt_url, 'youtube'))
-                print(f"📺 Found YouTube video: {video_id}")
+                logger.debug("Found YouTube video: %s", video_id)
 
         # If no media in current message but user is asking about an image, check recent messages
         if not raw_media and is_asking_about_image(content):
-            print(f"🔍 User asking about image but no media in message - checking recent channel history...")
+            logger.debug("User asking about image but no media in message - checking recent channel history...")
             try:
                 # Look at the last 10 messages for any media
                 async for recent_msg in message.channel.history(limit=10, before=message):
@@ -354,7 +373,7 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                         if is_image and attachment.url:
                             media_type = 'gif' if filename_lower.endswith('.gif') else 'image'
                             raw_media.append((attachment.url, media_type))
-                            print(f"🖼️ Found {media_type} in recent message from {recent_msg.author}: {attachment.filename}")
+                            logger.debug("Found %s in recent message from %s: %s", media_type, recent_msg.author, attachment.filename)
                             break  # Only get one image
 
                     # Also check for Tenor/Giphy GIFs in message content or embeds
@@ -363,17 +382,17 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                         for embed in recent_msg.embeds:
                             if embed.image and embed.image.url:
                                 raw_media.append((embed.image.url, 'image'))
-                                print(f"🖼️ Found embedded image from {recent_msg.author}: {embed.image.url[:50]}...")
+                                logger.debug("Found embedded image from %s: %s...", recent_msg.author, embed.image.url[:50])
                                 break
                             if embed.thumbnail and embed.thumbnail.url:
                                 raw_media.append((embed.thumbnail.url, 'image'))
-                                print(f"🖼️ Found thumbnail from {recent_msg.author}: {embed.thumbnail.url[:50]}...")
+                                logger.debug("Found thumbnail from %s: %s...", recent_msg.author, embed.thumbnail.url[:50])
                                 break
 
                     if raw_media:
                         break  # Found media, stop searching
             except Exception as e:
-                print(f"⚠️ Error checking recent messages for media: {e}")
+                logger.warning("Error checking recent messages for media: %s", e)
 
         # Process media to extract frames/thumbnails
         processed_images = []  # base64 encoded images
@@ -385,7 +404,7 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
             if media_type == 'youtube':
                 # Process YouTube video - transcript first (instant), frames only if needed
                 video_id = media_processor.extract_youtube_id(url)
-                print(f"📺 Processing YouTube video: {video_id}")
+                logger.info("Processing YouTube video: %s", video_id)
 
                 # Send processing message (usually quick for transcript-only)
                 processing_msg = await message.channel.send("📝 Getting video transcript...")
@@ -395,7 +414,7 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                 # Delete processing message
                 try:
                     await processing_msg.delete()
-                except:
+                except discord.NotFound:
                     pass
 
                 if yt_result.get('success'):
@@ -414,7 +433,7 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                         media_context_notes.append(
                             f"[YouTube Video: \"{title}\" by {author} ({duration_str}) - transcript available below]"
                         )
-                        print(f"✅ Got video transcript ({len(transcript_text)} chars)")
+                        logger.info("Got video transcript (%d chars)", len(transcript_text))
 
                     # Add thumbnail/frames for visual reference
                     if yt_result.get('frames'):
@@ -427,14 +446,14 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                                 f"[YouTube Video: \"{title}\" by {author} ({duration_str}) - "
                                 f"no transcript available, showing {frame_count} frames at: {', '.join(timestamps)}]"
                             )
-                        print(f"✅ Got {frame_count} visual frames from video")
+                        logger.info("Got %d visual frames from video", frame_count)
                 else:
                     media_context_notes.append(f"[YouTube video processing failed: {yt_result.get('error', 'unknown error')}]")
-                    print(f"⚠️ YouTube processing failed: {yt_result.get('error')}")
+                    logger.warning("YouTube processing failed: %s", yt_result.get('error'))
 
             elif media_type == 'gif':
                 # Process GIF - extract multiple frames
-                print(f"🎞️ Extracting frames from GIF...")
+                logger.debug("Extracting frames from GIF...")
                 gif_result = await media_processor.extract_gif_frames(url, max_frames=6)
                 if gif_result.get('success'):
                     if gif_result.get('is_animated'):
@@ -444,18 +463,18 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                         media_context_notes.append(
                             f"[Animated GIF: showing {frame_count} frames from {total_frames} total frames to capture the full animation]"
                         )
-                        print(f"✅ Extracted {frame_count} frames from animated GIF ({total_frames} total)")
+                        logger.info("Extracted %d frames from animated GIF (%d total)", frame_count, total_frames)
                     else:
                         processed_images.extend(gif_result['frames'])
-                        print(f"✅ GIF is static, extracted single frame")
+                        logger.debug("GIF is static, extracted single frame")
                 else:
                     # Fallback: pass URL directly
                     direct_image_urls.append(url)
-                    print(f"⚠️ GIF extraction failed, passing URL directly: {gif_result.get('error')}")
+                    logger.warning("GIF extraction failed, passing URL directly: %s", gif_result.get('error'))
 
             elif media_type == 'video':
                 # Process Discord/attached videos - transcription first, frames as fallback
-                print(f"🎬 Processing video attachment...")
+                logger.info("Processing video attachment...")
 
                 processing_msg = await message.channel.send("🎤 Transcribing video audio...")
 
@@ -463,7 +482,7 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
 
                 try:
                     await processing_msg.delete()
-                except:
+                except discord.NotFound:
                     pass
 
                 if video_result.get('success'):
@@ -476,7 +495,7 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                         if len(transcript_text) > 4000:
                             transcript_text = transcript_text[:4000] + "\n[...transcript truncated...]"
                         media_context_notes.append(f"[Video ({duration_str}) - transcript available below]")
-                        print(f"✅ Got video transcription ({len(transcript_text)} chars)")
+                        logger.info("Got video transcription (%d chars)", len(transcript_text))
 
                     # Add frames for visual reference
                     if video_result.get('frames'):
@@ -488,10 +507,10 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                             media_context_notes.append(
                                 f"[Video ({duration_str}): no audio transcript, showing {frame_count} frames at: {', '.join(timestamps)}]"
                             )
-                        print(f"✅ Got {frame_count} visual frames from video")
+                        logger.info("Got %d visual frames from video", frame_count)
                 else:
                     media_context_notes.append(f"[Video processing failed: {video_result.get('error', 'unknown')}]")
-                    print(f"⚠️ Video processing failed: {video_result.get('error')}")
+                    logger.warning("Video processing failed: %s", video_result.get('error'))
 
             else:
                 # Regular image - pass URL directly
@@ -509,9 +528,9 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
 
         if has_media:
             types_found = set(m[1] for m in raw_media)
-            print(f"📷 Total media to analyze: {len(raw_media)} ({', '.join(types_found)})")
+            logger.info("Total media to analyze: %d (%s)", len(raw_media), ', '.join(types_found))
             if processed_images:
-                print(f"   📦 Processed {len(processed_images)} frames/thumbnails to base64")
+                logger.debug("Processed %d frames/thumbnails to base64", len(processed_images))
 
         # Allow media-only messages (no text but has images/videos)
         if (not content or len(content) < 2) and not has_media:
@@ -631,10 +650,10 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
         )
 
         # Debug: Log conversation history
-        print(f"🔍 Retrieved {len(conversation_history)} messages for context (limit={context_window})")
+        logger.debug("Retrieved %d messages for context (limit=%d)", len(conversation_history), context_window)
         if len(conversation_history) > 0:
-            print(f"   First message: {conversation_history[0].get('username')}: {conversation_history[0].get('content', '')[:50]}")
-            print(f"   Last message: {conversation_history[-1].get('username')}: {conversation_history[-1].get('content', '')[:50]}")
+            logger.debug("   First message: %s: %s", conversation_history[0].get('username'), conversation_history[0].get('content', '')[:50])
+            logger.debug("   Last message: %s: %s", conversation_history[-1].get('username'), conversation_history[-1].get('content', '')[:50])
 
         # Always send a placeholder message immediately for better UX
         # Use search message if search is likely needed, otherwise use thinking message
@@ -668,7 +687,7 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                 )
                 bot_docs = self_knowledge.format_for_llm(content, full_conversation_history, bot.user.id)
                 if bot_docs:
-                    print(f"📚 Loading WompBot documentation for self-knowledge question")
+                    logger.info("Loading WompBot documentation for self-knowledge question")
 
             # Check if search is needed (skip if we're using docs)
             search_results = None
@@ -762,7 +781,7 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                         if result.get("type") == "image":
                             images_to_send.append(result["image"])
                             tool_results.append(f"Successfully created {tool_name} visualization")
-                            print(f"✅ Tool {tool_name} created image")
+                            logger.info("Tool %s created image", tool_name)
                         elif result.get("type") == "image_url":
                             # Send image as Discord embed
                             image_url = result.get("url")
@@ -772,7 +791,7 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                                 embed.set_image(url=image_url)
                                 await message.channel.send(embed=embed)
                                 tool_results.append(f"Successfully found and displayed image of {image_title}")
-                                print(f"✅ Tool {tool_name} sent image embed: {image_url[:50]}...")
+                                logger.info("Tool %s sent image embed: %s...", tool_name, image_url[:50])
                         elif result.get("type") == "text":
                             text_response = result.get("text", "")
                             # web_search results should only go to LLM for synthesis, not directly to user
@@ -780,37 +799,37 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                                 text_responses.append(text_response)
                             # Always include full results for LLM to analyze
                             tool_results.append(f"{tool_name}: {text_response}")
-                            print(f"✅ Tool {tool_name} returned text: {text_response[:100]}...")
+                            logger.info("Tool %s returned text: %s...", tool_name, text_response[:100])
                     else:
                         error_msg = result.get("error", "Unknown error")
                         tool_results.append(f"Error in {tool_name}: {error_msg}")
                         # Show errors to user immediately
                         text_responses.append(f"❌ {error_msg}")
-                        print(f"❌ Tool {tool_name} failed: {error_msg}")
+                        logger.error("Tool %s failed: %s", tool_name, error_msg)
 
                 # Send images to Discord
                 if images_to_send:
-                    print(f"📤 Sending {len(images_to_send)} image(s) to user")
+                    logger.info("Sending %d image(s) to user", len(images_to_send))
                     files = []
                     for i, img_buffer in enumerate(images_to_send):
                         files.append(discord.File(img_buffer, filename=f"chart_{i}.png"))
                     await message.channel.send(files=files)
-                    print(f"✅ Images sent successfully")
+                    logger.info("Images sent successfully")
 
                 # Send text responses (from tools like Wolfram/Weather/Search)
                 if text_responses:
                     combined_text = "\n\n".join(text_responses)
-                    print(f"📤 Sending text response ({len(combined_text)} chars)")
+                    logger.info("Sending text response (%d chars)", len(combined_text))
                     # Chunk if longer than Discord's 2000 char limit
                     if len(combined_text) > 2000:
                         chunks = [combined_text[i:i+2000] for i in range(0, len(combined_text), 2000)]
                         for chunk in chunks:
                             if chunk.strip():
                                 await message.channel.send(chunk)
-                        print(f"✅ Sent {len(chunks)} text chunks")
+                        logger.info("Sent %d text chunks", len(chunks))
                     else:
                         await message.channel.send(combined_text)
-                        print(f"✅ Text response sent")
+                        logger.info("Text response sent")
 
                 # If tools were executed AND there's no response_text from LLM,
                 # ask LLM to provide commentary on the tool results
@@ -831,10 +850,10 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                 # 2. Non-visualization tools were used AND no initial response
                 needs_synthesis = has_search_results or (not only_viz_tools and not initial_response_text)
 
-                print(f"🤔 Synthesis decision: viz_tools={only_viz_tools}, has_search={has_search_results}, needs_synthesis={needs_synthesis}")
+                logger.debug("Synthesis decision: viz_tools=%s, has_search=%s, needs_synthesis=%s", only_viz_tools, has_search_results, needs_synthesis)
 
                 if tool_results and needs_synthesis:
-                    print(f"🧠 Synthesizing {len(tool_results)} tool results...")
+                    logger.info("Synthesizing %d tool results...", len(tool_results))
                     # Update status to show we're analyzing
                     await status_msg.edit(content="🤔 Analyzing results...")
 
@@ -862,16 +881,16 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
 
                     # Delete status message after synthesis
                     await status_msg.delete()
-                    print(f"✅ Synthesis complete")
+                    logger.info("Synthesis complete")
                 elif initial_response_text and not only_viz_tools:
                     # LLM provided commentary along with tool call
                     # But skip for visualization tools (weather, charts, etc.) - the output speaks for itself
-                    print(f"💬 Using initial LLM response (non-viz tools)")
+                    logger.debug("Using initial LLM response (non-viz tools)")
                     response = initial_response_text
                     await status_msg.delete()
                 else:
                     # No output from tools, or visualization tools completed
-                    print(f"✅ Visualization tools complete, skipping synthesis")
+                    logger.debug("Visualization tools complete, skipping synthesis")
                     response = None
                     await status_msg.delete()
 
@@ -957,7 +976,7 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                             if result.get("type") == "image":
                                 images_to_send.append(result["image"])
                                 tool_results.append(f"Successfully created {tool_name} visualization")
-                                print(f"✅ Tool {tool_name} created image")
+                                logger.info("Tool %s created image", tool_name)
                             elif result.get("type") == "image_url":
                                 # Send image as Discord embed
                                 image_url = result.get("url")
@@ -967,7 +986,7 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                                     embed.set_image(url=image_url)
                                     await message.channel.send(embed=embed)
                                     tool_results.append(f"Successfully found and displayed image of {image_title}")
-                                    print(f"✅ Tool {tool_name} sent image embed: {image_url[:50]}...")
+                                    logger.info("Tool %s sent image embed: %s...", tool_name, image_url[:50])
                             elif result.get("type") == "text":
                                 text_response = result.get("text", "")
                                 # web_search results should only go to LLM for synthesis, not directly to user
@@ -975,35 +994,35 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                                     text_responses.append(text_response)
                                 # Always include full results for LLM to analyze
                                 tool_results.append(f"{tool_name}: {text_response}")
-                                print(f"✅ Tool {tool_name} returned text: {text_response[:100]}...")
+                                logger.info("Tool %s returned text: %s...", tool_name, text_response[:100])
                         else:
                             error_msg = result.get("error", "Unknown error")
                             tool_results.append(f"Error in {tool_name}: {error_msg}")
                             # Show errors to user immediately
                             text_responses.append(f"❌ {error_msg}")
-                            print(f"❌ Tool {tool_name} failed: {error_msg}")
+                            logger.error("Tool %s failed: %s", tool_name, error_msg)
 
                     if images_to_send:
-                        print(f"📤 Sending {len(images_to_send)} image(s) to user")
+                        logger.info("Sending %d image(s) to user", len(images_to_send))
                         files = []
                         for i, img_buffer in enumerate(images_to_send):
                             files.append(discord.File(img_buffer, filename=f"chart_{i}.png"))
                         await message.channel.send(files=files)
-                        print(f"✅ Images sent successfully")
+                        logger.info("Images sent successfully")
 
                     if text_responses:
                         combined_text = "\n\n".join(text_responses)
-                        print(f"📤 Sending text response ({len(combined_text)} chars)")
+                        logger.info("Sending text response (%d chars)", len(combined_text))
                         # Chunk if longer than Discord's 2000 char limit
                         if len(combined_text) > 2000:
                             chunks = [combined_text[i:i+2000] for i in range(0, len(combined_text), 2000)]
                             for chunk in chunks:
                                 if chunk.strip():
                                     await message.channel.send(chunk)
-                            print(f"✅ Sent {len(chunks)} text chunks")
+                            logger.info("Sent %d text chunks", len(chunks))
                         else:
                             await message.channel.send(combined_text)
-                            print(f"✅ Text response sent")
+                            logger.info("Text response sent")
 
                     # Get LLM commentary on tool results if needed
                     initial_response_text = response.get("response_text", "").strip()
@@ -1055,11 +1074,11 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
             if response is not None:
                 # Restore Discord mentions before sending
                 response = restore_discord_mentions(response, message)
-                print(f"📝 Final response prepared ({len(response)} chars)")
+                logger.info("Final response prepared (%d chars)", len(response))
 
             # Send or edit response
             if response is not None and placeholder_msg:
-                print(f"📤 Editing search message with final response")
+                logger.debug("Editing search message with final response")
                 # Edit the search message with the response
                 if len(response) > 2000:
                     await placeholder_msg.edit(content=response[:2000])
@@ -1071,26 +1090,26 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                     for chunk in chunks:
                         if chunk.strip():
                             await message.channel.send(chunk)
-                    print(f"✅ Search message edited, sent {len(chunks)} additional chunks")
+                    logger.info("Search message edited, sent %d additional chunks", len(chunks))
                 else:
                     await placeholder_msg.edit(content=response)
                     # Store the edited response in database (edit doesn't trigger on_message)
                     db.store_message(placeholder_msg, opted_out=False, content_override=response)
-                    print(f"✅ Search message edited")
+                    logger.info("Search message edited")
             elif response is not None:
-                print(f"📤 Sending final response as new message")
+                logger.debug("Sending final response as new message")
                 # No search, just send normally
                 if len(response) > 2000:
                     chunks = [response[i:i+2000] for i in range(0, len(response), 2000)]
                     for chunk in chunks:
                         if chunk.strip():
                             await message.channel.send(chunk)
-                    print(f"✅ Sent response in {len(chunks)} chunks")
+                    logger.info("Sent response in %d chunks", len(chunks))
                 else:
                     await message.channel.send(response)
-                    print(f"✅ Response sent")
+                    logger.info("Response sent")
             else:
-                print(f"ℹ️ No final response to send (tools already sent output)")
+                logger.info("No final response to send (tools already sent output)")
 
             # Record token usage for rate limiting
             # Estimate: ~4 characters per token (common approximation)
@@ -1100,9 +1119,7 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
             db.record_token_usage(message.author.id, str(message.author), estimated_tokens)
 
     except Exception as e:
-        print(f"❌ Error handling message: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.error("Error handling message: %s", e, exc_info=True)
 
         # Clean up orphaned placeholder message if it exists
         if placeholder_msg:
@@ -1118,7 +1135,7 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
             if channel_lock is not None and channel_lock.locked():
                 channel_lock.release()
         except Exception as lock_error:
-            print(f"⚠️ Error releasing channel lock: {lock_error}")
+            logger.warning("Error releasing channel lock: %s", lock_error)
 
         # Decrement concurrent request counter (with lock for thread safety)
         try:
@@ -1128,4 +1145,4 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                     if USER_CONCURRENT_REQUESTS[message.author.id] <= 0:
                         del USER_CONCURRENT_REQUESTS[message.author.id]
         except Exception as cleanup_error:
-            print(f"⚠️ Error cleaning up concurrent request counter: {cleanup_error}")
+            logger.warning("Error cleaning up concurrent request counter: %s", cleanup_error)

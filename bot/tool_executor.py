@@ -546,7 +546,7 @@ class ToolExecutor:
                                             'title': result.get('title', query),
                                             'source': result.get('source', '')
                                         }
-                                except:
+                                except Exception:
                                     continue
                 return None
 
@@ -1698,7 +1698,7 @@ class ToolExecutor:
                                 try:
                                     game_time = dt.fromisoformat(date_str.replace("Z", "+00:00"))
                                     time_str = game_time.strftime("%I:%M %p")
-                                except:
+                                except (ValueError, TypeError):
                                     time_str = status
                             else:
                                 time_str = status

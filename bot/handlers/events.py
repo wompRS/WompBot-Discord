@@ -4,12 +4,17 @@ Event handlers for WompBot Discord bot.
 This module contains all Discord event handlers (@bot.event decorators).
 """
 
-import os
 import asyncio
+import logging
+import os
+import re
+
 import discord
 from datetime import timedelta
 from cost_tracker import CostTracker
 from features.team_menu import show_team_menu
+
+logger = logging.getLogger(__name__)
 
 
 def register_events(bot, db, privacy_manager, claims_tracker, debate_scorekeeper,
@@ -47,8 +52,8 @@ def register_events(bot, db, privacy_manager, claims_tracker, debate_scorekeeper
 
     @bot.event
     async def on_ready():
-        print(f'✅ WompBot logged in as {bot.user}')
-        print(f'📊 Connected to {len(bot.guilds)} servers')
+        logger.info("WompBot logged in as %s", bot.user)
+        logger.info("Connected to %d servers", len(bot.guilds))
 
         # Set bot user ID for stats ranking exclusion (tracks bot messages separately)
         db.set_bot_user_id(bot.user.id)
@@ -57,7 +62,7 @@ def register_events(bot, db, privacy_manager, claims_tracker, debate_scorekeeper
         if wompie_user_id[0]:
             # Already set from environment variable
             claims_tracker.wompie_user_id = wompie_user_id[0]
-            print(f'👑 Wompie ID from environment: {wompie_user_id[0]}')
+            logger.info("Wompie ID from environment: %s", wompie_user_id[0])
         else:
             # Fall back to searching by username
             for guild in bot.guilds:
@@ -65,18 +70,18 @@ def register_events(bot, db, privacy_manager, claims_tracker, debate_scorekeeper
                 if member:
                     claims_tracker.wompie_user_id = member.id
                     wompie_user_id[0] = member.id
-                    print(f'👑 Wompie identified by username: {member.id}')
+                    logger.info("Wompie identified by username: %s", member.id)
                     break
 
         # Initialize cost tracker with bot instance
         cost_tracker_instance = CostTracker(db, bot)
         llm.cost_tracker = cost_tracker_instance
-        print("💸 Cost tracking enabled - alerts every $1")
+        logger.info("Cost tracking enabled - alerts every $1")
 
         # Setup GDPR privacy commands BEFORE syncing
         from privacy_commands import setup_privacy_commands
         setup_privacy_commands(bot, db, privacy_manager)
-        print("🔒 GDPR privacy commands registered")
+        logger.info("GDPR privacy commands registered")
 
         # Setup iRacing team commands BEFORE syncing
         from iracing_team_commands import setup_iracing_team_commands
@@ -87,7 +92,7 @@ def register_events(bot, db, privacy_manager, claims_tracker, debate_scorekeeper
         else:
             # Set up event commands without API features
             setup_iracing_event_commands(bot, iracing_team_manager, None)
-        print("🏁 iRacing team & event commands registered")
+        logger.info("iRacing team & event commands registered")
 
         # Sync slash commands with Discord (guild-specific for instant updates)
         try:
@@ -98,64 +103,64 @@ def register_events(bot, db, privacy_manager, claims_tracker, debate_scorekeeper
                 guild = discord.Object(id=int(primary_guild_id))
                 bot.tree.copy_global_to(guild=guild)
                 synced = await bot.tree.sync(guild=guild)
-                print(f"✅ Synced {len(synced)} slash commands to guild (instant)")
+                logger.info("Synced %d slash commands to guild (instant)", len(synced))
 
             # Also sync globally for other servers (takes up to 1 hour)
             await bot.tree.sync()
-            print(f"✅ Global sync initiated")
+            logger.info("Global sync initiated")
         except Exception as e:
-            print(f"❌ Failed to sync commands: {e}")
+            logger.error("Failed to sync commands: %s", e)
 
         # Start background tasks (from tasks_dict)
         if tasks_dict:
             if 'precompute_stats' in tasks_dict and not tasks_dict['precompute_stats'].is_running():
                 tasks_dict['precompute_stats'].start()
-                print("🔄 Background stats pre-computation enabled (runs every hour)")
+                logger.info("Background stats pre-computation enabled (runs every hour)")
 
             if 'check_reminders' in tasks_dict and not tasks_dict['check_reminders'].is_running():
                 tasks_dict['check_reminders'].start()
-                print("⏰ Reminder checking enabled (runs every minute)")
+                logger.info("Reminder checking enabled (runs every minute)")
 
             if 'gdpr_cleanup' in tasks_dict and not tasks_dict['gdpr_cleanup'].is_running():
                 tasks_dict['gdpr_cleanup'].start()
-                print("🧹 GDPR data cleanup enabled (runs daily)")
+                logger.info("GDPR data cleanup enabled (runs daily)")
 
             if 'analyze_user_behavior' in tasks_dict and not tasks_dict['analyze_user_behavior'].is_running():
                 tasks_dict['analyze_user_behavior'].start()
-                print("🧠 Automatic user behavior analysis enabled (runs hourly)")
+                logger.info("Automatic user behavior analysis enabled (runs hourly)")
 
             if rag.enabled and 'process_embeddings' in tasks_dict and not tasks_dict['process_embeddings'].is_running():
                 tasks_dict['process_embeddings'].start()
-                print("🧠 RAG embedding processing enabled (runs every 5 minutes)")
+                logger.info("RAG embedding processing enabled (runs every 5 minutes)")
 
             if iracing and 'update_iracing_popularity' in tasks_dict and not tasks_dict['update_iracing_popularity'].is_running():
                 tasks_dict['update_iracing_popularity'].start()
-                print("📊 iRacing popularity updates enabled (runs weekly)")
+                logger.info("iRacing popularity updates enabled (runs weekly)")
 
             if iracing and db and 'snapshot_participation_data' in tasks_dict and not tasks_dict['snapshot_participation_data'].is_running():
                 tasks_dict['snapshot_participation_data'].start()
-                print("📸 iRacing participation snapshots enabled (runs daily)")
+                logger.info("iRacing participation snapshots enabled (runs daily)")
 
             if 'check_event_reminders' in tasks_dict and not tasks_dict['check_event_reminders'].is_running():
                 tasks_dict['check_event_reminders'].start()
-                print("📅 Event reminder checking enabled (runs every 5 minutes)")
+                logger.info("Event reminder checking enabled (runs every 5 minutes)")
 
             if iracing_team_manager and 'check_team_event_reminders' in tasks_dict and not tasks_dict['check_team_event_reminders'].is_running():
                 tasks_dict['check_team_event_reminders'].start()
-                print("📅 Team event reminder checking enabled (runs every 15 minutes)")
+                logger.info("Team event reminder checking enabled (runs every 15 minutes)")
 
         # Authenticate with iRacing on startup
         if iracing:
             async def authenticate_iracing():
                 try:
-                    print("🔐 Authenticating with iRacing...")
+                    logger.info("Authenticating with iRacing...")
                     client = await iracing._get_client()
                     if client and client.authenticated:
-                        print("✅ iRacing authentication successful")
+                        logger.info("iRacing authentication successful")
                     else:
-                        print("⚠️ iRacing authentication may have failed")
+                        logger.warning("iRacing authentication may have failed")
                 except Exception as e:
-                    print(f"❌ iRacing authentication error: {e}")
+                    logger.error("iRacing authentication error: %s", e)
 
             # Run authentication in background
             asyncio.create_task(authenticate_iracing())
@@ -169,10 +174,10 @@ def register_events(bot, db, privacy_manager, claims_tracker, debate_scorekeeper
                     if db:
                         should_run, last_run = db.should_run_job("warm_series_cache", timedelta(hours=1))
                         if not should_run:
-                            print("⏭️ Skipping series cache warm-up; ran recently.")
+                            logger.info("Skipping series cache warm-up; ran recently.")
                             return
 
-                    print("🏎️ Pre-warming iRacing series cache...")
+                    logger.info("Pre-warming iRacing series cache...")
                     import time
                     series = await iracing.get_current_series()
                     if series:
@@ -180,13 +185,13 @@ def register_events(bot, db, privacy_manager, claims_tracker, debate_scorekeeper
                         if series_cache is not None:
                             series_cache['data'] = series
                             series_cache['time'] = time.time()
-                        print(f"✅ Series cache ready ({len(series)} series loaded)")
+                        logger.info("Series cache ready (%d series loaded)", len(series))
                         if db:
                             db.update_job_last_run("warm_series_cache")
                     else:
-                        print("⚠️ Failed to pre-warm series cache")
+                        logger.warning("Failed to pre-warm series cache")
                 except Exception as e:
-                    print(f"⚠️ Error pre-warming series cache: {e}")
+                    logger.warning("Error pre-warming series cache: %s", e)
 
             # Run in background so it doesn't block bot startup
             bot.loop.create_task(warm_series_cache())
@@ -316,9 +321,7 @@ def register_events(bot, db, privacy_manager, claims_tracker, debate_scorekeeper
                     await show_team_menu(message, bot, iracing_team_manager)
                 except Exception as e:
                     await message.channel.send(f"❌ Error opening team menu: {str(e)}")
-                    print(f"❌ Team menu error: {e}")
-                    import traceback
-                    traceback.print_exc()
+                    logger.error("Team menu error: %s", e, exc_info=True)
                 return
 
         # Check if bot should respond first
@@ -332,7 +335,6 @@ def register_events(bot, db, privacy_manager, claims_tracker, debate_scorekeeper
 
         # 2. "wompbot" or "womp bot" mentioned in message (case insensitive)
         # Use regex to match word boundaries, allowing punctuation like "wompbot," or "wompbot!"
-        import re
         message_lower = message.content.lower()
         if re.search(r'\bwompbot\b|\bwomp\s+bot\b', message_lower):
             should_respond = True
@@ -382,12 +384,12 @@ def register_events(bot, db, privacy_manager, claims_tracker, debate_scorekeeper
                     if controversy_data['is_controversial']:
                         hot_take_id = await hot_takes_tracker.create_hot_take(claim_id, message, controversy_data)
                         if hot_take_id:
-                            print(f"🔥 Hot take detected! ID: {hot_take_id}, Confidence: {controversy_data['confidence']:.2f}")
+                            logger.info("Hot take detected! ID: %s, Confidence: %.2f", hot_take_id, controversy_data['confidence'])
 
         if should_respond:
             # Import here to avoid circular dependency
             from handlers.conversations import handle_bot_mention
-            print(f"💬 Bot mention detected from {message.author}: {message.content[:50]}...")
+            logger.info("Bot mention detected from %s: %s...", message.author, message.content[:50])
             await handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker,
                                     search=search, self_knowledge=self_knowledge, rag=rag,
                                     wolfram=wolfram, weather=weather,
@@ -427,7 +429,7 @@ def register_events(bot, db, privacy_manager, claims_tracker, debate_scorekeeper
             # Member has DMs closed; nothing to do.
             pass
         except Exception as exc:
-            print(f"⚠️ Failed to send privacy DM to {member}: {exc}")
+            logger.warning("Failed to send privacy DM to %s: %s", member, exc)
 
     @bot.event
     async def on_message_edit(before, after):
@@ -503,7 +505,7 @@ def register_events(bot, db, privacy_manager, claims_tracker, debate_scorekeeper
             try:
                 thinking_msg = await reaction.message.channel.send("🔍 Fact-checking this claim...")
             except discord.Forbidden:
-                print(f"❌ Missing permissions to send fact-check in channel {reaction.message.channel.id}")
+                logger.error("Missing permissions to send fact-check in channel %s", reaction.message.channel.id)
                 return
 
             try:
@@ -552,23 +554,21 @@ def register_events(bot, db, privacy_manager, claims_tracker, debate_scorekeeper
                         try:
                             await reaction.message.channel.send(embed=embed)
                         except discord.Forbidden:
-                            print(f"❌ Missing permissions to send fact-check results in channel {reaction.message.channel.id}")
+                            logger.error("Missing permissions to send fact-check results in channel %s", reaction.message.channel.id)
                 else:
                     try:
                         await reaction.message.channel.send(
                             f"❌ Fact-check failed: {result.get('error', 'Unknown error')}"
                         )
                     except discord.Forbidden:
-                        print(f"❌ Missing permissions to send error message in channel {reaction.message.channel.id}")
+                        logger.error("Missing permissions to send error message in channel %s", reaction.message.channel.id)
 
             except Exception as e:
                 try:
                     await reaction.message.channel.send(f"❌ Error during fact-check: {str(e)}")
                 except discord.Forbidden:
                     pass
-                print(f"❌ Fact-check error: {e}")
-                import traceback
-                traceback.print_exc()
+                logger.error("Fact-check error: %s", e, exc_info=True)
             finally:
                 # Always try to delete thinking message, but handle if it's already gone
                 if thinking_msg:
@@ -589,9 +589,9 @@ def register_events(bot, db, privacy_manager, claims_tracker, debate_scorekeeper
                 if hot_take_id:
                     # React with checkmark to confirm
                     await reaction.message.add_reaction("✅")
-                    print(f"🔥 Hot take manually created from fire emoji: ID {hot_take_id}")
+                    logger.info("Hot take manually created from fire emoji: ID %s", hot_take_id)
             except Exception as e:
-                print(f"❌ Error creating hot take from fire emoji: {e}")
+                logger.error("Error creating hot take from fire emoji: %s", e)
 
         # Track reactions for hot takes (update community engagement)
         try:
@@ -613,7 +613,7 @@ def register_events(bot, db, privacy_manager, claims_tracker, debate_scorekeeper
                         # Check if now meets threshold for LLM scoring
                         await hot_takes_tracker.check_and_score_high_engagement(hot_take_id, reaction.message)
         except Exception as e:
-            print(f"❌ Error tracking hot take reaction: {e}")
+            logger.error("Error tracking hot take reaction: %s", e)
 
     @bot.event
     async def on_reaction_remove(reaction, user):
@@ -637,6 +637,6 @@ def register_events(bot, db, privacy_manager, claims_tracker, debate_scorekeeper
                         hot_take_id = result[0]
                         await hot_takes_tracker.update_reaction_metrics(reaction.message, hot_take_id)
         except Exception as e:
-            print(f"❌ Error updating hot take reaction removal: {e}")
+            logger.error("Error updating hot take reaction removal: %s", e)
 
-    print("✅ Event handlers registered")
+    logger.info("Event handlers registered")
