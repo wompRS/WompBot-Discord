@@ -334,6 +334,19 @@ def register_tasks(bot, db, llm, rag, chat_stats, iracing, iracing_popularity_ca
                     except Exception as e:
                         print(f"  ❌ Engagement stats failed: {e}")
 
+                    # 5. User topic expertise (only for 30-day range to avoid redundant work)
+                    if days == 30:
+                        try:
+                            expertise_entries = chat_stats.compute_user_topic_expertise(
+                                messages, guild_id, min_messages=5, top_n=10
+                            )
+                            if expertise_entries:
+                                db.batch_upsert_topic_expertise(expertise_entries)
+                                user_count = len(set(e[0] for e in expertise_entries))
+                                print(f"  ✅ Topic expertise updated ({user_count} users, {len(expertise_entries)} entries)")
+                        except Exception as e:
+                            print(f"  ❌ Topic expertise failed: {e}")
+
             print("✅ Background stats computation complete!")
             if db:
                 db.update_job_last_run("precompute_stats")

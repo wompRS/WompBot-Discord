@@ -235,6 +235,64 @@ class ChatStatistics:
             traceback.print_exc()
             return []
 
+    def compute_user_topic_expertise(self, messages: List[dict], guild_id: int,
+                                      min_messages: int = 5, top_n: int = 10) -> list:
+        """Compute per-user topic expertise from messages.
+
+        Groups messages by user, extracts topics per user via TF-IDF,
+        and computes a quality score based on message length and diversity.
+
+        Args:
+            messages: List of message dicts with user_id, username, content
+            guild_id: Guild ID for the results
+            min_messages: Minimum messages required per user to compute expertise
+            top_n: Number of top topics per user
+
+        Returns:
+            List of (user_id, guild_id, topic, message_count, quality_score) tuples
+        """
+        from collections import defaultdict
+
+        # Group messages by user
+        user_messages = defaultdict(list)
+        for msg in messages:
+            if msg.get('content') and len(msg['content'].strip()) > 10:
+                user_messages[msg['user_id']].append(msg)
+
+        results = []
+
+        for user_id, msgs in user_messages.items():
+            if len(msgs) < min_messages:
+                continue
+
+            # Extract topics for this user's messages
+            topics = self.extract_topics_tfidf(msgs, top_n=top_n)
+            if not topics:
+                continue
+
+            # Compute quality metrics for this user's messages
+            total_length = sum(len(m.get('content', '')) for m in msgs)
+            avg_length = total_length / len(msgs) if msgs else 0
+            has_links = sum(1 for m in msgs if 'http' in m.get('content', ''))
+            link_ratio = has_links / len(msgs) if msgs else 0
+
+            for topic_info in topics:
+                keyword = topic_info['keyword']
+                count = topic_info['count']
+                tfidf_score = topic_info['score']
+
+                # Quality score: combination of TF-IDF score, message count weight,
+                # average message length (longer = more thoughtful), and link usage
+                length_factor = min(avg_length / 200.0, 1.0)  # normalize to 0-1
+                count_factor = min(count / 20.0, 1.0)  # normalize to 0-1
+                quality = (tfidf_score * 0.4 + count_factor * 0.3 +
+                          length_factor * 0.2 + link_ratio * 0.1)
+                quality = round(min(quality, 1.0), 4)
+
+                results.append((user_id, guild_id, keyword, count, quality))
+
+        return results
+
     def build_network_graph(self, messages: List[dict], exclude_from_ranking: bool = True) -> dict:
         """
         Build interaction network graph from messages

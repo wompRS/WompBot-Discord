@@ -302,6 +302,88 @@ class Database:
             print(f"❌ Error fetching thread parent context: {e}")
             return []
 
+    def upsert_topic_expertise(self, user_id, guild_id, topic, message_count, quality_score):
+        """Upsert a user's topic expertise entry.
+
+        Args:
+            user_id: Discord user ID
+            guild_id: Discord guild ID
+            topic: Topic keyword/phrase
+            message_count: Number of messages about this topic
+            quality_score: Quality score (0-1) based on message length, links, etc.
+        """
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        INSERT INTO user_topic_expertise
+                            (user_id, guild_id, topic, message_count, quality_score, last_updated)
+                        VALUES (%s, %s, %s, %s, %s, NOW())
+                        ON CONFLICT (user_id, guild_id, topic) DO UPDATE SET
+                            message_count = EXCLUDED.message_count,
+                            quality_score = EXCLUDED.quality_score,
+                            last_updated = NOW()
+                    """, (user_id, guild_id, topic, message_count, quality_score))
+                    conn.commit()
+        except Exception as e:
+            print(f"❌ Error upserting topic expertise: {e}")
+
+    def batch_upsert_topic_expertise(self, entries):
+        """Batch upsert topic expertise entries for efficiency.
+
+        Args:
+            entries: List of (user_id, guild_id, topic, message_count, quality_score) tuples
+        """
+        if not entries:
+            return
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor() as cur:
+                    from psycopg2.extras import execute_values
+                    execute_values(
+                        cur,
+                        """
+                        INSERT INTO user_topic_expertise
+                            (user_id, guild_id, topic, message_count, quality_score, last_updated)
+                        VALUES %s
+                        ON CONFLICT (user_id, guild_id, topic) DO UPDATE SET
+                            message_count = EXCLUDED.message_count,
+                            quality_score = EXCLUDED.quality_score,
+                            last_updated = NOW()
+                        """,
+                        entries,
+                        template="(%s, %s, %s, %s, %s, NOW())"
+                    )
+                    conn.commit()
+        except Exception as e:
+            print(f"❌ Error batch upserting topic expertise: {e}")
+
+    def get_user_expertise(self, user_id, guild_id, limit=10):
+        """Get a user's top topic expertise entries.
+
+        Args:
+            user_id: Discord user ID
+            guild_id: Discord guild ID
+            limit: Max topics to return
+
+        Returns:
+            List of dicts with topic, message_count, quality_score
+        """
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    cur.execute("""
+                        SELECT topic, message_count, quality_score, last_updated
+                        FROM user_topic_expertise
+                        WHERE user_id = %s AND guild_id = %s
+                        ORDER BY quality_score DESC, message_count DESC
+                        LIMIT %s
+                    """, (user_id, guild_id, limit))
+                    return cur.fetchall()
+        except Exception as e:
+            print(f"❌ Error getting user expertise: {e}")
+            return []
+
     def get_user_context(self, user_id):
         """Get user profile and recent behavior"""
         try:

@@ -136,7 +136,7 @@ VIZ_COLORBLIND_MODE=false       # Enable Okabe-Ito colorblind-friendly palette
 
 ## Database (30+ tables)
 
-Key tables: `messages`, `user_profiles`, `claims`, `fact_checks`, `hot_takes`, `quotes`, `message_embeddings` (vector), `conversation_summaries`, `api_costs`, `rate_limits`, `reminders`, `events`, `iracing_teams`, `gdpr_deletion_requests`, `opt_outs`, `guild_config`, `server_admins`, `stats_cache`, `active_trivia_sessions`, `active_debates`
+Key tables: `messages`, `user_profiles`, `claims`, `fact_checks`, `hot_takes`, `quotes`, `message_embeddings` (vector), `conversation_summaries`, `api_costs`, `rate_limits`, `reminders`, `events`, `iracing_teams`, `gdpr_deletion_requests`, `opt_outs`, `guild_config`, `server_admins`, `stats_cache`, `active_trivia_sessions`, `active_debates`, `user_topic_expertise`
 
 Dropped tables (GDPR trim): `data_breach_log`, `privacy_policy_versions`
 
@@ -146,6 +146,7 @@ Migrations:
 - `sql/13_gdpr_trim.sql` — Drops 7 GDPR slash commands, removes `data_breach_log` and `privacy_policy_versions` tables
 - `sql/14_guild_timezone.sql` — Creates `guild_config` table for guild-level timezone support
 - `sql/15_session_persistence.sql` — Creates `active_trivia_sessions` and `active_debates` tables for session persistence across restarts
+- `sql/16_new_features.sql` — Creates tables for new features: `user_topic_expertise`, polls, games, scheduling, monitoring
 
 ## Important Design Decisions
 
@@ -323,6 +324,16 @@ docker compose restart bot       # Restart bot only
 - Shows best/worst topics, win streak, fact-check accuracy, recent debate results
 - Purple-themed card (`debate_card.py`) visually distinct from iRacing blue cards
 - No new tables — queries existing `debates` + `debate_participants`
+
+### Topic Expertise Tracking (Silent)
+- Silently tracks what topics each user discusses most and most knowledgeably
+- No user-facing commands yet — data collection only, used by `/mystats` and future features
+- `chat_stats.compute_user_topic_expertise()` — TF-IDF per-user topic extraction with quality scoring
+- Quality score combines TF-IDF weight (40%), message count (30%), avg message length (20%), link usage (10%)
+- Runs hourly in `precompute_stats` background job (30-day window only, min 5 messages per user)
+- `user_topic_expertise` table: `(user_id, guild_id, topic, message_count, quality_score)` with UNIQUE constraint
+- Batch upserted via `db.batch_upsert_topic_expertise()` using `psycopg2.extras.execute_values`
+- Migration: `sql/16_new_features.sql`
 
 ## Wishlist / Future Features
 
