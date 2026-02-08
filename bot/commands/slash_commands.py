@@ -19,7 +19,7 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                             iracing_viz, iracing_team_manager, help_system,
                             wompie_user_id, series_autocomplete_cache, trivia,
                             rag=None, dashboard=None, poll_system=None,
-                            who_said_it=None, devils_advocate=None):
+                            who_said_it=None, devils_advocate=None, jeopardy=None):
     """
     Register all slash commands with the bot.
 
@@ -5515,6 +5515,221 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                 await interaction.response.send_message(f"❌ Error: {str(e)}", ephemeral=True)
 
         print("✅ Devil's Advocate commands registered")
+
+    # ===== Channel Jeopardy =====
+    if jeopardy:
+        @bot.tree.command(name="jeopardy_start", description="Start a Jeopardy game with server-inspired categories")
+        @app_commands.describe(
+            categories="Number of categories (3-6, default: 4)",
+            clues_per="Clues per category (3-5, default: 5)"
+        )
+        async def jeopardy_start(interaction: discord.Interaction,
+                                 categories: int = 4,
+                                 clues_per: int = 5):
+            """Start a new Jeopardy game"""
+            try:
+                if jeopardy.is_session_active(interaction.channel_id):
+                    await interaction.response.send_message(
+                        "🎯 A Jeopardy game is already active in this channel!\n"
+                        "Use `/jeopardy_end` to end it first.",
+                        ephemeral=True
+                    )
+                    return
+
+                await interaction.response.defer()
+
+                result = await jeopardy.start_game(
+                    channel_id=interaction.channel_id,
+                    guild_id=interaction.guild_id,
+                    started_by=interaction.user.id,
+                    num_categories=categories,
+                    clues_per=clues_per
+                )
+
+                if result.get('error'):
+                    await interaction.followup.send(f"❌ {result['error']}")
+                    return
+
+                # Build the game board display
+                board = result['board']
+                cat_names = result['categories']
+                values = result['point_values']
+
+                embed = discord.Embed(
+                    title="🎯 JEOPARDY!",
+                    description=f"Started by {interaction.user.display_name}\n\n"
+                                f"**Categories:**\n" +
+                                "\n".join(f"📌 **{name}**" for name in cat_names),
+                    color=discord.Color.blue()
+                )
+                embed.add_field(
+                    name="Point Values",
+                    value=" | ".join(f"${v}" for v in values),
+                    inline=False
+                )
+                embed.add_field(
+                    name="How to Play",
+                    value=(
+                        "1️⃣ Use `/jeopardy_pick [category] [value]` to select a clue\n"
+                        "2️⃣ Type your answer in chat (e.g. \"What is Python?\")\n"
+                        "3️⃣ Correct = earn points, Wrong = lose points!\n"
+                        "4️⃣ `/jeopardy_pass` to skip, `/jeopardy_board` to see the board"
+                    ),
+                    inline=False
+                )
+                embed.set_footer(text=f"{result['clues_remaining']} clues to play")
+                await interaction.followup.send(embed=embed)
+
+            except Exception as e:
+                await interaction.followup.send(f"❌ Error: {str(e)}")
+
+        @bot.tree.command(name="jeopardy_pick", description="Pick a category and point value")
+        @app_commands.describe(
+            category="Category name",
+            value="Point value (200, 400, 600, 800, 1000)"
+        )
+        async def jeopardy_pick(interaction: discord.Interaction,
+                                category: str, value: int):
+            """Select a clue from the board"""
+            try:
+                result = await jeopardy.select_clue(
+                    interaction.channel_id, category, value
+                )
+
+                if not result:
+                    await interaction.response.send_message(
+                        "No active Jeopardy game!", ephemeral=True
+                    )
+                    return
+
+                if result.get('error'):
+                    await interaction.response.send_message(
+                        f"❌ {result['error']}", ephemeral=True
+                    )
+                    return
+
+                embed = discord.Embed(
+                    title=f"📌 {result['category']} — ${result['value']}",
+                    description=f"**{result['clue']}**",
+                    color=discord.Color.gold()
+                )
+                embed.set_footer(text="Type your answer! (e.g. \"What is...?\")")
+                await interaction.response.send_message(embed=embed)
+
+            except Exception as e:
+                await interaction.response.send_message(f"❌ Error: {str(e)}", ephemeral=True)
+
+        @bot.tree.command(name="jeopardy_pass", description="Skip the current clue and reveal the answer")
+        async def jeopardy_pass(interaction: discord.Interaction):
+            """Pass on the current clue"""
+            try:
+                result = await jeopardy.pass_clue(interaction.channel_id)
+
+                if not result:
+                    await interaction.response.send_message(
+                        "No active clue to skip!", ephemeral=True
+                    )
+                    return
+
+                msg = f"⏭️ Passed! The answer was: **{result['correct_answer']}**"
+
+                if result.get('game_over'):
+                    msg += "\n\n🏁 **GAME OVER!**"
+                    scores = result.get('final_scores', [])
+                    if scores:
+                        board = "\n".join(
+                            f"{'🥇🥈🥉'[i] if i < 3 else f'{i+1}.'} **{s['username']}** — ${s['score']}"
+                            for i, s in enumerate(scores)
+                        )
+                        msg += f"\n\n**Final Scores:**\n{board}"
+                else:
+                    msg += f"\n📋 {result['clues_remaining']} clues remaining. Use `/jeopardy_pick` to continue!"
+
+                await interaction.response.send_message(msg)
+
+            except Exception as e:
+                await interaction.response.send_message(f"❌ Error: {str(e)}", ephemeral=True)
+
+        @bot.tree.command(name="jeopardy_board", description="Show the current Jeopardy board")
+        async def jeopardy_board(interaction: discord.Interaction):
+            """Display the current game board"""
+            try:
+                board_data = jeopardy.get_board_display(interaction.channel_id)
+                if not board_data:
+                    await interaction.response.send_message(
+                        "No active Jeopardy game!", ephemeral=True
+                    )
+                    return
+
+                embed = discord.Embed(
+                    title="🎯 JEOPARDY! Board",
+                    color=discord.Color.blue()
+                )
+
+                for cat in board_data['categories']:
+                    values_display = []
+                    for clue in cat['clues']:
+                        if clue['revealed']:
+                            values_display.append(f"~~${clue['value']}~~")
+                        else:
+                            values_display.append(f"**${clue['value']}**")
+                    embed.add_field(
+                        name=f"📌 {cat['name']}",
+                        value=" | ".join(values_display),
+                        inline=False
+                    )
+
+                # Show scores
+                scores = board_data.get('scores', [])
+                if scores:
+                    score_text = "\n".join(
+                        f"**{s['username']}**: ${s['score']}" for s in scores
+                    )
+                    embed.add_field(name="💰 Scores", value=score_text, inline=False)
+
+                status = "Waiting for clue selection" if board_data['status'] == 'board' else f"Answering: {board_data.get('current_clue', 'Unknown')}"
+                embed.set_footer(text=f"{board_data['clues_remaining']} clues remaining • {status}")
+
+                await interaction.response.send_message(embed=embed)
+
+            except Exception as e:
+                await interaction.response.send_message(f"❌ Error: {str(e)}", ephemeral=True)
+
+        @bot.tree.command(name="jeopardy_end", description="End the current Jeopardy game")
+        async def jeopardy_end(interaction: discord.Interaction):
+            """End the Jeopardy game"""
+            try:
+                result = await jeopardy.end_game(interaction.channel_id)
+                if not result:
+                    await interaction.response.send_message(
+                        "No active Jeopardy game!", ephemeral=True
+                    )
+                    return
+
+                embed = discord.Embed(
+                    title="🏁 JEOPARDY! — Game Over!",
+                    color=discord.Color.blue()
+                )
+
+                scores = result.get('final_scores', [])
+                if scores:
+                    board = "\n".join(
+                        f"{'🥇🥈🥉'[i] if i < 3 else f'{i+1}.'} **{s['username']}** — ${s['score']}"
+                        for i, s in enumerate(scores)
+                    )
+                    embed.description = board
+                else:
+                    embed.description = "No one scored any points!"
+
+                answered = result['total_clues'] - result['clues_remaining']
+                embed.set_footer(text=f"{answered}/{result['total_clues']} clues answered")
+
+                await interaction.response.send_message(embed=embed)
+
+            except Exception as e:
+                await interaction.response.send_message(f"❌ Error: {str(e)}", ephemeral=True)
+
+        print("✅ Jeopardy commands registered")
 
     # ===== Personal Analytics =====
     @bot.tree.command(name="mystats", description="View your personal analytics profile card")

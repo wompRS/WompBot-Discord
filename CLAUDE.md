@@ -60,6 +60,7 @@ Discord message → on_message (events.py) → handle_bot_mention (conversations
 - `polls.py` — Poll system with button voting, single/multi-choice, auto-close
 - `who_said_it.py` — "Who Said It?" game using real server quotes, GDPR-safe
 - `devils_advocate.py` — Devil's advocate debate mode with LLM counter-arguments
+- `jeopardy.py` — Channel Jeopardy with server-inspired categories, LLM-generated clues
 - `yearly_wrapped.py` — Spotify-style yearly summaries
 - `quote_of_the_day.py` — Featured quote selection
 - `admin_utils.py` — Admin permission utilities
@@ -386,6 +387,20 @@ docker compose restart bot       # Restart bot only
 - On_message hook in events.py for counter-argument generation
 - Table: `active_devils_advocate` with `session_state` JSONB
 - System prompt forces LLM to always argue the opposing position
+
+### Channel Jeopardy
+- `/jeopardy_start [categories] [clues_per]` — Start Jeopardy with server-inspired categories
+- `/jeopardy_pick [category] [value]` — Select a clue from the board
+- `/jeopardy_pass` — Skip current clue and reveal answer
+- `/jeopardy_board` — Show current board with revealed/available clues
+- `/jeopardy_end` — End game early and show final scores
+- `features/jeopardy.py` — `JeopardyGame(db, llm, chat_stats)` with LLM-generated boards
+- Categories drawn from server's actual discussion topics via TF-IDF + general knowledge
+- Correct answer = earn points, wrong answer = lose points (Jeopardy rules)
+- Fuzzy answer matching strips "What is..." prefix, checks alternatives
+- 15-minute inactivity timeout via background task
+- On_message hook in events.py for answer processing
+- Table: `active_jeopardy` with `session_state` JSONB
 
 ### Personal Analytics (/mystats)
 - `/mystats [@user] [days]` — Unified personal analytics PIL card (teal/emerald theme)

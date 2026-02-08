@@ -122,6 +122,10 @@ from features.devils_advocate import DevilsAdvocate
 devils_advocate = DevilsAdvocate(db, llm)
 logger.info("Devil's Advocate loaded")
 
+from features.jeopardy import JeopardyGame
+jeopardy = JeopardyGame(db, llm, chat_stats)
+logger.info("Jeopardy game loaded")
+
 # GDPR Privacy Compliance (mandatory per EU regulations)
 from features.gdpr_privacy import GDPRPrivacyManager
 privacy_manager = GDPRPrivacyManager(db)
@@ -196,7 +200,8 @@ tasks_dict = register_tasks(
     privacy_manager=privacy_manager,
     iracing_team_manager=iracing_team_manager,
     poll_system=poll_system,
-    devils_advocate=devils_advocate
+    devils_advocate=devils_advocate,
+    jeopardy=jeopardy
 )
 
 # Register event handlers
@@ -225,7 +230,8 @@ register_events(
     trivia=trivia,
     reminder_system=reminder_system,
     who_said_it=who_said_it,
-    devils_advocate=devils_advocate
+    devils_advocate=devils_advocate,
+    jeopardy=jeopardy
 )
 
 # Register prefix commands
@@ -267,7 +273,8 @@ register_slash_commands(
     dashboard=dashboard,
     poll_system=poll_system,
     who_said_it=who_said_it,
-    devils_advocate=devils_advocate
+    devils_advocate=devils_advocate,
+    jeopardy=jeopardy
 )
 
 logger.info("All modules registered successfully!")

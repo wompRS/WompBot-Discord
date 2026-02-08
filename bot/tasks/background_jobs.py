@@ -13,7 +13,7 @@ import discord
 
 def register_tasks(bot, db, llm, rag, chat_stats, iracing, iracing_popularity_cache,
                    reminder_system, event_system, privacy_manager, iracing_team_manager=None,
-                   poll_system=None, devils_advocate=None):
+                   poll_system=None, devils_advocate=None, jeopardy=None):
     """
     Register all background tasks with the bot.
 
@@ -847,6 +847,32 @@ def register_tasks(bot, db, llm, rag, chat_stats, iracing, iracing_popularity_ca
         if devils_advocate:
             print("😈 Devil's Advocate timeout checker started (runs every 5 min)")
 
+    # ── Jeopardy timeout checker ──
+    @tasks.loop(minutes=5)
+    async def check_jeopardy_timeouts():
+        """End Jeopardy games inactive for 15+ minutes"""
+        if not jeopardy:
+            return
+
+        try:
+            timed_out = await jeopardy.check_timeouts()
+            for channel_id in timed_out:
+                try:
+                    channel = bot.get_channel(channel_id)
+                    if channel:
+                        await channel.send("🎯 Jeopardy game ended due to inactivity (15 minutes).")
+                except Exception as e:
+                    print(f"  ❌ Error notifying Jeopardy timeout for channel {channel_id}: {e}")
+
+        except Exception as e:
+            print(f"❌ Jeopardy timeout check error: {e}")
+
+    @check_jeopardy_timeouts.before_loop
+    async def before_check_jeopardy_timeouts():
+        await bot.wait_until_ready()
+        if jeopardy:
+            print("🎯 Jeopardy timeout checker started (runs every 5 min)")
+
     print("✅ Background tasks registered (will start in on_ready)")
 
     # Return task references - they will be started in on_ready event handler
@@ -867,5 +893,8 @@ def register_tasks(bot, db, llm, rag, chat_stats, iracing, iracing_popularity_ca
 
     if devils_advocate:
         tasks_dict['check_devils_advocate_timeouts'] = check_devils_advocate_timeouts
+
+    if jeopardy:
+        tasks_dict['check_jeopardy_timeouts'] = check_jeopardy_timeouts
 
     return tasks_dict

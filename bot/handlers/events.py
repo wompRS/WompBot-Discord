@@ -22,7 +22,7 @@ def register_events(bot, db, privacy_manager, claims_tracker, debate_scorekeeper
                     hot_takes_tracker, fact_checker, wompie_user_id, wompie_username,
                     tasks_dict, search, self_knowledge, wolfram=None, weather=None,
                     series_cache=None, trivia=None, reminder_system=None,
-                    who_said_it=None, devils_advocate=None):
+                    who_said_it=None, devils_advocate=None, jeopardy=None):
     """
     Register all Discord event handlers with the bot.
 
@@ -378,6 +378,45 @@ def register_events(bot, db, privacy_manager, claims_tracker, debate_scorekeeper
                 elif result and result.get('error'):
                     await message.channel.send(f"❌ Error: {result['error']}")
                 return
+
+        # Check for Jeopardy answer
+        if jeopardy and jeopardy.is_session_active(message.channel.id):
+            session = jeopardy.get_active_session(message.channel.id)
+            if session and session['status'] == 'answering' and session.get('current_clue'):
+                result = await jeopardy.submit_answer(
+                    message.channel.id,
+                    message.author.id,
+                    message.author.display_name,
+                    message.content
+                )
+
+                if result:
+                    if result.get('is_correct'):
+                        await message.add_reaction("✅")
+                        feedback = (
+                            f"🎯 **Correct!** {result['guesser']} earns **${result['value']}**! "
+                            f"(Score: ${result['new_score']})\n"
+                            f"Answer: {result['correct_answer']}"
+                        )
+                        if result.get('game_over'):
+                            feedback += "\n\n🏁 **GAME OVER!**"
+                            scores = result.get('final_scores', [])
+                            if scores:
+                                board = "\n".join(
+                                    f"{'🥇🥈🥉'[i] if i < 3 else f'{i+1}.'} **{s['username']}** — ${s['score']}"
+                                    for i, s in enumerate(scores)
+                                )
+                                feedback += f"\n\n**Final Scores:**\n{board}"
+                        else:
+                            feedback += f"\n📋 {result['clues_remaining']} clues remaining. Use `/jeopardy_pick` to select another!"
+                        await message.channel.send(feedback)
+                    else:
+                        await message.add_reaction("❌")
+                        await message.channel.send(
+                            f"❌ Wrong answer, {result['guesser']}! **-${result['deducted']}** "
+                            f"(Score: ${result['new_score']}). Others can still answer!"
+                        )
+                    return
 
         # Handle DM commands for team management
         if isinstance(message.channel, discord.DMChannel):
