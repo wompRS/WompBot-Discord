@@ -16,8 +16,14 @@ from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
-# Tool system imports
-from viz_tools import GeneralVisualizer
+# Tool system imports — Plotly charts (primary) with matplotlib fallback
+try:
+    from plotly_charts import PlotlyCharts as ChartEngine
+    _CHART_ENGINE = 'plotly'
+except ImportError:
+    from viz_tools import GeneralVisualizer as ChartEngine
+    _CHART_ENGINE = 'matplotlib'
+from viz_tools import GeneralVisualizer  # Keep for weather card
 from llm_tools import VISUALIZATION_TOOLS, COMPUTATIONAL_TOOLS, ALL_TOOLS, DataRetriever
 from tool_executor import ToolExecutor
 from media_processor import get_media_processor
@@ -348,10 +354,15 @@ _visualizer = None
 _tool_executor = None
 
 def get_visualizer():
-    """Get or create visualizer instance"""
+    """Get or create visualizer instance (Plotly primary, matplotlib fallback)"""
     global _visualizer
     if _visualizer is None:
-        _visualizer = GeneralVisualizer()
+        try:
+            _visualizer = ChartEngine()
+            logger.info("Chart engine initialized: %s", _CHART_ENGINE)
+        except Exception as e:
+            logger.warning("Failed to init %s charts, falling back to matplotlib: %s", _CHART_ENGINE, e)
+            _visualizer = GeneralVisualizer()
     return _visualizer
 
 def get_tool_executor(db, wolfram=None, weather=None, search=None,

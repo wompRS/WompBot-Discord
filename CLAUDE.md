@@ -32,7 +32,9 @@ Discord message → on_message (events.py) → handle_bot_mention (conversations
 - `bot/rag.py` — RAG system: embeddings via OpenAI text-embedding-3-small, pgvector similarity search (threshold: 0.55)
 - `bot/search.py` — Tavily/Google search, format_results_for_llm() (max 5 results, 200 char snippets)
 - `bot/compression.py` — LLMLingua conversation compression (keep_recent=8, min_messages=10)
-- `bot/viz_tools.py` — Matplotlib charts: bar, line, pie, table, comparison (dark theme, Okabe-Ito colorblind-friendly palette option via VIZ_COLORBLIND_MODE)
+- `bot/plotly_charts.py` — **Primary chart engine**: Plotly-based charts (bar, line, pie, table, comparison, radar, sankey, heatmap) with premium dark theme, exported via Kaleido
+- `bot/card_base.py` — Shared PIL card primitives: draw_rounded_rect, draw_progress_bar, draw_glow_circle, draw_gradient_bg, load_fonts, theme colors. Used by feature-specific card generators.
+- `bot/viz_tools.py` — **Legacy/fallback** matplotlib charts + weather card (PIL-based, kept for weather display)
 - `bot/media_processor.py` — Image/video/YouTube frame extraction and analysis
 - `bot/cost_tracker.py` — Per-request API cost tracking, configurable threshold via COST_ALERT_THRESHOLD env var
 - `bot/weather.py` — OpenWeatherMap integration
@@ -164,6 +166,8 @@ Migrations:
 16. **Prompt injection defense** — Debate transcripts wrapped in XML tags to prevent prompt injection.
 17. **Session persistence** — Trivia and debate sessions persist to database tables, surviving bot restarts.
 18. **Guild timezone support** — `/set_timezone` command stores timezone per guild; reminders and events use guild timezone via `zoneinfo`.
+19. **Dual chart engine** — Primary: Plotly + Kaleido (premium charts, requires chromium). Fallback: matplotlib (if Plotly fails). Weather card stays PIL-based. Configured in `conversations.py` `get_visualizer()`.
+20. **Shared card primitives** — `card_base.py` provides composable PIL drawing utilities (rounded rects, progress bars, glow effects, gradients, fonts). Feature-specific cards import from here rather than duplicating code.
 
 ## Build & Deploy
 
@@ -242,6 +246,9 @@ docker compose restart bot       # Restart bot only
 - `cachetools` (iRacing cache)
 - `tenacity` (iRacing retries)
 - `tiktoken` (optional, token counting)
+- `plotly` (primary chart engine, replaces matplotlib for data charts)
+- `kaleido` (static image export for Plotly, requires chromium in Docker)
+- `feedparser` (RSS feed parsing for feed monitoring feature)
 
 ### New Migrations
 - `sql/13_gdpr_trim.sql`

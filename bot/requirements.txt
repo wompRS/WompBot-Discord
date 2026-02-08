@@ -28,3 +28,6 @@ pytz==2024.1  # Timezone handling
 yt-dlp==2024.12.6  # YouTube video downloading for frame extraction
 youtube-transcript-api==0.6.2  # YouTube captions/transcript extraction
 duckduckgo-search==7.0.1  # Image search with safe search support
+plotly>=6.0.0  # Modern chart generation (replaces matplotlib for data charts)
+kaleido>=0.4.0  # Static image export for Plotly charts (requires chromium)
+feedparser>=6.0.0  # RSS feed parsing for feed monitoring feature
