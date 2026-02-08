@@ -110,6 +110,10 @@ from features.dashboard import ServerDashboard
 dashboard = ServerDashboard(db, chat_stats)
 logger.info("Server dashboard loaded")
 
+from features.polls import PollSystem
+poll_system = PollSystem(db)
+logger.info("Poll system loaded")
+
 # GDPR Privacy Compliance (mandatory per EU regulations)
 from features.gdpr_privacy import GDPRPrivacyManager
 privacy_manager = GDPRPrivacyManager(db)
@@ -182,7 +186,8 @@ tasks_dict = register_tasks(
     reminder_system=reminder_system,
     event_system=event_system,
     privacy_manager=privacy_manager,
-    iracing_team_manager=iracing_team_manager
+    iracing_team_manager=iracing_team_manager,
+    poll_system=poll_system
 )
 
 # Register event handlers
@@ -248,7 +253,8 @@ register_slash_commands(
     series_autocomplete_cache=series_autocomplete_cache,
     trivia=trivia,
     rag=rag,
-    dashboard=dashboard
+    dashboard=dashboard,
+    poll_system=poll_system
 )
 
 logger.info("All modules registered successfully!")

@@ -18,7 +18,7 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                             debate_scorekeeper, yearly_wrapped, qotd, iracing,
                             iracing_viz, iracing_team_manager, help_system,
                             wompie_user_id, series_autocomplete_cache, trivia,
-                            rag=None, dashboard=None):
+                            rag=None, dashboard=None, poll_system=None):
     """
     Register all slash commands with the bot.
 
@@ -5208,6 +5208,139 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
             traceback.print_exc()
 
     print("✅ Conversation flow commands registered")
+
+    # ===== Polls =====
+    if poll_system:
+        @bot.tree.command(name="poll", description="Create a poll")
+        @app_commands.describe(
+            question="The poll question",
+            options="Comma-separated options (e.g. 'Yes, No, Maybe')",
+            duration="Duration in minutes before auto-close (optional)",
+            anonymous="Hide voter names (default: False)",
+            multi="Allow multiple votes per person (default: False)"
+        )
+        async def poll_create(interaction: discord.Interaction, question: str,
+                              options: str, duration: int = None,
+                              anonymous: bool = False, multi: bool = False):
+            """Create a new poll with buttons"""
+            await interaction.response.defer()
+
+            try:
+                option_list = [o.strip() for o in options.split(',') if o.strip()]
+                poll_type = 'multi' if multi else 'single'
+
+                result = await poll_system.create_poll(
+                    guild_id=interaction.guild_id,
+                    channel_id=interaction.channel_id,
+                    created_by=interaction.user.id,
+                    question=question,
+                    options=option_list,
+                    poll_type=poll_type,
+                    anonymous=anonymous,
+                    duration_minutes=duration
+                )
+
+                if result.get('error'):
+                    await interaction.followup.send(f"❌ {result['error']}")
+                    return
+
+                poll_id = result['poll_id']
+
+                # Create embed
+                embed = discord.Embed(
+                    title=f"📊 {question}",
+                    color=discord.Color.gold()
+                )
+
+                option_text = "\n".join(f"**{i+1}.** {opt}" for i, opt in enumerate(option_list))
+                embed.description = option_text
+
+                vote_type = "Multiple choice" if multi else "Single choice"
+                anon_text = " • Anonymous" if anonymous else ""
+                dur_text = f" • Closes in {duration}min" if duration else ""
+                embed.set_footer(text=f"Poll #{poll_id} • {vote_type}{anon_text}{dur_text}")
+
+                # Create button view
+                from features.polls import PollView
+                timeout_seconds = duration * 60 if duration else 86400
+                view = PollView(poll_system, poll_id, option_list, poll_type, timeout_seconds)
+
+                msg = await interaction.followup.send(embed=embed, view=view)
+                await poll_system.set_message_id(poll_id, msg.id)
+
+            except Exception as e:
+                await interaction.followup.send(f"❌ Error creating poll: {str(e)}")
+                print(f"❌ Poll create error: {e}")
+                import traceback
+                traceback.print_exc()
+
+        @bot.tree.command(name="poll_results", description="View poll results")
+        @app_commands.describe(poll_id="The poll ID number")
+        async def poll_results(interaction: discord.Interaction, poll_id: int):
+            """View results for a poll"""
+            await interaction.response.defer()
+
+            try:
+                results = await poll_system.get_results(poll_id)
+
+                if results.get('error'):
+                    await interaction.followup.send(f"❌ {results['error']}")
+                    return
+
+                # Generate PIL results card
+                from poll_card import create_poll_results_card
+                image_buffer = create_poll_results_card(results)
+                file = discord.File(fp=image_buffer, filename="poll_results.png")
+
+                embed = discord.Embed(
+                    title=f"📊 Poll Results — #{poll_id}",
+                    color=discord.Color.gold()
+                )
+                embed.set_image(url="attachment://poll_results.png")
+
+                status = "Closed" if results['is_closed'] else "Live"
+                embed.set_footer(text=f"{status} • {results['total_voters']} voters")
+
+                await interaction.followup.send(file=file, embed=embed)
+
+            except Exception as e:
+                await interaction.followup.send(f"❌ Error getting results: {str(e)}")
+                print(f"❌ Poll results error: {e}")
+
+        @bot.tree.command(name="poll_close", description="Close a poll you created")
+        @app_commands.describe(poll_id="The poll ID number to close")
+        async def poll_close(interaction: discord.Interaction, poll_id: int):
+            """Close a poll and show final results"""
+            await interaction.response.defer()
+
+            try:
+                results = await poll_system.close_poll(poll_id, interaction.user.id)
+
+                if results.get('error'):
+                    await interaction.followup.send(f"❌ {results['error']}")
+                    return
+
+                # Generate results card
+                from poll_card import create_poll_results_card
+                image_buffer = create_poll_results_card(results)
+                file = discord.File(fp=image_buffer, filename="poll_results.png")
+
+                winner = results.get('winner', {})
+                embed = discord.Embed(
+                    title=f"📊 Poll #{poll_id} — Final Results",
+                    description=f"🏆 Winner: **{winner.get('option', 'N/A')}** ({winner.get('percentage', 0)}%)",
+                    color=discord.Color.green()
+                )
+                embed.set_image(url="attachment://poll_results.png")
+                embed.set_footer(text=f"{results['total_voters']} total voters")
+
+                await interaction.followup.send(file=file, embed=embed)
+
+            except Exception as e:
+                await interaction.followup.send(f"❌ Error closing poll: {str(e)}")
+                print(f"❌ Poll close error: {e}")
+
+        print("✅ Poll commands registered")
 
     # ===== Personal Analytics =====
     @bot.tree.command(name="mystats", description="View your personal analytics profile card")

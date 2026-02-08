@@ -56,6 +56,8 @@ Discord message → on_message (events.py) → handle_bot_mention (conversations
 - `events.py` — Event scheduling with periodic reminders, guild timezone support, creator-only cancellation
 - `debate_scorekeeper.py` — Debate tracking with LLM judging, sessions persist to DB (survive restarts)
 - `trivia.py` — LLM-powered trivia games, sessions persist to DB (survive restarts)
+- `dashboard.py` — Server health dashboard with Plotly charts
+- `polls.py` — Poll system with button voting, single/multi-choice, auto-close
 - `yearly_wrapped.py` — Spotify-style yearly summaries
 - `quote_of_the_day.py` — Featured quote selection
 - `admin_utils.py` — Admin permission utilities
@@ -352,6 +354,16 @@ docker compose restart bot       # Restart bot only
 - Uses `chat_stats` methods: `calculate_primetime()`, `calculate_engagement()`, `extract_topics_tfidf()`
 - Results cached via `stats_cache` table for 2 hours
 - Queries claims, hot_takes, debates, fact_checks tables for community activity counts
+
+### Polls with Analytics
+- `/poll` — Create polls with Discord button voting (single or multi-choice)
+- `/poll_results <id>` — View results with PIL card (amber/gold theme, progress bars per option)
+- `/poll_close <id>` — Creator-only close with final results card
+- `features/polls.py` — `PollSystem(db)` + `PollView(discord.ui.View)` button interactions
+- `poll_card.py` — PIL results card with winner highlight, vote bars, voter count
+- Tables: `polls` (question, options JSONB, closes_at), `poll_votes` (user_id, option_index)
+- Background job: `check_poll_deadlines` (every 1min) auto-closes expired polls and posts results
+- Supports: anonymous voting, multi-choice, timed polls (auto-close)
 
 ### Personal Analytics (/mystats)
 - `/mystats [@user] [days]` — Unified personal analytics PIL card (teal/emerald theme)

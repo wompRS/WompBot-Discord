@@ -12,7 +12,8 @@ import discord
 
 
 def register_tasks(bot, db, llm, rag, chat_stats, iracing, iracing_popularity_cache,
-                   reminder_system, event_system, privacy_manager, iracing_team_manager=None):
+                   reminder_system, event_system, privacy_manager, iracing_team_manager=None,
+                   poll_system=None):
     """
     Register all background tasks with the bot.
 
@@ -776,10 +777,54 @@ def register_tasks(bot, db, llm, rag, chat_stats, iracing, iracing_popularity_ca
         if iracing_team_manager:
             print("📅 Team event reminder task started (runs every 15 min)")
 
+    # ── Poll deadline checker ──
+    @tasks.loop(minutes=1)
+    async def check_poll_deadlines():
+        """Auto-close polls that have reached their deadline"""
+        if not poll_system:
+            return
+
+        try:
+            due_polls = await poll_system.get_due_polls()
+            for poll in due_polls:
+                try:
+                    results = await poll_system.close_poll(poll['id'])
+                    if results.get('error'):
+                        continue
+
+                    # Try to post results in the original channel
+                    channel = bot.get_channel(poll['channel_id'])
+                    if channel:
+                        from poll_card import create_poll_results_card
+                        import discord
+                        image_buffer = create_poll_results_card(results)
+                        file = discord.File(fp=image_buffer, filename="poll_results.png")
+                        winner = results.get('winner', {})
+                        embed = discord.Embed(
+                            title=f"📊 Poll #{poll['id']} — Time's Up!",
+                            description=f"🏆 Winner: **{winner.get('option', 'N/A')}** ({winner.get('percentage', 0)}%)",
+                            color=discord.Color.green()
+                        )
+                        embed.set_image(url="attachment://poll_results.png")
+                        embed.set_footer(text=f"{results['total_voters']} total voters")
+                        await channel.send(file=file, embed=embed)
+
+                except Exception as e:
+                    print(f"  ❌ Error closing poll {poll['id']}: {e}")
+
+        except Exception as e:
+            print(f"❌ Poll deadline check error: {e}")
+
+    @check_poll_deadlines.before_loop
+    async def before_check_poll_deadlines():
+        await bot.wait_until_ready()
+        if poll_system:
+            print("📊 Poll deadline checker started (runs every 1 min)")
+
     print("✅ Background tasks registered (will start in on_ready)")
 
     # Return task references - they will be started in on_ready event handler
-    return {
+    tasks_dict = {
         'update_iracing_popularity': update_iracing_popularity,
         'snapshot_participation_data': snapshot_participation_data,
         'precompute_stats': precompute_stats,
@@ -790,3 +835,8 @@ def register_tasks(bot, db, llm, rag, chat_stats, iracing, iracing_popularity_ca
         'analyze_user_behavior': analyze_user_behavior,
         'process_embeddings': process_embeddings
     }
+
+    if poll_system:
+        tasks_dict['check_poll_deadlines'] = check_poll_deadlines
+
+    return tasks_dict
