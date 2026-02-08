@@ -264,7 +264,27 @@ register_prefix_commands(
     help_system=help_system,
     tasks_dict=tasks_dict,
     weather=weather,
-    wolfram=wolfram
+    wolfram=wolfram,
+    # Feature deps for migrated slash commands
+    claims_tracker=claims_tracker,
+    hot_takes_tracker=hot_takes_tracker,
+    reminder_system=reminder_system,
+    event_system=event_system,
+    debate_scorekeeper=debate_scorekeeper,
+    qotd=qotd,
+    rag=rag,
+    poll_system=poll_system,
+    who_said_it=who_said_it,
+    devils_advocate=devils_advocate,
+    jeopardy=jeopardy,
+    trivia=trivia,
+    message_scheduler=message_scheduler,
+    rss_monitor=rss_monitor,
+    github_monitor=github_monitor,
+    watchlist_manager=watchlist_manager,
+    iracing_viz=iracing_viz,
+    chat_stats=chat_stats,
+    stats_viz=stats_viz
 )
 
 # Register slash commands
@@ -276,9 +296,6 @@ register_slash_commands(
     claims_tracker=claims_tracker,
     chat_stats=chat_stats,
     stats_viz=stats_viz,
-    hot_takes_tracker=hot_takes_tracker,
-    reminder_system=reminder_system,
-    event_system=event_system,
     debate_scorekeeper=debate_scorekeeper,
     yearly_wrapped=yearly_wrapped,
     qotd=qotd,
@@ -291,14 +308,7 @@ register_slash_commands(
     trivia=trivia,
     rag=rag,
     dashboard=dashboard,
-    poll_system=poll_system,
-    who_said_it=who_said_it,
-    devils_advocate=devils_advocate,
-    jeopardy=jeopardy,
-    message_scheduler=message_scheduler,
-    rss_monitor=rss_monitor,
-    github_monitor=github_monitor,
-    watchlist_manager=watchlist_manager
+    poll_system=poll_system
 )
 
 logger.info("All modules registered successfully!")

@@ -39,7 +39,7 @@ class HelpSystem:
                 ]
             },
             "receipts": {
-                "usage": "/receipts [@user] [keyword]",
+                "usage": "!receipts [@user] [keyword] (alias: !claims)",
                 "description": "View tracked claims for a user with optional keyword filtering",
                 "details": [
                     "Claims are automatically tracked when users make factual statements",
@@ -47,13 +47,13 @@ class HelpSystem:
                     "Keyword filter helps find specific claims"
                 ],
                 "examples": [
-                    "/receipts - View your own claims",
-                    "/receipts @username - View someone else's claims",
-                    "/receipts @username election - Filter claims by keyword"
+                    "!receipts - View your own claims",
+                    "!receipts @username - View someone else's claims",
+                    "!receipts @username election - Filter claims by keyword"
                 ]
             },
             "quotes": {
-                "usage": "/quotes [@user]",
+                "usage": "!quotes [@user]",
                 "description": "View saved quotes for a user",
                 "details": [
                     "Quotes are saved by reacting to messages with ☁️ emoji",
@@ -61,8 +61,8 @@ class HelpSystem:
                     "Quotes persist unless deleted"
                 ],
                 "examples": [
-                    "/quotes - View your saved quotes",
-                    "/quotes @username - View quotes from specific user"
+                    "!quotes - View your saved quotes",
+                    "!quotes @username - View quotes from specific user"
                 ]
             },
             "wompbot_optout": {
@@ -149,7 +149,7 @@ class HelpSystem:
                 ]
             },
             "personality": {
-                "usage": "/personality <mode>",
+                "usage": "!personality <mode>",
                 "description": "Change bot personality mode (Admin only)",
                 "details": [
                     "Three personality modes available:",
@@ -160,13 +160,13 @@ class HelpSystem:
                     "Only admin users can change personality modes"
                 ],
                 "examples": [
-                    "/personality default - Set conversational mode",
-                    "/personality concise - Set brief response mode",
-                    "/personality bogan - Set Australian slang mode"
+                    "!personality default - Set conversational mode",
+                    "!personality concise - Set brief response mode",
+                    "!personality bogan - Set Australian slang mode"
                 ]
             },
             "whoami": {
-                "usage": "/whoami",
+                "usage": "!whoami",
                 "description": "Show your Discord user information",
                 "details": [
                     "Displays your Discord username, user ID, account creation date",
@@ -174,7 +174,7 @@ class HelpSystem:
                     "Useful for troubleshooting or checking your account info"
                 ],
                 "examples": [
-                    "/whoami - Show your Discord information"
+                    "!whoami - Show your Discord information"
                 ]
             },
             "wrapped": {
@@ -194,7 +194,7 @@ class HelpSystem:
                 ]
             },
             "qotd": {
-                "usage": "/qotd [mode]",
+                "usage": "!qotd [mode]",
                 "description": "View featured quotes from different time periods",
                 "details": [
                     "Modes: Daily, Weekly, Monthly, All-Time Greats, or Random",
@@ -202,13 +202,13 @@ class HelpSystem:
                     "Zero LLM cost - database queries only"
                 ],
                 "examples": [
-                    "/qotd - View daily quote",
-                    "/qotd weekly - View weekly quote",
-                    "/qotd all-time - View all-time great quotes"
+                    "!qotd - View daily quote",
+                    "!qotd weekly - View weekly quote",
+                    "!qotd all-time - View all-time great quotes"
                 ]
             },
             "remind": {
-                "usage": "/remind <time> <message> [recurring]",
+                "usage": "!remind <time> <message> [recurring]",
                 "description": "Set a reminder with natural language time",
                 "details": [
                     "Natural language parsing: 'in 5 minutes', 'tomorrow at 3pm', 'next Monday'",
@@ -218,13 +218,13 @@ class HelpSystem:
                     "Zero LLM cost - pure time parsing"
                 ],
                 "examples": [
-                    "/remind in 30 minutes Check the oven",
-                    "/remind tomorrow at 9am Team meeting",
-                    "/remind friday at 5pm Weekly standup recurring:weekly"
+                    "!remind in 30 minutes Check the oven",
+                    "!remind tomorrow at 9am Team meeting",
+                    "!remind friday at 5pm Weekly standup recurring:weekly"
                 ]
             },
             "weather_set": {
-                "usage": "/weather_set <location> [units]",
+                "usage": "!weatherset <location> [units]",
                 "description": "Set your default weather location",
                 "details": [
                     "Save your location for quick weather lookups",
@@ -232,9 +232,9 @@ class HelpSystem:
                     "After setting, just say 'wompbot weather' for updates"
                 ],
                 "examples": [
-                    "/weather_set London",
-                    "/weather_set New York imperial",
-                    "/weather_set Tokyo metric"
+                    "!weatherset London",
+                    "!weatherset New York imperial",
+                    "!weatherset Tokyo metric"
                 ]
             },
             "trivia_start": {
@@ -256,14 +256,14 @@ class HelpSystem:
                 ]
             },
             "trivia_stop": {
-                "usage": "/trivia_stop",
+                "usage": "!triviastop",
                 "description": "Stop the current trivia session and show final scores",
                 "examples": [
-                    "/trivia_stop - End the active trivia session"
+                    "!triviastop - End the active trivia session"
                 ]
             },
             "trivia_stats": {
-                "usage": "/trivia_stats [@user]",
+                "usage": "!triviastats [@user]",
                 "description": "View trivia statistics for yourself or another user",
                 "details": [
                     "Shows total sessions, questions answered, and wins",
@@ -272,12 +272,12 @@ class HelpSystem:
                     "Best streak and favorite topic"
                 ],
                 "examples": [
-                    "/trivia_stats - View your stats",
-                    "/trivia_stats @user - View another user's stats"
+                    "!triviastats - View your stats",
+                    "!triviastats @user - View another user's stats"
                 ]
             },
             "trivia_leaderboard": {
-                "usage": "/trivia_leaderboard [days]",
+                "usage": "!trivialeaderboard [days] (alias: !tlb)",
                 "description": "View server trivia leaderboard",
                 "details": [
                     "Shows top 10 players by total points",
@@ -285,25 +285,25 @@ class HelpSystem:
                     "Displays accuracy and total questions answered"
                 ],
                 "examples": [
-                    "/trivia_leaderboard - Last 30 days",
-                    "/trivia_leaderboard 7 - Last week",
-                    "/trivia_leaderboard 365 - All time"
+                    "!trivialeaderboard - Last 30 days",
+                    "!trivialeaderboard 7 - Last week",
+                    "!tlb 365 - All time"
                 ]
             },
             # Claims and Fact-Checking
             "verify_claim": {
-                "usage": "/verify_claim <claim_id> <status> [notes]",
+                "usage": "!verify <claim_id> <status> [notes]",
                 "description": "Verify a tracked claim as true, false, or mixed",
                 "details": [
                     "Status options: true, false, mixed, unverifiable",
                     "Add notes to explain your verification",
-                    "Get claim IDs from /receipts command",
+                    "Get claim IDs from !receipts command",
                     "Verified claims show status in receipts view"
                 ],
                 "examples": [
-                    "/verify_claim 123 true - Mark claim as verified true",
-                    "/verify_claim 456 false This was debunked",
-                    "/verify_claim 789 mixed Partially accurate"
+                    "!verify 123 true - Mark claim as verified true",
+                    "!verify 456 false This was debunked",
+                    "!verify 789 mixed Partially accurate"
                 ],
                 "related": ["receipts", "quotes"]
             },
@@ -371,7 +371,7 @@ class HelpSystem:
             },
             # Hot Takes
             "hottakes": {
-                "usage": "/hottakes [type] [days]",
+                "usage": "!hottakes [type] [days] (alias: !ht)",
                 "description": "View hot takes leaderboard",
                 "details": [
                     "Types: controversial, vindicated, worst, community, combined",
@@ -380,14 +380,14 @@ class HelpSystem:
                     "Default: combined leaderboard"
                 ],
                 "examples": [
-                    "/hottakes - Combined leaderboard",
-                    "/hottakes vindicated - Claims that aged well",
-                    "/hottakes worst 30 - Worst takes last 30 days"
+                    "!hottakes - Combined leaderboard",
+                    "!hottakes vindicated - Claims that aged well",
+                    "!ht worst 30 - Worst takes last 30 days"
                 ],
                 "related": ["mystats_hottakes", "vindicate"]
             },
             "mystats_hottakes": {
-                "usage": "/mystats_hottakes",
+                "usage": "!myht",
                 "description": "View your personal hot takes statistics",
                 "details": [
                     "Shows your total hot takes count",
@@ -395,27 +395,27 @@ class HelpSystem:
                     "Your most controversial claims"
                 ],
                 "examples": [
-                    "/mystats_hottakes - Your hot takes stats"
+                    "!myht - Your hot takes stats"
                 ],
                 "related": ["hottakes", "vindicate"]
             },
             "vindicate": {
-                "usage": "/vindicate <hottake_id> <status> [notes]",
+                "usage": "!vindicate <hottake_id> <status> [notes]",
                 "description": "Mark a hot take as vindicated or not (Admin only)",
                 "details": [
                     "Status options: vindicated, wrong, pending",
                     "Used when a prediction comes true or fails",
-                    "Get hot take IDs from /hottakes command"
+                    "Get hot take IDs from !hottakes command"
                 ],
                 "examples": [
-                    "/vindicate 123 vindicated Called it!",
-                    "/vindicate 456 wrong Didn't age well"
+                    "!vindicate 123 vindicated Called it!",
+                    "!vindicate 456 wrong Didn't age well"
                 ],
                 "related": ["hottakes", "mystats_hottakes"]
             },
             # Reminders
             "reminders": {
-                "usage": "/reminders",
+                "usage": "!reminders",
                 "description": "View all your active reminders",
                 "details": [
                     "Lists all pending reminders with their times",
@@ -423,26 +423,26 @@ class HelpSystem:
                     "Includes recurring reminder schedules"
                 ],
                 "examples": [
-                    "/reminders - List all your reminders"
+                    "!reminders - List all your reminders"
                 ],
                 "related": ["remind", "cancel_reminder"]
             },
             "cancel_reminder": {
-                "usage": "/cancel_reminder <reminder_id>",
+                "usage": "!cancelremind <reminder_id>",
                 "description": "Cancel an active reminder",
                 "details": [
-                    "Get reminder ID from /reminders command",
+                    "Get reminder ID from !reminders command",
                     "Cancelled reminders are permanently deleted",
                     "Works for both one-time and recurring reminders"
                 ],
                 "examples": [
-                    "/cancel_reminder 123 - Cancel reminder #123"
+                    "!cancelremind 123 - Cancel reminder #123"
                 ],
                 "related": ["remind", "reminders"]
             },
             # Events
             "schedule_event": {
-                "usage": "/schedule_event <name> <date> [description] [reminders]",
+                "usage": "!event <name> <date> [description] [reminders]",
                 "description": "Schedule an event with automatic reminders",
                 "details": [
                     "Natural language date: 'Friday at 8pm', 'next Monday'",
@@ -451,14 +451,14 @@ class HelpSystem:
                     "Events announced in the channel"
                 ],
                 "examples": [
-                    "/schedule_event 'Movie Night' 'Friday 8pm'",
-                    "/schedule_event 'Game Day' 'next Saturday 3pm' 'Bring snacks!'",
-                    "/schedule_event 'Meeting' 'tomorrow 10am' '' '1d,1h'"
+                    "!event 'Movie Night' 'Friday 8pm'",
+                    "!event 'Game Day' 'next Saturday 3pm' 'Bring snacks!'",
+                    "!event 'Meeting' 'tomorrow 10am' '' '1d,1h'"
                 ],
                 "related": ["events", "cancel_event"]
             },
             "events": {
-                "usage": "/events [limit]",
+                "usage": "!events [limit]",
                 "description": "View upcoming scheduled events",
                 "details": [
                     "Shows event name, time, and description",
@@ -466,21 +466,21 @@ class HelpSystem:
                     "Default shows next 10 events"
                 ],
                 "examples": [
-                    "/events - Show upcoming events",
-                    "/events 5 - Show next 5 events"
+                    "!events - Show upcoming events",
+                    "!events 5 - Show next 5 events"
                 ],
                 "related": ["schedule_event", "cancel_event"]
             },
             "cancel_event": {
-                "usage": "/cancel_event <event_id>",
+                "usage": "!cancelevent <event_id>",
                 "description": "Cancel a scheduled event",
                 "details": [
-                    "Get event ID from /events command",
+                    "Get event ID from !events command",
                     "Cancels all associated reminders",
                     "Announces cancellation in the channel"
                 ],
                 "examples": [
-                    "/cancel_event 123 - Cancel event #123"
+                    "!cancelevent 123 - Cancel event #123"
                 ],
                 "related": ["events", "schedule_event"]
             },
@@ -491,7 +491,7 @@ class HelpSystem:
                 "details": [
                     "Automatically tracks arguments from participants",
                     "Records key points and counterpoints",
-                    "Use /debate_end to conclude and get analysis"
+                    "Use !debate_end to conclude and get analysis"
                 ],
                 "examples": [
                     "/debate_start 'Is pineapple on pizza acceptable?'",
@@ -500,7 +500,7 @@ class HelpSystem:
                 "related": ["debate_end", "debate_stats"]
             },
             "debate_end": {
-                "usage": "/debate_end",
+                "usage": "!debate_end (alias: !de)",
                 "description": "End the active debate and show analysis",
                 "details": [
                     "LLM analyzes all arguments made",
@@ -510,12 +510,13 @@ class HelpSystem:
                     "Cost: $0.01-0.05 per debate"
                 ],
                 "examples": [
-                    "/debate_end - Conclude and analyze debate"
+                    "!debate_end - Conclude and analyze debate",
+                    "!de - Short alias"
                 ],
                 "related": ["debate_start", "debate_stats"]
             },
             "debate_stats": {
-                "usage": "/debate_stats [@user]",
+                "usage": "!debate_stats [@user] (alias: !ds)",
                 "description": "View debate statistics",
                 "details": [
                     "Shows wins, losses, and average scores",
@@ -523,13 +524,13 @@ class HelpSystem:
                     "View your own or another user's stats"
                 ],
                 "examples": [
-                    "/debate_stats - Your debate stats",
-                    "/debate_stats @user - Someone else's stats"
+                    "!debate_stats - Your debate stats",
+                    "!ds @user - Someone else's stats"
                 ],
                 "related": ["debate_leaderboard", "debate_start"]
             },
             "debate_leaderboard": {
-                "usage": "/debate_leaderboard",
+                "usage": "!debate_lb (alias: !dlb)",
                 "description": "View the server's top debaters",
                 "details": [
                     "Ranked by win rate and average score",
@@ -537,12 +538,13 @@ class HelpSystem:
                     "Highlights best arguments"
                 ],
                 "examples": [
-                    "/debate_leaderboard - Show top debaters"
+                    "!debate_lb - Show top debaters",
+                    "!dlb - Short alias"
                 ],
                 "related": ["debate_stats", "debate_start"]
             },
             "debate_review": {
-                "usage": "/debate_review <file>",
+                "usage": "!debate_review <file> (alias: !dr)",
                 "description": "Analyze an uploaded debate transcript",
                 "details": [
                     "Upload a text file with debate transcript",
@@ -550,20 +552,21 @@ class HelpSystem:
                     "Provides scoring and winner determination"
                 ],
                 "examples": [
-                    "/debate_review [attach file]"
+                    "!debate_review [attach file]",
+                    "!dr [attach file]"
                 ],
                 "related": ["debate_start", "debate_stats"]
             },
             # Weather
             "weather_clear": {
-                "usage": "/weather_clear",
+                "usage": "!weatherclear",
                 "description": "Clear your saved weather location",
                 "details": [
                     "Removes your default weather preference",
                     "You'll need to specify location for weather lookups"
                 ],
                 "examples": [
-                    "/weather_clear - Remove saved location"
+                    "!weatherclear - Remove saved location"
                 ],
                 "related": ["weather_set"]
             },
@@ -893,16 +896,16 @@ class HelpSystem:
         """Generate general help embed with all commands"""
         embed = discord.Embed(
             title="WompBot Commands",
-            description="**65+ slash commands** and **26 AI tools** organized by category\n\nChat: @WompBot, 'wompbot', or '!wb' • Powered by DeepSeek\nSupports images, GIFs, YouTube videos, and video attachments\nUse `/help <command>` for details",
+            description="**Slash commands + prefix commands** and **26 AI tools** organized by category\n\nChat: @WompBot, 'wompbot', or '!wb' • Powered by DeepSeek\nSupports images, GIFs, YouTube videos, and video attachments\nUse `/help <command>` or `!help <command>` for details",
             color=discord.Color.purple()
         )
 
         embed.add_field(
             name="General and Utility",
             value=(
-                "`/help` - Show commands or get help\n"
-                "`/whoami` - Show your Discord info\n"
-                "`/personality` - Change bot personality mode (Admin only)\n"
+                "`/help` or `!help` - Show commands or get help\n"
+                "`!whoami` - Show your Discord info\n"
+                "`!personality` - Change bot personality mode (Admin only)\n"
                 "Three modes: Default (conversational), Concise (brief), Bogan (Aussie slang)"
             ),
             inline=False
@@ -939,9 +942,9 @@ class HelpSystem:
         embed.add_field(
             name="Claims and Quotes",
             value=(
-                "`/receipts` - View tracked claims\n"
-                "`/quotes` - View saved quotes\n"
-                "`/verify_claim` - Verify a claim\n"
+                "`!receipts` (alias `!claims`) - View tracked claims\n"
+                "`!quotes` - View saved quotes\n"
+                "`!verify` - Verify a claim\n"
                 "React with cloud emoji to save quote, warning emoji to fact-check"
             ),
             inline=False
@@ -961,9 +964,9 @@ class HelpSystem:
         embed.add_field(
             name="Hot Takes",
             value=(
-                "`/hottakes` - Hot takes leaderboard\n"
-                "`/mystats_hottakes` - Your hot takes stats\n"
-                "`/vindicate` - Mark hot take vindicated (Admin)"
+                "`!hottakes` (alias `!ht`) - Hot takes leaderboard\n"
+                "`!myht` - Your hot takes stats\n"
+                "`!vindicate` - Mark hot take vindicated (Admin)"
             ),
             inline=False
         )
@@ -971,12 +974,12 @@ class HelpSystem:
         embed.add_field(
             name="Reminders and Events",
             value=(
-                "`/remind` - Set reminder\n"
-                "`/reminders` - View your reminders\n"
-                "`/cancel_reminder` - Cancel reminder\n"
-                "`/schedule_event` - Schedule event\n"
-                "`/events` - View upcoming events\n"
-                "`/cancel_event` - Cancel event"
+                "`!remind` - Set reminder\n"
+                "`!reminders` - View your reminders\n"
+                "`!cancelremind` - Cancel reminder\n"
+                "`!event` - Schedule event\n"
+                "`!events` - View upcoming events\n"
+                "`!cancelevent` - Cancel event"
             ),
             inline=False
         )
@@ -985,7 +988,7 @@ class HelpSystem:
             name="Wrapped and Quote of the Day",
             value=(
                 "`/wrapped` - Your yearly summary\n"
-                "`/qotd` - Quote of the day"
+                "`!qotd` - Quote of the day"
             ),
             inline=False
         )
@@ -994,10 +997,11 @@ class HelpSystem:
             name="Debates",
             value=(
                 "`/debate_start` - Start tracking debate\n"
-                "`/debate_end` - End and analyze debate\n"
-                "`/debate_stats` - Your debate stats\n"
-                "`/debate_leaderboard` - Top debaters\n"
-                "`/debate_review` - Analyze debate file"
+                "`!debate_end` (`!de`) - End and analyze debate\n"
+                "`!debate_stats` (`!ds`) - Your debate stats\n"
+                "`!debate_lb` (`!dlb`) - Top debaters\n"
+                "`!debate_review` (`!dr`) - Analyze debate file\n"
+                "`!debate_profile` (`!dp`) - Argumentation profile card"
             ),
             inline=False
         )
@@ -1006,9 +1010,9 @@ class HelpSystem:
             name="Trivia (4 commands)",
             value=(
                 "`/trivia_start` - Start multiplayer trivia session\n"
-                "`/trivia_stop` - Stop active trivia session\n"
-                "`/trivia_stats` - View your trivia statistics\n"
-                "`/trivia_leaderboard` - Server trivia rankings\n"
+                "`!triviastop` - Stop active trivia session\n"
+                "`!triviastats` - View your trivia statistics\n"
+                "`!trivialeaderboard` (`!tlb`) - Server trivia rankings\n"
                 "LLM-generated questions • Fuzzy answer matching • Speed & streak bonuses"
             ),
             inline=False
@@ -1038,8 +1042,8 @@ class HelpSystem:
             name="Weather",
             value=(
                 "Say: 'wompbot weather' or 'wompbot forecast'\n"
-                "`/weather_set` - Set default location\n"
-                "`/weather_clear` - Clear saved location"
+                "`!weatherset` - Set default location\n"
+                "`!weatherclear` - Clear saved location"
             ),
             inline=False
         )
@@ -1079,6 +1083,69 @@ class HelpSystem:
         )
 
         embed.add_field(
+            name="Polls",
+            value=(
+                "`/poll` - Create a poll with button voting\n"
+                "`!pollresults` - View poll results card\n"
+                "`!pollclose` - Close a poll (creator only)"
+            ),
+            inline=False
+        )
+
+        embed.add_field(
+            name="Games",
+            value=(
+                "`!whosaidit` - Start Who Said It? game\n"
+                "`!wsisskip` / `!wsisend` - Skip round / End game\n"
+                "`!da` - Start Devil's Advocate session\n"
+                "`!daend` - End Devil's Advocate session\n"
+                "`!jeopardy` - Start Channel Jeopardy\n"
+                "`!jpick` / `!jpass` / `!jend` - Pick clue / Pass / End game"
+            ),
+            inline=False
+        )
+
+        embed.add_field(
+            name="Personal Analytics and Memory",
+            value=(
+                "`/mystats` - Personal analytics card\n"
+                "`!myfacts` - View stored facts about you\n"
+                "`!forget` - Delete a stored fact"
+            ),
+            inline=False
+        )
+
+        embed.add_field(
+            name="Message Scheduling",
+            value=(
+                "`!schedule` - Schedule a message\n"
+                "`!scheduled` - View pending messages\n"
+                "`!cancelschedule` - Cancel a scheduled message"
+            ),
+            inline=False
+        )
+
+        embed.add_field(
+            name="Monitoring (Admin Only)",
+            value=(
+                "`!feedadd` / `!feedremove` / `!feeds` - RSS feed monitoring\n"
+                "`!ghwatch` / `!ghunwatch` / `!ghwatches` - GitHub repo monitoring\n"
+                "`!wladd` / `!wlremove` / `!watchlist` (`!wl`) - Price watchlists"
+            ),
+            inline=False
+        )
+
+        embed.add_field(
+            name="Admin",
+            value=(
+                "`!setadmin` / `!removeadmin` / `!admins` - Manage bot admins\n"
+                "`!bug` / `!bugs` / `!bugfix` - Bug tracking\n"
+                "`!personality` - Change bot personality mode"
+            ),
+            inline=False
+        )
+
+        embed.add_field(
             name="Prefix Commands - Utility",
             value=(
                 "`!ping` - Check latency\n"
@@ -1106,13 +1173,13 @@ class HelpSystem:
             inline=False
         )
 
-        embed.set_footer(text="Use /help <command> for detailed help")
+        embed.set_footer(text="Use /help <command> or !help <command> for detailed help")
 
         return embed
 
     def get_command_help(self, command: str) -> Optional[discord.Embed]:
         """Generate detailed help for a specific command"""
-        command = command.lower().strip().lstrip('/')
+        command = command.lower().strip().lstrip('/!')
 
         # SECURITY: Sanitize command to prevent path traversal attacks
         # Only allow alphanumeric characters, underscores, and hyphens
@@ -1177,13 +1244,19 @@ class HelpSystem:
             )
 
         if 'related' in doc:
+            related_parts = []
+            for cmd in doc['related']:
+                if cmd in self.command_docs and self.command_docs[cmd]['usage'].startswith('!'):
+                    related_parts.append(f"`{self.command_docs[cmd]['usage'].split()[0]}`")
+                else:
+                    related_parts.append(f"`/{cmd}`")
             embed.add_field(
                 name="Related Commands",
-                value=", ".join(f"`/{cmd}`" for cmd in doc['related']),
+                value=", ".join(related_parts),
                 inline=False
             )
 
-        embed.set_footer(text="Use /help to see all commands")
+        embed.set_footer(text="Use /help or !help to see all commands")
 
         return embed
 
@@ -1264,10 +1337,13 @@ class HelpSystem:
             "description": "Track and analyze debates with LLM-powered judging, logical fallacy detection, and scoring.",
             "commands": [
                 ("debate_start", "Start tracking a debate"),
-                ("debate_end", "End debate and show analysis"),
-                ("debate_stats", "View your debate statistics"),
-                ("debate_leaderboard", "Top debaters leaderboard"),
-                ("debate_review", "Analyze uploaded debate transcript"),
+            ],
+            "prefix_commands": [
+                ("!debate_end (!de)", "End debate and show analysis"),
+                ("!debate_stats (!ds)", "View your debate statistics"),
+                ("!debate_lb (!dlb)", "Top debaters leaderboard"),
+                ("!debate_review (!dr)", "Analyze uploaded debate transcript"),
+                ("!debate_profile (!dp)", "Argumentation profile card"),
             ],
             "related_categories": ["hot_takes"]
         },
@@ -1276,33 +1352,35 @@ class HelpSystem:
             "description": "LLM-powered trivia games with dynamic question generation, scoring, and leaderboards.",
             "commands": [
                 ("trivia_start", "Start trivia session"),
-                ("trivia_stop", "Stop current session"),
-                ("trivia_stats", "View your trivia stats"),
-                ("trivia_leaderboard", "Server trivia rankings"),
+            ],
+            "prefix_commands": [
+                ("!triviastop", "Stop current session"),
+                ("!triviastats", "View your trivia stats"),
+                ("!trivialeaderboard (!tlb)", "Server trivia rankings"),
             ],
             "related_categories": []
         },
         "reminders": {
             "title": "Reminders & Events",
             "description": "Context-aware reminders and event scheduling with natural language time parsing.",
-            "commands": [
-                ("remind", "Set a reminder"),
-                ("reminders", "View active reminders"),
-                ("cancel_reminder", "Cancel a reminder"),
-                ("schedule_event", "Schedule an event"),
-                ("events", "View upcoming events"),
-                ("cancel_event", "Cancel an event"),
+            "prefix_commands": [
+                ("!remind", "Set a reminder"),
+                ("!reminders", "View active reminders"),
+                ("!cancelremind", "Cancel a reminder"),
+                ("!event", "Schedule an event"),
+                ("!events", "View upcoming events"),
+                ("!cancelevent", "Cancel an event"),
             ],
             "related_categories": []
         },
         "claims": {
             "title": "Claims & Quotes",
             "description": "Track predictions, verify claims, and save memorable quotes.",
-            "commands": [
-                ("receipts", "View tracked claims"),
-                ("verify_claim", "Verify a claim as true/false"),
-                ("quotes", "View saved quotes"),
-                ("qotd", "Quote of the Day"),
+            "prefix_commands": [
+                ("!receipts (!claims)", "View tracked claims"),
+                ("!verify", "Verify a claim as true/false"),
+                ("!quotes", "View saved quotes"),
+                ("!qotd", "Quote of the Day"),
             ],
             "features": [
                 "React with cloud emoji to save quotes",
@@ -1314,22 +1392,19 @@ class HelpSystem:
         "hot_takes": {
             "title": "Hot Takes",
             "description": "Track controversial claims and monitor how predictions age over time.",
-            "commands": [
-                ("hottakes", "Hot takes leaderboard"),
-                ("mystats_hottakes", "Your hot takes statistics"),
-                ("vindicate", "Mark hot take vindication status (Admin)"),
+            "prefix_commands": [
+                ("!hottakes (!ht)", "Hot takes leaderboard"),
+                ("!myht", "Your hot takes statistics"),
+                ("!vindicate", "Mark hot take vindication status (Admin)"),
             ],
             "related_categories": ["claims", "debates"]
         },
         "weather": {
             "title": "Weather Commands",
             "description": "Weather lookups with dual-unit display (Fahrenheit primary, Celsius secondary).",
-            "commands": [
-                ("weather_set", "Set default location and units"),
-                ("weather_clear", "Clear saved location"),
-                ("weather_info", "View saved preferences"),
-            ],
             "prefix_commands": [
+                ("!weatherset", "Set default location and units"),
+                ("!weatherclear", "Clear saved location"),
                 ("!weather [location]", "Current weather"),
             ],
             "natural_language": [
@@ -1359,16 +1434,14 @@ class HelpSystem:
         "admin": {
             "title": "Admin Commands",
             "description": "Server administration and bot management commands.",
-            "commands": [
-                ("setadmin", "Add a bot admin"),
-                ("removeadmin", "Remove a bot admin"),
-                ("admins", "List bot admins"),
-                ("personality", "Change bot personality mode"),
-                ("bug", "Report a bug"),
-                ("bugs", "List tracked bugs"),
-                ("bug_resolve", "Resolve a bug"),
-            ],
             "prefix_commands": [
+                ("!setadmin", "Add a bot admin"),
+                ("!removeadmin", "Remove a bot admin"),
+                ("!admins", "List bot admins"),
+                ("!personality", "Change bot personality mode"),
+                ("!bug", "Report a bug"),
+                ("!bugs", "List tracked bugs"),
+                ("!bugfix", "Resolve a bug"),
                 ("!analyze [days]", "Run behavior analysis"),
                 ("!refreshstats", "Refresh stats cache"),
             ],
@@ -1441,7 +1514,7 @@ class HelpSystem:
                 inline=False
             )
 
-        embed.set_footer(text="Use /help <command> for detailed command help")
+        embed.set_footer(text="Use /help <command> or !help <command> for detailed command help")
 
         return embed
 

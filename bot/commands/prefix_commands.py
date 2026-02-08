@@ -18,7 +18,18 @@ import time
 
 
 def register_prefix_commands(bot, db, llm, search, help_system, tasks_dict,
-                              weather=None, wolfram=None):
+                              weather=None, wolfram=None,
+                              # Feature deps for migrated slash commands
+                              claims_tracker=None, hot_takes_tracker=None,
+                              reminder_system=None, event_system=None,
+                              debate_scorekeeper=None, qotd=None, rag=None,
+                              poll_system=None, who_said_it=None,
+                              devils_advocate=None, jeopardy=None,
+                              trivia=None, message_scheduler=None,
+                              rss_monitor=None, github_monitor=None,
+                              watchlist_manager=None,
+                              iracing_viz=None, chat_stats=None,
+                              stats_viz=None):
     """
     Register all prefix commands with the bot.
 
@@ -1293,3 +1304,43 @@ def register_prefix_commands(bot, db, llm, search, help_system, tasks_dict,
                     await ctx.send(f"❌ Wolfram Alpha query failed: {str(e)}")
 
     print("✅ Prefix commands registered")
+
+    # ===== Register sub-module prefix commands =====
+    from commands.prefix_admin import register_prefix_admin_commands
+    register_prefix_admin_commands(bot, db)
+
+    from commands.prefix_features import register_prefix_feature_commands
+    register_prefix_feature_commands(
+        bot, db,
+        claims_tracker=claims_tracker,
+        hot_takes_tracker=hot_takes_tracker,
+        reminder_system=reminder_system,
+        event_system=event_system,
+        qotd=qotd,
+        rag=rag,
+        message_scheduler=message_scheduler,
+        stats_viz=stats_viz
+    )
+
+    from commands.prefix_games import register_prefix_game_commands
+    register_prefix_game_commands(
+        bot, db,
+        llm=llm,
+        debate_scorekeeper=debate_scorekeeper,
+        trivia=trivia,
+        poll_system=poll_system,
+        who_said_it=who_said_it,
+        devils_advocate=devils_advocate,
+        jeopardy=jeopardy,
+        iracing_viz=iracing_viz,
+        chat_stats=chat_stats,
+        stats_viz=stats_viz
+    )
+
+    from commands.prefix_monitoring import register_prefix_monitoring_commands
+    register_prefix_monitoring_commands(
+        bot, db,
+        rss_monitor=rss_monitor,
+        github_monitor=github_monitor,
+        watchlist_manager=watchlist_manager
+    )
