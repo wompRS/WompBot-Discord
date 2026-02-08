@@ -336,6 +336,14 @@ docker compose restart bot       # Restart bot only
 - Batch upserted via `db.batch_upsert_topic_expertise()` using `psycopg2.extras.execute_values`
 - Migration: `sql/16_new_features.sql`
 
+### Conversation Flow Analysis (/flow)
+- `/flow [days]` — Sankey diagram of topic transitions + bar chart of topic changers
+- `chat_stats.analyze_conversation_flow()` — Splits messages into segments by time gaps (10min default)
+- Extracts dominant topic per segment via TF-IDF, builds transition matrix
+- Tracks which users most frequently change topics ("topic changers")
+- Rendered via Plotly Sankey + horizontal bar chart
+- No new tables — computed on-the-fly from messages
+
 ### Server Health Dashboard (/dashboard)
 - `/dashboard [days]` — Server-wide analytics with Plotly charts (default 7 days, max 90)
 - `features/dashboard.py` — `ServerDashboard(db, chat_stats)` class

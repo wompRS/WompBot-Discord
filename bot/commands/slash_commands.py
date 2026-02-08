@@ -5090,6 +5090,125 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
 
         print("✅ Dashboard commands registered")
 
+    # ===== Conversation Flow =====
+    @bot.tree.command(name="flow", description="Analyze topic transitions and who changes subjects")
+    @app_commands.describe(days="Time period in days (default: 14, max: 60)")
+    async def flow_slash(interaction: discord.Interaction, days: int = 14):
+        """Show conversation flow analysis with Sankey diagram"""
+        await interaction.response.defer()
+
+        try:
+            days = min(max(days, 1), 60)
+            start_date = datetime.now() - timedelta(days=days)
+            end_date = datetime.now()
+
+            # Fetch messages
+            messages = chat_stats.get_messages_for_analysis(
+                None, start_date, end_date, exclude_opted_out=True
+            )
+
+            if not messages or len(messages) < 20:
+                await interaction.followup.send(
+                    "📊 Not enough messages to analyze conversation flow. "
+                    "Try a longer time period."
+                )
+                return
+
+            # Filter to this guild if possible
+            guild_messages = [m for m in messages if m.get('guild_id') == interaction.guild_id] or messages
+
+            # Analyze flow
+            flow = chat_stats.analyze_conversation_flow(guild_messages, top_n=8, gap_minutes=10)
+
+            if not flow['transitions']:
+                await interaction.followup.send(
+                    "📊 Not enough distinct topic transitions found. "
+                    "Try a longer time period with more varied conversations."
+                )
+                return
+
+            files = []
+
+            # Sankey diagram of topic transitions
+            from plotly_charts import PlotlyCharts
+            charts = PlotlyCharts()
+
+            labels = list(flow['top_topics'])
+            if len(labels) >= 2 and flow['transitions']:
+                # Build Sankey data
+                label_to_idx = {l: i for i, l in enumerate(labels)}
+                source = []
+                target = []
+                values = []
+                for fr, to, cnt in flow['transitions']:
+                    if fr in label_to_idx and to in label_to_idx:
+                        source.append(label_to_idx[fr])
+                        target.append(label_to_idx[to])
+                        values.append(cnt)
+
+                if source:
+                    sankey_buf = charts.create_sankey(
+                        labels=[l.title() for l in labels],
+                        source=source,
+                        target=target,
+                        value=values,
+                        title=f"Topic Flow (Last {days} Days)"
+                    )
+                    files.append(discord.File(fp=sankey_buf, filename="topic_flow.png"))
+
+            # Topic changers bar chart
+            if flow['topic_changers']:
+                changers_data = {name: count for name, count in flow['topic_changers'][:10]}
+                if changers_data:
+                    bar_buf = charts.create_bar_chart(
+                        data=changers_data,
+                        title=f"Top Topic Changers (Last {days} Days)",
+                        ylabel="Topic Changes",
+                        horizontal=True
+                    )
+                    files.append(discord.File(fp=bar_buf, filename="topic_changers.png"))
+
+            # Summary embed
+            embed = discord.Embed(
+                title=f"🔄 Conversation Flow — Last {days} Days",
+                color=discord.Color.blue()
+            )
+            embed.add_field(
+                name="📊 Segments",
+                value=f"**{flow['segment_count']}** conversation segments detected",
+                inline=True
+            )
+            embed.add_field(
+                name="🔀 Transitions",
+                value=f"**{len(flow['transitions'])}** unique topic transitions",
+                inline=True
+            )
+
+            # Top transitions as text
+            if flow['transitions'][:5]:
+                trans_text = "\n".join(
+                    f"**{fr.title()}** → **{to.title()}** ({cnt}x)"
+                    for fr, to, cnt in flow['transitions'][:5]
+                )
+                embed.add_field(
+                    name="🔝 Top Transitions",
+                    value=trans_text,
+                    inline=False
+                )
+
+            if files:
+                await interaction.followup.send(embed=embed, files=files)
+            else:
+                await interaction.followup.send(embed=embed)
+
+        except Exception as e:
+            await interaction.followup.send(f"❌ Error analyzing flow: {str(e)}")
+            print(f"❌ Flow analysis error: {e}")
+            import traceback
+            traceback.print_exc()
+
+    print("✅ Conversation flow commands registered")
+
     # ===== Personal Analytics =====
     @bot.tree.command(name="mystats", description="View your personal analytics profile card")
     @app_commands.describe(

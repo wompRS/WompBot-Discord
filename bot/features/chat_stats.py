@@ -293,6 +293,95 @@ class ChatStatistics:
 
         return results
 
+    def analyze_conversation_flow(self, messages: List[dict], top_n: int = 8,
+                                   gap_minutes: int = 10) -> dict:
+        """Analyze topic transitions in conversations.
+
+        Detects topic shifts by splitting messages into conversation segments
+        (separated by time gaps), extracting topics per segment, and building
+        a transition matrix of topic -> topic.
+
+        Args:
+            messages: List of message dicts with content, timestamp, user_id, username
+            top_n: Number of top topics to track
+            gap_minutes: Minutes of silence to consider a new conversation segment
+
+        Returns:
+            {
+                'transitions': [(from_topic, to_topic, count), ...],
+                'topic_changers': [(username, change_count), ...],
+                'segment_count': int,
+                'top_topics': [topic_name, ...]
+            }
+        """
+        from collections import defaultdict, Counter
+
+        if len(messages) < 20:
+            return {'transitions': [], 'topic_changers': [], 'segment_count': 0, 'top_topics': []}
+
+        # Sort messages by timestamp
+        sorted_msgs = sorted(messages, key=lambda m: m.get('timestamp', datetime.min))
+
+        # Split into conversation segments based on time gaps
+        segments = []
+        current_segment = []
+        for msg in sorted_msgs:
+            if not msg.get('content') or len(msg['content'].strip()) < 5:
+                continue
+            if current_segment:
+                last_ts = current_segment[-1].get('timestamp')
+                curr_ts = msg.get('timestamp')
+                if last_ts and curr_ts:
+                    gap = (curr_ts - last_ts).total_seconds() / 60
+                    if gap > gap_minutes:
+                        if len(current_segment) >= 3:
+                            segments.append(current_segment)
+                        current_segment = []
+            current_segment.append(msg)
+
+        if len(current_segment) >= 3:
+            segments.append(current_segment)
+
+        if len(segments) < 2:
+            return {'transitions': [], 'topic_changers': [], 'segment_count': len(segments), 'top_topics': []}
+
+        # Extract dominant topic per segment
+        segment_topics = []
+        for seg in segments:
+            topics = self.extract_topics_tfidf(seg, top_n=3)
+            if topics:
+                # Use top keyword as segment topic
+                segment_topics.append({
+                    'topic': topics[0]['keyword'],
+                    'first_user': seg[0].get('username', 'Unknown'),
+                    'messages': seg
+                })
+
+        # Build transition counts
+        transitions = Counter()
+        topic_changers = Counter()
+
+        for i in range(1, len(segment_topics)):
+            prev_topic = segment_topics[i - 1]['topic']
+            curr_topic = segment_topics[i]['topic']
+            if prev_topic != curr_topic:
+                transitions[(prev_topic, curr_topic)] += 1
+                # The first user in the new segment is the "topic changer"
+                topic_changers[segment_topics[i]['first_user']] += 1
+
+        # Get unique topics involved in transitions
+        all_topics = set()
+        for (fr, to), _ in transitions.items():
+            all_topics.add(fr)
+            all_topics.add(to)
+
+        return {
+            'transitions': [(fr, to, cnt) for (fr, to), cnt in transitions.most_common(20)],
+            'topic_changers': topic_changers.most_common(10),
+            'segment_count': len(segments),
+            'top_topics': list(all_topics)
+        }
+
     def build_network_graph(self, messages: List[dict], exclude_from_ranking: bool = True) -> dict:
         """
         Build interaction network graph from messages
