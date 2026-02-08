@@ -2038,7 +2038,71 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
             print(f"❌ Debate review error: {e}")
             import traceback
             traceback.print_exc()
-    
+
+    @bot.tree.command(name="debate_profile", description="View your argumentation profile card")
+    @app_commands.describe(user="User to view profile for (defaults to yourself)")
+    async def debate_profile(interaction: discord.Interaction, user: discord.Member = None):
+        """View detailed argumentation profile with radar chart and rhetorical breakdown"""
+        await interaction.response.defer()
+
+        try:
+            target_user = user if user else interaction.user
+            profile = await debate_scorekeeper.get_argumentation_profile(
+                target_user.id, interaction.guild_id
+            )
+
+            if not profile or profile['total_debates'] == 0:
+                await interaction.followup.send(
+                    f"📊 {target_user.display_name} hasn't participated in any debates yet! "
+                    f"Use `/debate_start` to begin tracking a debate."
+                )
+                return
+
+            # Generate the PIL profile card
+            from debate_card import create_debate_profile_card
+            image_buffer = create_debate_profile_card(
+                target_user.display_name, profile
+            )
+
+            file = discord.File(fp=image_buffer, filename="debate_profile.png")
+
+            # Add a brief summary embed alongside the card
+            embed = discord.Embed(
+                title=f"⚔️ {target_user.display_name}'s Argumentation Profile",
+                color=discord.Color.purple()
+            )
+            embed.set_image(url="attachment://debate_profile.png")
+
+            style = profile.get('argumentation_style', 'Unknown')
+            embed.description = (
+                f"**Style:** {style}\n"
+                f"**Record:** {profile['wins']}W - {profile['losses']}L "
+                f"({profile['win_rate']}% win rate)\n"
+                f"**Avg Score:** {profile['avg_score']}/10 across "
+                f"{profile['total_debates']} debates"
+            )
+
+            if profile.get('best_topic'):
+                embed.add_field(
+                    name="🏆 Best Topic",
+                    value=profile['best_topic'][:50],
+                    inline=True
+                )
+            if profile.get('worst_topic'):
+                embed.add_field(
+                    name="📉 Weakest Topic",
+                    value=profile['worst_topic'][:50],
+                    inline=True
+                )
+
+            await interaction.followup.send(file=file, embed=embed)
+
+        except Exception as e:
+            await interaction.followup.send(f"❌ Error generating profile: {str(e)}")
+            print(f"❌ Debate profile error: {e}")
+            import traceback
+            traceback.print_exc()
+
     # ===== iRacing Integration =====
     @bot.tree.command(name="iracing_link", description="Link your Discord account to your iRacing account")
     @app_commands.describe(iracing_id_or_name="Your iRacing Customer ID (numeric) or display name")

@@ -34,6 +34,7 @@ Discord message → on_message (events.py) → handle_bot_mention (conversations
 - `bot/compression.py` — LLMLingua conversation compression (keep_recent=8, min_messages=10)
 - `bot/plotly_charts.py` — **Primary chart engine**: Plotly-based charts (bar, line, pie, table, comparison, radar, sankey, heatmap) with premium dark theme, exported via Kaleido
 - `bot/card_base.py` — Shared PIL card primitives: draw_rounded_rect, draw_progress_bar, draw_glow_circle, draw_gradient_bg, load_fonts, theme colors. Used by feature-specific card generators.
+- `bot/debate_card.py` — PIL-based debate argumentation profile card (purple theme, radar chart, rhetorical breakdown). Uses `card_base.py`.
 - `bot/viz_tools.py` — **Legacy/fallback** matplotlib charts + weather card (PIL-based, kept for weather display)
 - `bot/media_processor.py` — Image/video/YouTube frame extraction and analysis
 - `bot/cost_tracker.py` — Per-request API cost tracking, configurable threshold via COST_ALERT_THRESHOLD env var
@@ -313,6 +314,15 @@ docker compose restart bot       # Restart bot only
 - Prepends up to 5 parent messages with a `[Thread context from #parent-channel]` marker
 - Uses `database.get_thread_parent_context()` — no new tables needed
 - Detects threads via `isinstance(message.channel, discord.Thread)`
+
+### Argumentation Profiles
+- `/debate_profile [@user]` — PIL-based profile card aggregating all debate data
+- Radar chart for 4 rhetorical dimensions (Logos, Ethos, Pathos, Factual Accuracy)
+- Aggregates from `debates.analysis` JSONB: per-dimension averages, fallacy counts, claim verdicts
+- Determines argumentation style (Logical Analyst, Authority Builder, Emotional Advocate, etc.)
+- Shows best/worst topics, win streak, fact-check accuracy, recent debate results
+- Purple-themed card (`debate_card.py`) visually distinct from iRacing blue cards
+- No new tables — queries existing `debates` + `debate_participants`
 
 ## Wishlist / Future Features
 

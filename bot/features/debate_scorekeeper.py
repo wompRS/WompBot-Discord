@@ -6,6 +6,7 @@ Track debates, analyze arguments, detect fallacies, and determine winners
 import discord
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
+from psycopg2.extras import RealDictCursor
 import json
 import asyncio
 
@@ -783,6 +784,199 @@ Please regenerate the analysis as valid JSON only:
         except Exception as e:
             print(f"❌ Error getting leaderboard: {e}")
             return []
+
+    async def get_argumentation_profile(self, user_id: int, guild_id: int = None) -> Optional[Dict]:
+        """
+        Build an argumentation profile by aggregating all debate analysis data for a user.
+
+        Extracts per-dimension scores (logos, ethos, pathos, factual), common fallacies,
+        fact-check accuracy, and topic breakdown from the debates.analysis JSONB.
+
+        Args:
+            user_id: Discord user ID
+            guild_id: Optional guild filter
+
+        Returns:
+            Dict with aggregated profile data, or None if no debates found
+        """
+        try:
+            def _build_profile():
+                with self.db.get_connection() as conn:
+                    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                        # Get all debates this user participated in, with analysis data
+                        query = """
+                            SELECT d.id, d.topic, d.analysis, d.started_at,
+                                   dp.score, dp.is_winner, dp.username, dp.message_count
+                            FROM debate_participants dp
+                            JOIN debates d ON d.id = dp.debate_id
+                            WHERE dp.user_id = %s AND d.analysis IS NOT NULL
+                        """
+                        params = [user_id]
+                        if guild_id:
+                            query += " AND d.guild_id = %s"
+                            params.append(guild_id)
+                        query += " ORDER BY d.started_at DESC"
+                        cur.execute(query, tuple(params))
+                        rows = cur.fetchall()
+
+                        if not rows:
+                            return None
+
+                        # Aggregate metrics
+                        total_debates = len(rows)
+                        wins = sum(1 for r in rows if r['is_winner'])
+                        losses = total_debates - wins
+                        scores = [float(r['score']) for r in rows if r['score'] is not None]
+                        avg_score = round(sum(scores) / len(scores), 2) if scores else 0
+
+                        # Per-dimension aggregation
+                        dimension_scores = {
+                            'logos': [], 'ethos': [], 'pathos': [], 'factual_accuracy': []
+                        }
+                        all_fallacies = []
+                        all_strengths = {'logos': [], 'ethos': [], 'pathos': []}
+                        all_weaknesses = {'logos': [], 'ethos': []}
+                        claim_verdicts = {'TRUE': 0, 'FALSE': 0, 'MISLEADING': 0, 'UNVERIFIABLE': 0}
+                        topics = {}
+                        recent_debates = []
+
+                        for row in rows:
+                            analysis = row['analysis']
+                            if not isinstance(analysis, dict):
+                                continue
+
+                            username = row['username']
+                            participants = analysis.get('participants', {})
+
+                            # Find this user's data in the analysis (match by username)
+                            user_data = participants.get(username)
+                            if not user_data:
+                                # Try case-insensitive match
+                                for pname, pdata in participants.items():
+                                    if pname.lower() == username.lower():
+                                        user_data = pdata
+                                        break
+                            if not user_data:
+                                continue
+
+                            # Extract dimension scores
+                            for dim in ['logos', 'ethos', 'pathos', 'factual_accuracy']:
+                                dim_data = user_data.get(dim, {})
+                                if isinstance(dim_data, dict) and 'score' in dim_data:
+                                    dimension_scores[dim].append(dim_data['score'])
+
+                                    # Collect fallacies from logos
+                                    if dim == 'logos' and 'fallacies' in dim_data:
+                                        all_fallacies.extend(dim_data['fallacies'])
+
+                                    # Collect strengths/weaknesses
+                                    if dim in all_strengths and 'strengths' in dim_data:
+                                        all_strengths[dim].extend(dim_data['strengths'][:2])
+                                    if dim in all_weaknesses and 'weaknesses' in dim_data:
+                                        all_weaknesses[dim].extend(dim_data['weaknesses'][:2])
+
+                                    # Collect claim verdicts
+                                    if dim == 'factual_accuracy' and 'key_claims' in dim_data:
+                                        for claim in dim_data['key_claims']:
+                                            verdict = claim.get('verdict', '').upper()
+                                            if verdict in claim_verdicts:
+                                                claim_verdicts[verdict] += 1
+
+                            # Track topics
+                            topic = row['topic']
+                            if topic not in topics:
+                                topics[topic] = {'debates': 0, 'wins': 0}
+                            topics[topic]['debates'] += 1
+                            if row['is_winner']:
+                                topics[topic]['wins'] += 1
+
+                            # Track recent debates (last 5)
+                            if len(recent_debates) < 5:
+                                recent_debates.append({
+                                    'topic': topic,
+                                    'score': float(row['score']) if row['score'] else None,
+                                    'won': row['is_winner'],
+                                    'date': row['started_at'].strftime('%b %d') if row['started_at'] else None
+                                })
+
+                        # Calculate dimension averages
+                        dim_averages = {}
+                        for dim, scores_list in dimension_scores.items():
+                            if scores_list:
+                                dim_averages[dim] = round(sum(scores_list) / len(scores_list), 1)
+                            else:
+                                dim_averages[dim] = 0
+
+                        # Count and rank fallacies
+                        fallacy_counts = {}
+                        for f in all_fallacies:
+                            # Normalize: extract the fallacy type (first word/phrase before "when"/"at"/"in")
+                            f_lower = f.lower().strip()
+                            for fallacy_name in ['strawman', 'ad hominem', 'moving goalposts',
+                                                  'false dichotomy', 'slippery slope',
+                                                  'circular reasoning', 'gaslighting',
+                                                  'appeal to authority', 'red herring']:
+                                if fallacy_name in f_lower:
+                                    fallacy_counts[fallacy_name] = fallacy_counts.get(fallacy_name, 0) + 1
+                                    break
+                            else:
+                                # Unknown fallacy type — use first few words
+                                short = f[:30] if len(f) > 30 else f
+                                fallacy_counts[short] = fallacy_counts.get(short, 0) + 1
+
+                        top_fallacies = sorted(fallacy_counts.items(), key=lambda x: x[1], reverse=True)[:5]
+
+                        # Fact-check accuracy
+                        total_claims = sum(claim_verdicts.values())
+                        fact_accuracy = round(
+                            claim_verdicts['TRUE'] / total_claims * 100, 1
+                        ) if total_claims > 0 else None
+
+                        # Best/worst topics
+                        best_topic = max(topics.items(), key=lambda x: x[1]['wins'] / max(x[1]['debates'], 1), default=(None, None))
+                        worst_topic = min(
+                            ((t, d) for t, d in topics.items() if d['debates'] >= 2),
+                            key=lambda x: x[1]['wins'] / max(x[1]['debates'], 1),
+                            default=(None, None)
+                        )
+
+                        # Determine dominant style
+                        style_dims = {k: v for k, v in dim_averages.items() if v > 0}
+                        if style_dims:
+                            dominant = max(style_dims, key=style_dims.get)
+                            style_labels = {
+                                'logos': 'Logical Analyst',
+                                'ethos': 'Authority Builder',
+                                'pathos': 'Emotional Persuader',
+                                'factual_accuracy': 'Fact-Driven Debater'
+                            }
+                            argumentation_style = style_labels.get(dominant, 'Balanced')
+                        else:
+                            argumentation_style = 'Unknown'
+
+                        return {
+                            'total_debates': total_debates,
+                            'wins': wins,
+                            'losses': losses,
+                            'win_rate': round(wins / total_debates * 100, 1) if total_debates > 0 else 0,
+                            'avg_score': avg_score,
+                            'dimension_averages': dim_averages,
+                            'argumentation_style': argumentation_style,
+                            'top_fallacies': top_fallacies,
+                            'fact_accuracy': fact_accuracy,
+                            'total_claims_checked': total_claims,
+                            'claim_verdicts': claim_verdicts,
+                            'best_topic': best_topic[0] if best_topic[0] else None,
+                            'worst_topic': worst_topic[0] if worst_topic[0] else None,
+                            'topics': topics,
+                            'recent_debates': recent_debates,
+                        }
+
+            return await asyncio.to_thread(_build_profile)
+
+        except Exception as e:
+            logger.error("Error building argumentation profile: %s", e)
+            return None
 
     def is_debate_active(self, channel_id: int) -> bool:
         """Check if there's an active debate in a channel"""
