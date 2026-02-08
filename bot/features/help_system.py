@@ -1139,7 +1139,6 @@ class HelpSystem:
             name="Admin",
             value=(
                 "`!setadmin` / `!removeadmin` / `!admins` - Manage bot admins\n"
-                "`!bug` / `!bugs` / `!bugfix` - Bug tracking\n"
                 "`!personality` - Change bot personality mode"
             ),
             inline=False
@@ -1439,9 +1438,6 @@ class HelpSystem:
                 ("!removeadmin", "Remove a bot admin"),
                 ("!admins", "List bot admins"),
                 ("!personality", "Change bot personality mode"),
-                ("!bug", "Report a bug"),
-                ("!bugs", "List tracked bugs"),
-                ("!bugfix", "Resolve a bug"),
                 ("!analyze [days]", "Run behavior analysis"),
                 ("!refreshstats", "Refresh stats cache"),
             ],

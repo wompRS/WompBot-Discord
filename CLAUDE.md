@@ -77,7 +77,7 @@ Discord message → on_message (events.py) → handle_bot_mention (conversations
 - `bot/commands/slash_commands.py` — Slash commands: help, stats (4), wrapped, debate_start, trivia_start, dashboard, flow, poll, mystats, iRacing (13 incl. history) (~3700 lines, 24 commands)
 - `bot/commands/prefix_commands.py` — Prefix command router + built-in commands (search, stock, weather, convert, define, etc.), imports sub-modules for migrated commands
 - `bot/commands/prefix_utils.py` — Shared helpers: `is_bot_admin_ctx()`, `parse_choice()` — used by all prefix sub-modules
-- `bot/commands/prefix_admin.py` — Admin prefix commands: !whoami, !setadmin, !removeadmin, !admins, !personality, !bug, !bugs, !bugfix (8 commands)
+- `bot/commands/prefix_admin.py` — Admin prefix commands: !whoami, !setadmin, !removeadmin, !admins, !personality (5 commands)
 - `bot/commands/prefix_features.py` — Feature prefix commands: !receipts/!claims, !quotes, !verify, !hottakes/!ht, !myht, !vindicate, !remind, !reminders, !cancelremind, !event, !events, !cancelevent, !myfacts, !forget, !qotd, !weatherset, !weatherclear, !schedule, !scheduled, !cancelschedule (20 commands)
 - `bot/commands/prefix_games.py` — Game/debate prefix commands: !debate_end/!de, !debate_stats/!ds, !debate_lb/!dlb, !debate_review/!dr, !debate_profile/!dp, !triviastop, !triviastats, !trivialeaderboard/!tlb, !pollresults, !pollclose, !whosaidit, !wsisskip, !wsisend, !da, !daend, !jeopardy, !jpick, !jpass, !jend (19 commands)
 - `bot/commands/prefix_monitoring.py` — Monitoring prefix commands: !feedadd, !feedremove, !feeds, !ghwatch, !ghunwatch, !ghwatches, !wladd, !wlremove, !watchlist/!wl (9 commands)
@@ -470,7 +470,7 @@ Migrated ~55 commands from Discord slash commands (/) to prefix commands (!) to 
 ### Prefix Command Structure
 - `prefix_commands.py` — Router + built-in commands (search, stock, weather, convert, define, etc.), imports and calls sub-module registration functions
 - `prefix_utils.py` — Shared helpers (`is_bot_admin_ctx`, `parse_choice`) used by all sub-modules
-- `prefix_admin.py` — Admin/config commands: whoami, setadmin, removeadmin, admins, personality, bug, bugs, bugfix
+- `prefix_admin.py` — Admin/config commands: whoami, setadmin, removeadmin, admins, personality
 - `prefix_features.py` — Feature commands: receipts, quotes, verify, hottakes, myht, vindicate, remind, reminders, cancelremind, event, events, cancelevent, myfacts, forget, qotd, weatherset, weatherclear, schedule, scheduled, cancelschedule
 - `prefix_games.py` — Game/debate commands: debate_end, debate_stats, debate_lb, debate_review, debate_profile, triviastop, triviastats, trivialeaderboard, pollresults, pollclose, whosaidit, wsisskip, wsisend, da, daend, jeopardy, jpick, jpass, jend
 - `prefix_monitoring.py` — Monitoring commands: feedadd, feedremove, feeds, ghwatch, ghunwatch, ghwatches, wladd, wlremove, watchlist
@@ -506,9 +506,6 @@ Migrated ~55 commands from Discord slash commands (/) to prefix commands (!) to 
 | `/trivia_stop` | `!triviastop` | |
 | `/trivia_stats` | `!triviastats` | |
 | `/trivia_leaderboard` | `!trivialeaderboard` | `!tlb` |
-| `/bug` | `!bug` | |
-| `/bugs` | `!bugs` | |
-| `/bug_resolve` | `!bugfix` | |
 | `/myfacts` | `!myfacts` | |
 | `/forget` | `!forget` | |
 | `/poll_results` | `!pollresults` | |
@@ -537,7 +534,7 @@ Migrated ~55 commands from Discord slash commands (/) to prefix commands (!) to 
 
 ### Removed Commands
 - `/jeopardy_board` — removed entirely
-- `/bug_note` — removed entirely (was already removed in prior session)
+- `/bug`, `/bugs`, `/bug_resolve`, `/bug_note` — bug tracker removed entirely
 - `/weather_info` — removed entirely
 
 ## Wishlist / Future Features

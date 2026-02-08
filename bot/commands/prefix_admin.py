@@ -2,8 +2,7 @@
 Prefix admin commands for WompBot Discord bot.
 
 Converts admin-related slash commands to prefix (!) commands:
-  !whoami, !setadmin, !removeadmin, !admins, !personality,
-  !bug, !bugs, !bug_resolve
+  !whoami, !setadmin, !removeadmin, !admins, !personality
 """
 
 import discord
@@ -68,7 +67,7 @@ def register_prefix_admin_commands(bot, db):
         if success:
             await ctx.send(
                 f"**{user.display_name}** is now a bot admin for this server.\n"
-                f"They can now use admin-only bot commands like `!personality`, `!bug`, etc."
+                f"They can now use admin-only bot commands like `!personality`, `!admins`, etc."
             )
         else:
             await ctx.send(
@@ -247,157 +246,5 @@ def register_prefix_admin_commands(bot, db):
 
         except Exception as e:
             await ctx.send(f"Error changing personality: {e}")
-
-    # ==================== Bug Tracking Commands ====================
-
-    from bug_tracker import report_bug, list_bugs, resolve_bug, get_bug, get_stats
-
-    @bot.command(name='bug')
-    async def bug(ctx, *, args: str = None):
-        """Report a bug (Admin only). Usage: !bug <description> [--priority low|normal|high|critical]"""
-        if not is_bot_admin_ctx(db, ctx):
-            await ctx.send("Only bot admins can report bugs.")
-            return
-
-        if not args:
-            await ctx.send(
-                "**Usage:** `!bug <description> [--priority low|normal|high|critical]`\n\n"
-                "Example: `!bug The weather command crashes when no city is given --priority high`"
-            )
-            return
-
-        # Parse --priority flag from the description
-        priority_val = "normal"
-        description = args
-        valid_priorities = ['low', 'normal', 'high', 'critical']
-
-        if '--priority' in args.lower():
-            # Split on --priority (case-insensitive)
-            import re
-            match = re.search(r'--priority\s+(\S+)', args, re.IGNORECASE)
-            if match:
-                parsed_priority = parse_choice(match.group(1), valid_priorities, default="normal")
-                if parsed_priority:
-                    priority_val = parsed_priority
-                # Remove the --priority flag and its value from the description
-                description = re.sub(r'\s*--priority\s+\S+', '', args, flags=re.IGNORECASE).strip()
-
-        if not description:
-            await ctx.send("Please provide a bug description.")
-            return
-
-        guild_name = ctx.guild.name if ctx.guild else "DM"
-        channel_name = ctx.channel.name if hasattr(ctx.channel, 'name') else "DM"
-
-        bug_id = report_bug(
-            description=description,
-            reporter=str(ctx.author),
-            guild_name=guild_name,
-            channel_name=channel_name,
-            priority=priority_val
-        )
-
-        priority_emoji = {"low": "🟢", "normal": "🟡", "high": "🟠", "critical": "🔴"}.get(priority_val, "🟡")
-
-        await ctx.send(
-            f"**Bug Tracked**\n\n"
-            f"**Bug ID:** `#{bug_id}`\n"
-            f"**Priority:** {priority_emoji} {priority_val.capitalize()}\n"
-            f"**Description:** {description}\n\n"
-            f"*Use `!bugs` to view all tracked bugs*"
-        )
-
-    @bot.command(name='bugs')
-    async def bugs(ctx, status: str = None, limit: int = 10):
-        """List tracked bugs (Admin only). Usage: !bugs [all|open|fixed|wontfix] [limit]"""
-        if not is_bot_admin_ctx(db, ctx):
-            await ctx.send("Only bot admins can view bugs.")
-            return
-
-        valid_statuses = ['all', 'open', 'fixed', 'wontfix']
-        status_val = None
-
-        if status is not None:
-            parsed_status = parse_choice(status, valid_statuses)
-            if parsed_status is None:
-                await ctx.send(
-                    f"Invalid status `{status}`. Valid statuses are: {', '.join(valid_statuses)}"
-                )
-                return
-            if parsed_status != 'all':
-                status_val = parsed_status
-
-        bugs_list_result = list_bugs(status=status_val, limit=limit)
-
-        if not bugs_list_result:
-            await ctx.send("No bugs found!")
-            return
-
-        stats = get_stats()
-        status_emoji = {"open": "🔴", "fixed": "✅", "wontfix": "⚪", "duplicate": "🔁", "invalid": "❌"}
-        priority_emoji = {"low": "🟢", "normal": "🟡", "high": "🟠", "critical": "🔴"}
-
-        embed = discord.Embed(
-            title="Bug Tracker",
-            description=f"**Open:** {stats['open']} | **Fixed:** {stats['fixed']} | **Total:** {stats['total']}",
-            color=discord.Color.red() if stats['open'] > 0 else discord.Color.green()
-        )
-
-        for bug_item in bugs_list_result[:10]:  # Max 10 in embed
-            s_emoji = status_emoji.get(bug_item['status'], "?")
-            p_emoji = priority_emoji.get(bug_item['priority'], "🟡")
-            created = bug_item['created_at'][:10] if bug_item['created_at'] else "Unknown"
-
-            embed.add_field(
-                name=f"{s_emoji} #{bug_item['id']} - {p_emoji} {bug_item['priority'].capitalize()}",
-                value=f"{bug_item['description'][:100]}{'...' if len(bug_item['description']) > 100 else ''}\n*{created}*",
-                inline=False
-            )
-
-        await ctx.send(embed=embed)
-
-    @bot.command(name='bug_resolve')
-    async def bug_resolve_cmd(ctx, bug_id: int = None, resolution: str = None):
-        """Resolve a bug (Admin only). Usage: !bug_resolve <id> <fixed|wontfix|duplicate|invalid>"""
-        if not is_bot_admin_ctx(db, ctx):
-            await ctx.send("Only bot admins can resolve bugs.")
-            return
-
-        if bug_id is None or resolution is None:
-            await ctx.send(
-                "**Usage:** `!bug_resolve <bug_id> <resolution>`\n\n"
-                "**Resolutions:** `fixed`, `wontfix`, `duplicate`, `invalid`\n"
-                "Example: `!bug_resolve 42 fixed`"
-            )
-            return
-
-        valid_resolutions = ['fixed', 'wontfix', 'duplicate', 'invalid']
-        resolution_val = parse_choice(resolution, valid_resolutions)
-        if resolution_val is None:
-            await ctx.send(
-                f"Invalid resolution `{resolution}`. Valid resolutions are: {', '.join(valid_resolutions)}"
-            )
-            return
-
-        bug_item = get_bug(bug_id)
-        if not bug_item:
-            await ctx.send(f"Bug #{bug_id} not found.")
-            return
-
-        success = resolve_bug(bug_id, resolution_val)
-
-        if success:
-            resolution_emoji = {"fixed": "✅", "wontfix": "⚪", "duplicate": "🔁", "invalid": "❌"}.get(resolution_val, "✅")
-            await ctx.send(
-                f"{resolution_emoji} **Bug #{bug_id} marked as {resolution_val}**\n\n"
-                f"*{bug_item['description'][:100]}*"
-            )
-        else:
-            await ctx.send(f"Failed to resolve bug #{bug_id}")
-
-    @bug_resolve_cmd.error
-    async def bug_resolve_error(ctx, error):
-        if isinstance(error, commands.BadArgument):
-            await ctx.send("**Usage:** `!bug_resolve <bug_id> <resolution>`\nBug ID must be a number.")
 
     print("Prefix admin commands registered")

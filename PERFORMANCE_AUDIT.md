@@ -222,7 +222,7 @@ Fixing these 5 issues alone would reduce response latency by 40-60% and dramatic
 - P33. Slash command sync on every restart
 - P34. `aiohttp.ClientSession` created per logo download in `iracing_viz.py`
 - P35. `self_knowledge.py` reads doc files from disk on every query
-- P36. `bug_tracker.py` loads/saves entire JSON file on every operation
+- P36. ~~`bug_tracker.py` loads/saves entire JSON file on every operation~~ [REMOVED — bug tracker deleted]
 - P37. iRacing permanent caches (cars/tracks/series) have no TTL
 - P38. GDPR export loads all user data into single dict simultaneously
 - P39. `db.store_message()` performs two DB writes per message (INSERT + UPSERT)

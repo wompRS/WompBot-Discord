@@ -615,7 +615,6 @@ Comprehensive guides are available in the docs directory.
 - [RAG System](docs/features/RAG_SYSTEM.md) - Memory architecture
 - [Trivia System](docs/features/TRIVIA.md) - LLM-powered quiz games
 - [Debate Scorekeeper](docs/features/DEBATE.md) - Debate analysis and scoring
-- [Bug Tracking](docs/features/BUG_TRACKING.md) - Admin bug tracking system
 
 **Configuration and Development:**
 - [Configuration Guide](docs/CONFIGURATION.md) - All settings and variables
@@ -849,15 +848,6 @@ LLM-powered trivia with multiple categories and difficulty levels.
 - Server-specific leaderboards
 - Sessions persist to database (survive bot restarts)
 
-### Bug Tracking
-
-Report and track bugs with an integrated bug tracking system.
-
-**Commands:**
-- `!bug <description>`: Report a new bug
-- `!bugfix <bug_id> [resolution]`: Mark bug as resolved
-- `!bugs [status]`: List all bugs (all/open/resolved)
-
 ### User Facts (Remember This)
 
 - `!myfacts`: View all stored facts about you
@@ -1017,7 +1007,6 @@ discord-bot/
     │   ├── help_system.py       # Comprehensive help system
     │   ├── admin_utils.py       # Admin permission utilities
     │   ├── debate_scorekeeper.py # Debate tracking and analysis
-    │   └── bug_tracking.py      # Bug reporting system
     ├── prompts/
     │   ├── system_prompt.txt        # Default personality
     │   ├── system_prompt_concise.txt # Concise personality

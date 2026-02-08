@@ -112,7 +112,7 @@ services:
       - ./bot:/app
       - ./README.md:/README.md          # Self-knowledge system needs README
       - ./docs:/docs                    # Self-knowledge system needs docs
-      - ./data:/app/data                # Persistent data (bug tracker, etc.)
+      - ./data:/app/data                # Persistent data
     # Resource limits for dedicated server (increased from 1 CPU / 2GB)
     deploy:
       resources:
