@@ -14,7 +14,7 @@ import discord
 def register_tasks(bot, db, llm, rag, chat_stats, iracing, iracing_popularity_cache,
                    reminder_system, event_system, privacy_manager, iracing_team_manager=None,
                    poll_system=None, devils_advocate=None, jeopardy=None,
-                   message_scheduler=None):
+                   message_scheduler=None, rss_monitor=None):
     """
     Register all background tasks with the bot.
 
@@ -911,6 +911,46 @@ def register_tasks(bot, db, llm, rag, chat_stats, iracing, iracing_popularity_ca
         if message_scheduler:
             print("⏰ Scheduled message checker started (runs every 1 min)")
 
+    # ── RSS feed checker ──
+    @tasks.loop(minutes=5)
+    async def check_rss_feeds():
+        """Check RSS feeds for new entries"""
+        if not rss_monitor:
+            return
+
+        try:
+            results = await rss_monitor.check_feeds()
+            for feed_result in results:
+                try:
+                    channel = bot.get_channel(feed_result['channel_id'])
+                    if not channel:
+                        continue
+
+                    for entry in feed_result['entries']:
+                        import discord
+                        embed = discord.Embed(
+                            title=entry['title'],
+                            url=entry['link'] if entry['link'] else None,
+                            description=entry['summary'] if entry['summary'] else None,
+                            color=discord.Color.orange()
+                        )
+                        embed.set_author(name=f"📡 {feed_result['feed_title']}")
+                        if entry['published']:
+                            embed.set_footer(text=entry['published'])
+                        await channel.send(embed=embed)
+
+                except Exception as e:
+                    print(f"  ❌ Error posting RSS entry from {feed_result.get('feed_title', '?')}: {e}")
+
+        except Exception as e:
+            print(f"❌ RSS feed check error: {e}")
+
+    @check_rss_feeds.before_loop
+    async def before_check_rss_feeds():
+        await bot.wait_until_ready()
+        if rss_monitor:
+            print("📡 RSS feed checker started (runs every 5 min)")
+
     print("✅ Background tasks registered (will start in on_ready)")
 
     # Return task references - they will be started in on_ready event handler
@@ -937,5 +977,8 @@ def register_tasks(bot, db, llm, rag, chat_stats, iracing, iracing_popularity_ca
 
     if message_scheduler:
         tasks_dict['check_scheduled_messages'] = check_scheduled_messages
+
+    if rss_monitor:
+        tasks_dict['check_rss_feeds'] = check_rss_feeds
 
     return tasks_dict

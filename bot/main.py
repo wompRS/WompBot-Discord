@@ -130,6 +130,10 @@ from features.message_scheduler import MessageScheduler
 message_scheduler = MessageScheduler(db)
 logger.info("Message scheduler loaded")
 
+from features.rss_monitor import RSSMonitor
+rss_monitor = RSSMonitor(db, cache)
+logger.info("RSS monitor loaded")
+
 # GDPR Privacy Compliance (mandatory per EU regulations)
 from features.gdpr_privacy import GDPRPrivacyManager
 privacy_manager = GDPRPrivacyManager(db)
@@ -206,7 +210,8 @@ tasks_dict = register_tasks(
     poll_system=poll_system,
     devils_advocate=devils_advocate,
     jeopardy=jeopardy,
-    message_scheduler=message_scheduler
+    message_scheduler=message_scheduler,
+    rss_monitor=rss_monitor
 )
 
 # Register event handlers
@@ -280,7 +285,8 @@ register_slash_commands(
     who_said_it=who_said_it,
     devils_advocate=devils_advocate,
     jeopardy=jeopardy,
-    message_scheduler=message_scheduler
+    message_scheduler=message_scheduler,
+    rss_monitor=rss_monitor
 )
 
 logger.info("All modules registered successfully!")

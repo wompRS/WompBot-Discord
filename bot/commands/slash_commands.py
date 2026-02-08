@@ -20,7 +20,7 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                             wompie_user_id, series_autocomplete_cache, trivia,
                             rag=None, dashboard=None, poll_system=None,
                             who_said_it=None, devils_advocate=None, jeopardy=None,
-                            message_scheduler=None):
+                            message_scheduler=None, rss_monitor=None):
     """
     Register all slash commands with the bot.
 
@@ -5842,6 +5842,110 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                 await interaction.response.send_message(f"❌ Error: {str(e)}", ephemeral=True)
 
         print("✅ Message scheduling commands registered")
+
+    # ===== RSS Feed Monitoring (Admin Only) =====
+    if rss_monitor:
+        @bot.tree.command(name="feed_add", description="[Admin] Add an RSS feed to monitor")
+        @app_commands.describe(
+            url="RSS feed URL",
+            channel="Channel to post updates in (defaults to current)"
+        )
+        async def feed_add(interaction: discord.Interaction,
+                          url: str,
+                          channel: discord.TextChannel = None):
+            """Add an RSS feed"""
+            if not is_bot_admin_interaction(db, interaction):
+                await interaction.response.send_message("❌ Admin only.", ephemeral=True)
+                return
+
+            await interaction.response.defer(ephemeral=True)
+
+            try:
+                target_channel = channel or interaction.channel
+                result = await rss_monitor.add_feed(
+                    guild_id=interaction.guild_id,
+                    channel_id=target_channel.id,
+                    feed_url=url,
+                    added_by=interaction.user.id
+                )
+
+                if result.get('error'):
+                    await interaction.followup.send(f"❌ {result['error']}")
+                    return
+
+                status = "Reactivated" if result.get('reactivated') else "Added"
+                await interaction.followup.send(
+                    f"📡 {status} RSS feed: **{result['title']}**\n"
+                    f"🔗 {result['url']}\n"
+                    f"📢 Updates will post to <#{target_channel.id}>\n"
+                    f"Feed ID: #{result['feed_id']}"
+                )
+
+            except Exception as e:
+                await interaction.followup.send(f"❌ Error: {str(e)}")
+
+        @bot.tree.command(name="feed_remove", description="[Admin] Remove an RSS feed")
+        @app_commands.describe(feed_id="Feed ID to remove (from /feeds)")
+        async def feed_remove(interaction: discord.Interaction, feed_id: int):
+            """Remove an RSS feed"""
+            if not is_bot_admin_interaction(db, interaction):
+                await interaction.response.send_message("❌ Admin only.", ephemeral=True)
+                return
+
+            try:
+                result = await rss_monitor.remove_feed(interaction.guild_id, feed_id)
+
+                if result.get('error'):
+                    await interaction.response.send_message(
+                        f"❌ {result['error']}", ephemeral=True
+                    )
+                    return
+
+                await interaction.response.send_message(
+                    f"✅ Removed feed: **{result['title']}** (#{feed_id})",
+                    ephemeral=True
+                )
+
+            except Exception as e:
+                await interaction.response.send_message(f"❌ Error: {str(e)}", ephemeral=True)
+
+        @bot.tree.command(name="feeds", description="[Admin] List all monitored RSS feeds")
+        async def feeds_list(interaction: discord.Interaction):
+            """List RSS feeds"""
+            if not is_bot_admin_interaction(db, interaction):
+                await interaction.response.send_message("❌ Admin only.", ephemeral=True)
+                return
+
+            try:
+                feeds = await rss_monitor.list_feeds(interaction.guild_id)
+
+                if not feeds:
+                    await interaction.response.send_message(
+                        "📡 No RSS feeds being monitored. Use `/feed_add` to add one!",
+                        ephemeral=True
+                    )
+                    return
+
+                embed = discord.Embed(
+                    title="📡 Monitored RSS Feeds",
+                    color=discord.Color.orange()
+                )
+
+                for feed in feeds:
+                    last_check = feed['last_checked'].strftime("%b %d %I:%M %p") if feed['last_checked'] else "Never"
+                    embed.add_field(
+                        name=f"#{feed['id']} — {feed['feed_title']}",
+                        value=f"🔗 {feed['feed_url']}\n📢 <#{feed['channel_id']}> • Last checked: {last_check}",
+                        inline=False
+                    )
+
+                embed.set_footer(text=f"{len(feeds)} feeds • Checked every 5 minutes")
+                await interaction.response.send_message(embed=embed, ephemeral=True)
+
+            except Exception as e:
+                await interaction.response.send_message(f"❌ Error: {str(e)}", ephemeral=True)
+
+        print("✅ RSS feed monitoring commands registered")
 
     # ===== Personal Analytics =====
     @bot.tree.command(name="mystats", description="View your personal analytics profile card")

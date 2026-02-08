@@ -62,6 +62,7 @@ Discord message → on_message (events.py) → handle_bot_mention (conversations
 - `devils_advocate.py` — Devil's advocate debate mode with LLM counter-arguments
 - `jeopardy.py` — Channel Jeopardy with server-inspired categories, LLM-generated clues
 - `message_scheduler.py` — Message scheduling with abuse prevention limits
+- `rss_monitor.py` — RSS feed monitoring with feedparser, admin only
 - `yearly_wrapped.py` — Spotify-style yearly summaries
 - `quote_of_the_day.py` — Featured quote selection
 - `admin_utils.py` — Admin permission utilities
@@ -402,6 +403,16 @@ docker compose restart bot       # Restart bot only
 - 15-minute inactivity timeout via background task
 - On_message hook in events.py for answer processing
 - Table: `active_jeopardy` with `session_state` JSONB
+
+### RSS Feed Monitoring (Admin Only)
+- `/feed_add [url] [channel]` — Add an RSS feed to monitor (admin only)
+- `/feed_remove [id]` — Remove a feed (admin only)
+- `/feeds` — List all monitored feeds (admin only)
+- `features/rss_monitor.py` — `RSSMonitor(db, cache)` with feedparser
+- 5-minute polling via background task, max 3 new entries per check
+- Redis caching prevents re-fetching within 5 minutes
+- Posts new entries as Discord embeds with title, link, summary
+- Table: `rss_feeds` with `last_entry_id` tracking
 
 ### Message Scheduling
 - `/schedule [message] [minutes/hours/days]` — Schedule a message to be sent later
