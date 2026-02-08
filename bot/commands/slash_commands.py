@@ -4968,4 +4968,251 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
 
         print("✅ Memory/facts commands registered")
 
+    # ===== Personal Analytics =====
+    @bot.tree.command(name="mystats", description="View your personal analytics profile card")
+    @app_commands.describe(
+        user="User to view stats for (defaults to yourself)",
+        days="Time period in days (default: all time, max: 365)"
+    )
+    async def mystats_slash(interaction: discord.Interaction,
+                            user: discord.Member = None,
+                            days: int = None):
+        """View comprehensive personal analytics"""
+        await interaction.response.defer()
+
+        try:
+            from psycopg2.extras import RealDictCursor
+            target_user = user if user else interaction.user
+            user_id = target_user.id
+            guild_id = interaction.guild_id
+
+            # Build time filter
+            if days:
+                days = min(max(days, 1), 365)
+                start_date = datetime.now() - timedelta(days=days)
+                end_date = datetime.now()
+                time_filter = "AND m.timestamp BETWEEN %s AND %s"
+                time_params = [start_date, end_date]
+                time_label = f"Last {days} days"
+            else:
+                time_filter = ""
+                time_params = []
+                time_label = "All time"
+
+            stats = {}
+
+            with db.get_connection() as conn:
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    # ── Activity stats ──
+                    cur.execute(f"""
+                        SELECT
+                            COUNT(*) as total_messages,
+                            COUNT(DISTINCT DATE(m.timestamp)) as active_days,
+                            MIN(m.timestamp) as first_seen,
+                            EXTRACT(HOUR FROM m.timestamp) as hour
+                        FROM messages m
+                        WHERE m.user_id = %s AND COALESCE(m.opted_out, FALSE) = FALSE
+                            {time_filter}
+                        GROUP BY EXTRACT(HOUR FROM m.timestamp)
+                        ORDER BY COUNT(*) DESC
+                        LIMIT 1
+                    """, [user_id] + time_params)
+                    activity_row = cur.fetchone()
+
+                    if not activity_row or activity_row['total_messages'] == 0:
+                        # Get total across all hours to check if any data exists
+                        cur.execute(f"""
+                            SELECT COUNT(*) as total
+                            FROM messages m
+                            WHERE m.user_id = %s AND COALESCE(m.opted_out, FALSE) = FALSE
+                                {time_filter}
+                        """, [user_id] + time_params)
+                        total_check = cur.fetchone()
+                        if not total_check or total_check['total'] == 0:
+                            await interaction.followup.send(
+                                f"📊 {target_user.display_name} doesn't have any tracked messages yet!"
+                            )
+                            return
+
+                    # Full activity aggregation
+                    cur.execute(f"""
+                        SELECT
+                            COUNT(*) as total_messages,
+                            COUNT(DISTINCT DATE(m.timestamp)) as active_days,
+                            MIN(m.timestamp) as first_seen
+                        FROM messages m
+                        WHERE m.user_id = %s AND COALESCE(m.opted_out, FALSE) = FALSE
+                            {time_filter}
+                    """, [user_id] + time_params)
+                    total_row = cur.fetchone()
+                    stats['total_messages'] = total_row['total_messages']
+                    stats['active_days'] = total_row['active_days']
+
+                    if total_row.get('first_seen'):
+                        stats['member_since'] = total_row['first_seen'].strftime('%b %Y')
+
+                    # Most active hour
+                    stats['most_active_hour'] = int(activity_row['hour']) if activity_row else 12
+
+                    # Server rank
+                    cur.execute(f"""
+                        SELECT rank FROM (
+                            SELECT user_id,
+                                   DENSE_RANK() OVER (ORDER BY COUNT(*) DESC) as rank
+                            FROM messages m
+                            WHERE COALESCE(m.opted_out, FALSE) = FALSE
+                                {time_filter}
+                            GROUP BY user_id
+                        ) ranked
+                        WHERE user_id = %s
+                    """, time_params + [user_id])
+                    rank_row = cur.fetchone()
+                    stats['server_rank'] = rank_row['rank'] if rank_row else '?'
+
+                    # ── Social stats ──
+                    cur.execute(f"""
+                        SELECT replied_to_user_id, COUNT(*) as cnt
+                        FROM message_interactions mi
+                        WHERE mi.user_id = %s
+                            AND mi.replied_to_user_id IS NOT NULL
+                            AND mi.replied_to_user_id != %s
+                            {time_filter.replace('m.timestamp', 'mi.timestamp')}
+                        GROUP BY replied_to_user_id
+                        ORDER BY cnt DESC
+                        LIMIT 1
+                    """, [user_id, user_id] + time_params)
+                    partner_row = cur.fetchone()
+                    if partner_row:
+                        # Look up username
+                        cur.execute("SELECT username FROM user_profiles WHERE user_id = %s",
+                                   (partner_row['replied_to_user_id'],))
+                        partner_name = cur.fetchone()
+                        stats['top_partner'] = partner_name['username'] if partner_name else 'Unknown'
+                        stats['top_partner_count'] = partner_row['cnt']
+                    else:
+                        stats['top_partner'] = 'N/A'
+                        stats['top_partner_count'] = 0
+
+                    # Reply counts
+                    cur.execute(f"""
+                        SELECT
+                            COUNT(*) FILTER (WHERE mi.user_id = %s AND mi.replied_to_user_id IS NOT NULL) as sent,
+                            COUNT(*) FILTER (WHERE mi.replied_to_user_id = %s) as received
+                        FROM message_interactions mi
+                        WHERE (mi.user_id = %s OR mi.replied_to_user_id = %s)
+                            {time_filter.replace('m.timestamp', 'mi.timestamp')}
+                    """, [user_id, user_id, user_id, user_id] + time_params)
+                    reply_row = cur.fetchone()
+                    stats['replies_sent'] = reply_row['sent'] if reply_row else 0
+                    stats['replies_received'] = reply_row['received'] if reply_row else 0
+
+                    # ── Claims stats ──
+                    cur.execute(f"""
+                        SELECT
+                            COUNT(*) as total_claims,
+                            COUNT(*) FILTER (WHERE verification_status IN ('true', 'false')) as verified,
+                            COUNT(*) FILTER (WHERE verification_status = 'true') as correct
+                        FROM claims c
+                        WHERE c.user_id = %s
+                            {time_filter.replace('m.timestamp', 'c.timestamp')}
+                    """, [user_id] + time_params)
+                    claims_row = cur.fetchone()
+                    stats['total_claims'] = claims_row['total_claims'] if claims_row else 0
+                    if claims_row and claims_row['verified'] and claims_row['verified'] > 0:
+                        stats['claims_accuracy'] = round(
+                            claims_row['correct'] / claims_row['verified'] * 100
+                        )
+                    else:
+                        stats['claims_accuracy'] = None
+
+                    # Hot takes count
+                    cur.execute(f"""
+                        SELECT COUNT(*) as cnt
+                        FROM hot_takes ht
+                        JOIN claims c ON ht.claim_id = c.id
+                        WHERE c.user_id = %s
+                            {time_filter.replace('m.timestamp', 'c.timestamp')}
+                    """, [user_id] + time_params)
+                    ht_row = cur.fetchone()
+                    stats['hot_takes_count'] = ht_row['cnt'] if ht_row else 0
+
+                    # ── Debate stats ──
+                    cur.execute("""
+                        SELECT
+                            COUNT(*) as total,
+                            COUNT(*) FILTER (WHERE dp.is_winner = TRUE) as wins,
+                            AVG(dp.score) as avg_score
+                        FROM debate_participants dp
+                        JOIN debates d ON dp.debate_id = d.id
+                        WHERE dp.user_id = %s AND d.guild_id = %s
+                    """, (user_id, guild_id))
+                    debate_row = cur.fetchone()
+                    if debate_row and debate_row['total'] > 0:
+                        wins = debate_row['wins'] or 0
+                        losses = debate_row['total'] - wins
+                        stats['debate_record'] = f"{wins}W-{losses}L"
+                        stats['debate_avg_score'] = round(debate_row['avg_score'], 1) if debate_row['avg_score'] else None
+                        stats['debate_win_rate'] = round(wins / debate_row['total'] * 100) if debate_row['total'] > 0 else 0
+                    else:
+                        stats['debate_record'] = '0W-0L'
+                        stats['debate_avg_score'] = None
+                        stats['debate_win_rate'] = None
+
+                    # ── Trivia stats ──
+                    cur.execute("""
+                        SELECT wins, total_points, total_correct, total_questions_answered
+                        FROM trivia_stats
+                        WHERE guild_id = %s AND user_id = %s
+                    """, (guild_id, user_id))
+                    trivia_row = cur.fetchone()
+                    if trivia_row:
+                        stats['trivia_wins'] = trivia_row['wins'] or 0
+                        stats['trivia_points'] = trivia_row['total_points'] or 0
+                        answered = trivia_row['total_questions_answered'] or 0
+                        correct = trivia_row['total_correct'] or 0
+                        stats['trivia_correct_pct'] = round(correct / answered * 100) if answered > 0 else None
+                    else:
+                        stats['trivia_wins'] = 0
+                        stats['trivia_points'] = 0
+                        stats['trivia_correct_pct'] = None
+
+            # ── Topic expertise (from separate table) ──
+            topics = db.get_user_expertise(user_id, guild_id, limit=5)
+            stats['top_topics'] = [(t['topic'], t['quality_score']) for t in topics] if topics else []
+
+            # ── Achievements ──
+            achievements = []
+            hour = stats.get('most_active_hour', 12)
+            if 0 <= hour <= 5:
+                achievements.append('Night Owl')
+            elif 6 <= hour <= 9:
+                achievements.append('Early Bird')
+            if stats['total_messages'] >= 1000:
+                achievements.append('Conversationalist')
+            if stats.get('hot_takes_count', 0) >= 5:
+                achievements.append('Debate Champion')
+            if stats.get('trivia_wins', 0) >= 3:
+                achievements.append('Trivia Wizard')
+            if len(stats.get('top_topics', [])) >= 3:
+                achievements.append('Topic Expert')
+            stats['achievements'] = achievements
+
+            # Generate the card
+            from mystats_card import create_mystats_card
+            image_buffer = create_mystats_card(
+                f"{target_user.display_name}'s Stats ({time_label})",
+                stats
+            )
+
+            file = discord.File(fp=image_buffer, filename="mystats.png")
+            await interaction.followup.send(file=file)
+
+        except Exception as e:
+            await interaction.followup.send(f"❌ Error generating stats: {str(e)}")
+            print(f"❌ MyStats error: {e}")
+            import traceback
+            traceback.print_exc()
+
+    print("✅ Personal analytics commands registered")
+
     print("✅ Slash commands registered")

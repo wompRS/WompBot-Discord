@@ -35,6 +35,7 @@ Discord message → on_message (events.py) → handle_bot_mention (conversations
 - `bot/plotly_charts.py` — **Primary chart engine**: Plotly-based charts (bar, line, pie, table, comparison, radar, sankey, heatmap) with premium dark theme, exported via Kaleido
 - `bot/card_base.py` — Shared PIL card primitives: draw_rounded_rect, draw_progress_bar, draw_glow_circle, draw_gradient_bg, load_fonts, theme colors. Used by feature-specific card generators.
 - `bot/debate_card.py` — PIL-based debate argumentation profile card (purple theme, radar chart, rhetorical breakdown). Uses `card_base.py`.
+- `bot/mystats_card.py` — PIL-based personal analytics card (teal/emerald theme, stat badges, progress bars, achievements). Uses `card_base.py`.
 - `bot/viz_tools.py` — **Legacy/fallback** matplotlib charts + weather card (PIL-based, kept for weather display)
 - `bot/media_processor.py` — Image/video/YouTube frame extraction and analysis
 - `bot/cost_tracker.py` — Per-request API cost tracking, configurable threshold via COST_ALERT_THRESHOLD env var
@@ -334,6 +335,15 @@ docker compose restart bot       # Restart bot only
 - `user_topic_expertise` table: `(user_id, guild_id, topic, message_count, quality_score)` with UNIQUE constraint
 - Batch upserted via `db.batch_upsert_topic_expertise()` using `psycopg2.extras.execute_values`
 - Migration: `sql/16_new_features.sql`
+
+### Personal Analytics (/mystats)
+- `/mystats [@user] [days]` — Unified personal analytics PIL card (teal/emerald theme)
+- Aggregates data from: messages, message_interactions, claims, hot_takes, debates, trivia_stats, user_topic_expertise
+- Top stats badges: total messages, server rank (DENSE_RANK), active days, peak hour
+- Sections: Social (top partner, replies), Claims & Hot Takes, Debates (record, avg score), Topics (quality bars), Trivia (wins, accuracy)
+- Achievements strip: Night Owl, Early Bird, Conversationalist, Debate Champion, Trivia Wizard, Topic Expert
+- Optional `days` param (1-365) for time-windowed analysis; default is all-time
+- Card rendered by `mystats_card.py` using `card_base.py` primitives
 
 ## Wishlist / Future Features
 
