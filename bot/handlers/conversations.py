@@ -818,6 +818,54 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
 
         content_lower = content.lower()
 
+        # ── "Remember This" explicit fact storage ──
+        # Detect when users explicitly ask the bot to remember something
+        remember_patterns = [
+            'remember that ', 'remember this:', 'remember this,',
+            'don\'t forget that ', 'dont forget that ',
+            'keep in mind that ', 'note that ',
+            'remember i ', 'remember my ', 'remember me ',
+        ]
+        is_remember_request = any(content_lower.startswith(p) or content_lower.startswith(p.rstrip()) for p in remember_patterns)
+        # Also handle "remember that" anywhere after a comma: "hey wompbot, remember that I like Python"
+        if not is_remember_request:
+            is_remember_request = any(f', {p}' in content_lower or f'. {p}' in content_lower for p in remember_patterns[:5])
+
+        if is_remember_request and rag:
+            # Extract the fact text (remove the trigger phrase)
+            fact_text = content
+            for pattern in remember_patterns:
+                lower_idx = content_lower.find(pattern)
+                if lower_idx != -1:
+                    fact_text = content[lower_idx + len(pattern):].strip()
+                    break
+                # Also check comma-prefixed versions
+                comma_pattern = f', {pattern}'
+                comma_idx = content_lower.find(comma_pattern)
+                if comma_idx != -1:
+                    fact_text = content[comma_idx + len(comma_pattern):].strip()
+                    break
+                dot_pattern = f'. {pattern}'
+                dot_idx = content_lower.find(dot_pattern)
+                if dot_idx != -1:
+                    fact_text = content[dot_idx + len(dot_pattern):].strip()
+                    break
+
+            if fact_text and len(fact_text) > 3:
+                try:
+                    await rag.store_explicit_fact(
+                        user_id=message.author.id,
+                        fact_text=fact_text,
+                        guild_id=message.guild.id if message.guild else None,
+                        message_id=message.id
+                    )
+                    await message.channel.send(f"✅ Got it! I'll remember: *{fact_text[:200]}*")
+                    logger.info("Stored explicit fact for user %s: %s", message.author.id, fact_text[:100])
+                    return
+                except Exception as e:
+                    logger.error("Failed to store explicit fact: %s", e)
+                    # Fall through to normal processing if fact storage fails
+
         # Check for leaderboard triggers in natural language
         leaderboard_triggers = {
             'messages': ['who talks the most', 'who messages the most', 'most active', 'most messages', 'who chats the most'],

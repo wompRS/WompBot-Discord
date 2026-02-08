@@ -242,7 +242,8 @@ register_slash_commands(
     help_system=help_system,
     wompie_user_id=WOMPIE_USER_ID,
     series_autocomplete_cache=series_autocomplete_cache,
-    trivia=trivia
+    trivia=trivia,
+    rag=rag
 )
 
 logger.info("All modules registered successfully!")

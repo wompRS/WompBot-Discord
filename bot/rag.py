@@ -556,3 +556,110 @@ Facts:"""
                 'user_facts': [],
                 'recent_summary': None
             }
+
+    # ============================================================
+    # Explicit User Facts (user-initiated "remember this" storage)
+    # ============================================================
+
+    async def store_explicit_fact(self, user_id: int, fact_text: str,
+                                   guild_id: int = None, message_id: int = None) -> bool:
+        """
+        Store an explicit fact that the user asked the bot to remember.
+        Uses the existing user_facts table with fact_type='explicit' and confidence=1.0.
+
+        Args:
+            user_id: User ID
+            fact_text: The fact to remember
+            guild_id: Guild ID (for scoping)
+            message_id: Source message ID
+
+        Returns:
+            True if stored successfully
+        """
+        try:
+            def _store():
+                with self.db.get_connection() as conn:
+                    with conn.cursor() as cur:
+                        # Check for duplicate
+                        cur.execute("""
+                            SELECT id, mention_count FROM user_facts
+                            WHERE user_id = %s AND fact = %s AND fact_type = 'explicit'
+                        """, (user_id, fact_text))
+                        existing = cur.fetchone()
+
+                        if existing:
+                            cur.execute("""
+                                UPDATE user_facts
+                                SET mention_count = mention_count + 1,
+                                    last_confirmed = CURRENT_TIMESTAMP
+                                WHERE id = %s
+                            """, (existing[0],))
+                        else:
+                            cur.execute("""
+                                INSERT INTO user_facts
+                                (user_id, fact_type, fact, source_message_id, confidence, first_mentioned)
+                                VALUES (%s, 'explicit', %s, %s, 1.0, CURRENT_TIMESTAMP)
+                            """, (user_id, fact_text, message_id))
+                    conn.commit()
+                return True
+
+            return await asyncio.to_thread(_store)
+        except Exception as e:
+            logger.error("Error storing explicit fact: %s", e)
+            return False
+
+    async def get_explicit_facts(self, user_id: int) -> List[Dict]:
+        """
+        Get all explicit facts stored for a user.
+
+        Args:
+            user_id: User ID
+
+        Returns:
+            List of fact dicts with id, fact, first_mentioned, mention_count
+        """
+        try:
+            def _get():
+                with self.db.get_connection() as conn:
+                    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                        cur.execute("""
+                            SELECT id, fact, first_mentioned, mention_count, last_confirmed
+                            FROM user_facts
+                            WHERE user_id = %s AND fact_type = 'explicit'
+                            ORDER BY first_mentioned DESC
+                        """, (user_id,))
+                        return cur.fetchall()
+
+            results = await asyncio.to_thread(_get)
+            return [dict(r) for r in results] if results else []
+        except Exception as e:
+            logger.error("Error getting explicit facts: %s", e)
+            return []
+
+    async def delete_explicit_fact(self, user_id: int, fact_id: int) -> bool:
+        """
+        Delete an explicit fact by ID (only if it belongs to the user).
+
+        Args:
+            user_id: User ID (ownership check)
+            fact_id: Fact ID to delete
+
+        Returns:
+            True if deleted, False if not found or unauthorized
+        """
+        try:
+            def _delete():
+                with self.db.get_connection() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute("""
+                            DELETE FROM user_facts
+                            WHERE id = %s AND user_id = %s AND fact_type = 'explicit'
+                        """, (fact_id, user_id))
+                        deleted = cur.rowcount > 0
+                    conn.commit()
+                    return deleted
+
+            return await asyncio.to_thread(_delete)
+        except Exception as e:
+            logger.error("Error deleting explicit fact: %s", e)
+            return False

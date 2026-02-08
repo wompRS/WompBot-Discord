@@ -17,7 +17,8 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                             hot_takes_tracker, reminder_system, event_system,
                             debate_scorekeeper, yearly_wrapped, qotd, iracing,
                             iracing_viz, iracing_team_manager, help_system,
-                            wompie_user_id, series_autocomplete_cache, trivia):
+                            wompie_user_id, series_autocomplete_cache, trivia,
+                            rag=None):
     """
     Register all slash commands with the bot.
 
@@ -4839,4 +4840,68 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
             await interaction.response.send_message(f"❌ Failed to add note to bug #{bug_id}", ephemeral=True)
 
     print("✅ Bug tracking commands registered")
+
+    # =========================================================================
+    # Memory / Facts Commands
+    # =========================================================================
+
+    if rag:
+        @bot.tree.command(name="myfacts", description="View facts the bot remembers about you")
+        async def myfacts_slash(interaction: discord.Interaction):
+            """Show all explicit facts stored for the user"""
+            await interaction.response.defer(ephemeral=True)
+            try:
+                facts = await rag.get_explicit_facts(interaction.user.id)
+
+                if not facts:
+                    await interaction.followup.send(
+                        "📭 I don't have any saved facts about you yet.\n"
+                        "Tell me something like: `@WompBot remember that I prefer Python over JS`",
+                        ephemeral=True
+                    )
+                    return
+
+                embed = discord.Embed(
+                    title=f"🧠 What I Remember About {interaction.user.display_name}",
+                    color=discord.Color.blue()
+                )
+
+                for i, fact in enumerate(facts, 1):
+                    stored_date = fact['first_mentioned'].strftime('%b %d, %Y') if fact.get('first_mentioned') else 'Unknown'
+                    mentions = fact.get('mention_count', 1)
+                    mention_text = f" (confirmed {mentions}x)" if mentions > 1 else ""
+                    embed.add_field(
+                        name=f"#{fact['id']} — {stored_date}{mention_text}",
+                        value=fact['fact'][:200],
+                        inline=False
+                    )
+
+                embed.set_footer(text="Use /forget <id> to remove a fact")
+                await interaction.followup.send(embed=embed, ephemeral=True)
+
+            except Exception as e:
+                await interaction.followup.send(f"❌ Error: {str(e)}", ephemeral=True)
+
+        @bot.tree.command(name="forget", description="Remove a remembered fact by its ID")
+        @app_commands.describe(fact_id="The fact ID to forget (shown in /myfacts)")
+        async def forget_slash(interaction: discord.Interaction, fact_id: int):
+            """Delete an explicit fact"""
+            try:
+                deleted = await rag.delete_explicit_fact(interaction.user.id, fact_id)
+
+                if deleted:
+                    await interaction.response.send_message(
+                        f"✅ Fact #{fact_id} forgotten!",
+                        ephemeral=True
+                    )
+                else:
+                    await interaction.response.send_message(
+                        f"❌ Fact #{fact_id} not found or doesn't belong to you.",
+                        ephemeral=True
+                    )
+            except Exception as e:
+                await interaction.response.send_message(f"❌ Error: {str(e)}", ephemeral=True)
+
+        print("✅ Memory/facts commands registered")
+
     print("✅ Slash commands registered")

@@ -290,3 +290,24 @@ docker compose restart bot       # Restart bot only
 
 - **Duplicate response bug fixed**: Most text tools (wikipedia, define_word, movie_info, stock_price, sports_scores, currency_convert, translate, get_time, url_preview, random_choice, stock_history, create_reminder) are now marked self-contained — their output IS the answer, no synthesis LLM call needed. Previously only weather/wolfram were self-contained, causing tools like wikipedia to show raw output + embed + synthesis = triple response.
 - **Translation rewrite**: Fixed auto-detection bug (was defaulting source to "en" when target wasn't English). Added 60+ language mappings, display names, email param for higher rate limits. LLM tool definition updated to accept language names (not just codes).
+
+## Feature Expansion (Session 301667e+)
+
+### Visualization Overhaul
+- **Plotly + Kaleido** replaces matplotlib as primary chart engine for data charts (bar, line, pie, table, comparison)
+- Additional chart types: radar, sankey (flow), heatmap — used by new analytics features
+- **card_base.py** shared PIL primitives for feature-specific profile cards
+- Chromium added to Docker for Kaleido static image export
+- Matplotlib kept as fallback; weather card remains PIL-based
+
+### Explicit User Facts ("Remember This")
+- Users say `@bot remember that I prefer Python` and bot stores it as explicit fact
+- Uses existing `user_facts` table with `fact_type='explicit'`, `confidence=1.0`
+- Pattern detection in `conversations.py` before LLM call (early return, no API cost)
+- `/myfacts` — view all stored facts (ephemeral)
+- `/forget <id>` — delete a specific fact
+- Facts automatically included in LLM context via existing `get_relevant_context()`
+
+## Wishlist / Future Features
+
+- **Cross-channel context awareness** — Opt-in `/link_channels` to pull RAG context from linked channels
