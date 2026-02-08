@@ -82,7 +82,7 @@ class HelpSystem:
                 "examples": [
                     "/wompbot_optout - Stop data collection"
                 ],
-                "related": ["download_my_data", "delete_my_data", "my_privacy_status"]
+                "related": ["download_my_data", "delete_my_data"]
             },
             "download_my_data": {
                 "usage": "/download_my_data",
@@ -101,7 +101,7 @@ class HelpSystem:
                 "examples": [
                     "/download_my_data - Request full data export"
                 ],
-                "related": ["delete_my_data", "my_privacy_status", "wompbot_optout"]
+                "related": ["delete_my_data", "wompbot_optout"]
             },
             "delete_my_data": {
                 "usage": "/delete_my_data",
@@ -110,36 +110,22 @@ class HelpSystem:
                     "Deletion process:",
                     "  1. Opt-out from data collection immediately",
                     "  2. 30-day grace period begins",
-                    "  3. Can cancel with /cancel_deletion",
+                    "  3. Run /delete_my_data again to cancel",
                     "  4. After 30 days: permanent deletion",
                     "What gets deleted:",
-                    "  • Messages, claims, quotes",
-                    "  • Reminders and events",
-                    "  • iRacing linkage",
+                    "  - Messages, claims, quotes",
+                    "  - Reminders and events",
+                    "  - iRacing linkage",
                     "What is retained (legal requirement):",
-                    "  • Audit logs (7 years)",
-                    "  • Consent/opt-out records (proof of lawful processing)"
+                    "  - Audit logs (7 years)",
+                    "  - Consent/opt-out records (proof of lawful processing)",
+                    "If a deletion is already pending, this command shows",
+                    "a cancel option instead of creating a new request."
                 ],
                 "examples": [
-                    "/delete_my_data - Schedule data deletion",
-                    "/cancel_deletion - Cancel scheduled deletion"
+                    "/delete_my_data - Schedule data deletion or cancel pending one"
                 ],
-                "related": ["download_my_data", "wompbot_optout", "my_privacy_status"]
-            },
-            "my_privacy_status": {
-                "usage": "/my_privacy_status",
-                "description": "View your current privacy and data processing status",
-                "details": [
-                    "Shows:",
-                    "  • Whether you're opted in or out",
-                    "  • Legal basis for data processing",
-                    "  • What data is being collected",
-                    "  • Available privacy commands"
-                ],
-                "examples": [
-                    "/my_privacy_status - Check your status"
-                ],
-                "related": ["wompbot_optout", "download_my_data", "delete_my_data"]
+                "related": ["download_my_data", "wompbot_optout"]
             },
             "search": {
                 "usage": "!search <query>",
@@ -592,85 +578,6 @@ class HelpSystem:
                     "/weather_info - View saved preferences"
                 ],
                 "related": ["weather_set", "weather_clear"]
-            },
-            # Privacy Commands
-            "cancel_deletion": {
-                "usage": "/cancel_deletion",
-                "description": "Cancel a scheduled data deletion request",
-                "details": [
-                    "Stops the 30-day deletion countdown",
-                    "Your data will be retained",
-                    "You remain opted out unless you opt back in"
-                ],
-                "examples": [
-                    "/cancel_deletion - Cancel deletion request"
-                ],
-                "related": ["delete_my_data", "my_privacy_status"]
-            },
-            "privacy_policy": {
-                "usage": "/privacy_policy",
-                "description": "View WompBot's complete privacy policy",
-                "details": [
-                    "Explains what data is collected",
-                    "Describes how data is used",
-                    "Outlines your rights under GDPR"
-                ],
-                "examples": [
-                    "/privacy_policy - View privacy policy"
-                ],
-                "related": ["my_privacy_status", "wompbot_optout"]
-            },
-            "privacy_support": {
-                "usage": "/privacy_support",
-                "description": "Get help with privacy-related concerns",
-                "details": [
-                    "Contact information for privacy questions",
-                    "Links to relevant documentation",
-                    "GDPR request assistance"
-                ],
-                "examples": [
-                    "/privacy_support - Get privacy help"
-                ],
-                "related": ["privacy_policy", "my_privacy_status"]
-            },
-            "tos": {
-                "usage": "/tos",
-                "description": "View Terms of Service",
-                "details": [
-                    "Legal terms for using WompBot",
-                    "Acceptable use guidelines",
-                    "Liability and warranty information"
-                ],
-                "examples": [
-                    "/tos - View Terms of Service"
-                ],
-                "related": ["privacy_policy"]
-            },
-            "privacy_settings": {
-                "usage": "/privacy_settings",
-                "description": "View server privacy overview (Admin only)",
-                "details": [
-                    "Shows consent statistics for the server",
-                    "Displays opt-out counts",
-                    "Overview of data collection status"
-                ],
-                "examples": [
-                    "/privacy_settings - Server privacy overview"
-                ],
-                "related": ["privacy_audit", "privacy_policy"]
-            },
-            "privacy_audit": {
-                "usage": "/privacy_audit",
-                "description": "Download privacy audit report (Admin only)",
-                "details": [
-                    "JSON report of privacy posture",
-                    "Lists all data categories stored",
-                    "Compliance status summary"
-                ],
-                "examples": [
-                    "/privacy_audit - Download audit report"
-                ],
-                "related": ["privacy_settings", "privacy_policy"]
             },
             # iRacing Commands
             "iracing_link": {
@@ -1175,18 +1082,11 @@ class HelpSystem:
         )
 
         embed.add_field(
-            name="Privacy and GDPR (10 commands)",
+            name="Privacy and GDPR (3 commands)",
             value=(
                 "`/wompbot_optout` - Opt out of data collection\n"
-                "`/download_my_data` - Export data\n"
-                "`/delete_my_data` - Delete data\n"
-                "`/cancel_deletion` - Cancel deletion\n"
-                "`/my_privacy_status` - Check status\n"
-                "`/privacy_policy` - View policy\n"
-                "`/privacy_support` - Get help\n"
-                "`/tos` - Terms of Service\n"
-                "`/privacy_settings` - Server privacy (Admin)\n"
-                "`/privacy_audit` - Audit report (Admin)"
+                "`/download_my_data` - Export your data\n"
+                "`/delete_my_data` - Delete data (or cancel pending deletion)"
             ),
             inline=False
         )
@@ -1219,7 +1119,7 @@ class HelpSystem:
             inline=False
         )
 
-        embed.set_footer(text="Use /help <command> for detailed help • By using WompBot, you accept /tos")
+        embed.set_footer(text="Use /help <command> for detailed help")
 
         return embed
 
@@ -1368,14 +1268,7 @@ class HelpSystem:
             "commands": [
                 ("wompbot_optout", "Opt out of data collection"),
                 ("download_my_data", "Export all your data (GDPR Art. 15)"),
-                ("delete_my_data", "Request data deletion (GDPR Art. 17)"),
-                ("cancel_deletion", "Cancel deletion request"),
-                ("my_privacy_status", "View current privacy status"),
-                ("privacy_policy", "View privacy policy"),
-                ("privacy_support", "Get privacy help"),
-                ("tos", "View Terms of Service"),
-                ("privacy_settings", "Server privacy overview (Admin)"),
-                ("privacy_audit", "Download privacy audit (Admin)"),
+                ("delete_my_data", "Request data deletion or cancel pending deletion (GDPR Art. 17)"),
             ],
             "related_categories": []
         },

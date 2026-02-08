@@ -4,7 +4,6 @@ Provides user-facing commands for data rights per GDPR
 """
 
 import discord
-from discord import app_commands
 from discord.ui import View, Button
 import json
 import io
@@ -20,15 +19,15 @@ class DeleteConfirmView(View):
         self.user_id = user_id
         self.confirmed = False
 
-    @discord.ui.button(label="⚠️ Yes, Delete Everything", style=discord.ButtonStyle.danger)
+    @discord.ui.button(label="Yes, Delete Everything", style=discord.ButtonStyle.danger)
     async def confirm_delete(self, interaction: discord.Interaction, button: Button):
         """Confirm deletion"""
         if interaction.user.id != self.user_id:
-            await interaction.response.send_message("❌ This is not for you!", ephemeral=True)
+            await interaction.response.send_message("This is not for you!", ephemeral=True)
             return
 
         await interaction.response.send_message(
-            "🔄 Deleting your data... This may take a moment.",
+            "Deleting your data... This may take a moment.",
             ephemeral=True
         )
 
@@ -37,21 +36,20 @@ class DeleteConfirmView(View):
 
         if success:
             await interaction.followup.send(
-                "✅ **Data Deletion Scheduled**\n\n"
+                "**Data Deletion Scheduled**\n\n"
                 "Your data deletion has been scheduled for **30 days from now**.\n\n"
                 "**What This Means:**\n"
-                "• Your data collection is stopped immediately\n"
-                "• You're automatically opted out of all features\n"
-                "• In 30 days, all your data will be permanently deleted\n\n"
+                "- Your data collection is stopped immediately\n"
+                "- You're automatically opted out of all features\n"
+                "- In 30 days, all your data will be permanently deleted\n\n"
                 "**Grace Period:**\n"
-                "You have 30 days to change your mind. Use `/cancel_deletion` to "
-                "restore your account and data before permanent deletion.\n\n"
-                "**Questions?** Use `/privacy_support` for assistance.",
+                "You have 30 days to change your mind. Use `/delete_my_data` again "
+                "to cancel the pending deletion and restore your account.\n\n",
                 ephemeral=True
             )
         else:
             await interaction.followup.send(
-                "❌ Failed to schedule deletion. Please contact an administrator.",
+                "Failed to schedule deletion. Please contact an administrator.",
                 ephemeral=True
             )
 
@@ -62,15 +60,64 @@ class DeleteConfirmView(View):
     async def cancel_delete(self, interaction: discord.Interaction, button: Button):
         """Cancel deletion"""
         if interaction.user.id != self.user_id:
-            await interaction.response.send_message("❌ This is not for you!", ephemeral=True)
+            await interaction.response.send_message("This is not for you!", ephemeral=True)
             return
 
         await interaction.response.send_message(
-            "✅ Deletion cancelled. Your data remains intact.",
+            "Deletion cancelled. Your data remains intact.",
             ephemeral=True
         )
 
         self.confirmed = False
+        self.stop()
+
+
+class CancelDeletionView(View):
+    """Confirmation view for cancelling a pending deletion"""
+
+    def __init__(self, privacy_manager, user_id: int):
+        super().__init__(timeout=300)
+        self.privacy_manager = privacy_manager
+        self.user_id = user_id
+
+    @discord.ui.button(label="Cancel Pending Deletion", style=discord.ButtonStyle.green)
+    async def confirm_cancel(self, interaction: discord.Interaction, button: Button):
+        """Cancel the pending deletion"""
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message("This is not for you!", ephemeral=True)
+            return
+
+        success = self.privacy_manager.cancel_scheduled_deletion(self.user_id)
+
+        if success:
+            await interaction.response.send_message(
+                "**Deletion Cancelled**\n\n"
+                "Your scheduled data deletion has been cancelled.\n\n"
+                "**What This Means:**\n"
+                "- Your data is safe and will not be deleted\n"
+                "- Data collection has been re-enabled\n"
+                "- You can use all bot features again\n",
+                ephemeral=True
+            )
+        else:
+            await interaction.response.send_message(
+                "Failed to cancel deletion. Please contact an administrator.",
+                ephemeral=True
+            )
+
+        self.stop()
+
+    @discord.ui.button(label="Keep Deletion Scheduled", style=discord.ButtonStyle.gray)
+    async def keep_deletion(self, interaction: discord.Interaction, button: Button):
+        """Keep the pending deletion"""
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message("This is not for you!", ephemeral=True)
+            return
+
+        await interaction.response.send_message(
+            "OK, your data deletion remains scheduled.",
+            ephemeral=True
+        )
         self.stop()
 
 
@@ -94,7 +141,7 @@ def setup_privacy_commands(bot, db, privacy_manager):
         existing_consent = privacy_manager.check_consent(user_id)
         if existing_consent and existing_consent.get('consent_withdrawn'):
             await interaction.response.send_message(
-                "ℹ️ You are already opted out of data collection.\n\n"
+                "You are already opted out of data collection.\n\n"
                 "Use `/download_my_data` to export your data or `/delete_my_data` to delete it.",
                 ephemeral=True
             )
@@ -109,22 +156,20 @@ def setup_privacy_commands(bot, db, privacy_manager):
 
         if success:
             await interaction.response.send_message(
-                "✅ **You've Opted Out**\n\n"
+                "**You've Opted Out**\n\n"
                 "You are now opted out of data collection and processing.\n\n"
                 "**What This Means:**\n"
-                "• Future messages won't be stored with content\n"
-                "• Behavioral profiling is disabled\n"
-                "• Bot will still respond but without personalization\n"
-                "• Your existing data remains (for now)\n\n"
+                "- Future messages won't be stored with content\n"
+                "- Behavioral profiling is disabled\n"
+                "- Bot will still respond but without personalization\n"
+                "- Your existing data remains (for now)\n\n"
                 "**Delete Your Data:**\n"
-                "Use `/delete_my_data` to permanently delete all stored data.\n\n"
-                "**Privacy Policy:**\n"
-                "Use `/privacy_policy` to view our data processing practices.",
+                "Use `/delete_my_data` to permanently delete all stored data.",
                 ephemeral=True
             )
         else:
             await interaction.response.send_message(
-                "❌ Failed to opt out. Please try again or contact an administrator.",
+                "Failed to opt out. Please try again or contact an administrator.",
                 ephemeral=True
             )
 
@@ -141,7 +186,7 @@ def setup_privacy_commands(bot, db, privacy_manager):
 
             if not data_export:
                 await interaction.followup.send(
-                    "❌ Failed to export your data. Please try again later.",
+                    "Failed to export your data. Please try again later.",
                     ephemeral=True
                 )
                 return
@@ -155,7 +200,7 @@ def setup_privacy_commands(bot, db, privacy_manager):
 
             # Create embed with summary
             embed = discord.Embed(
-                title="📦 Your Data Export",
+                title="Your Data Export",
                 description=(
                     "Here's all your data in machine-readable JSON format.\n\n"
                     "**GDPR Article 15 - Right of Access**\n"
@@ -172,7 +217,7 @@ def setup_privacy_commands(bot, db, privacy_manager):
             embed.add_field(name="Debates", value=f"{summary.get('total_debates', 0):,}", inline=True)
             embed.add_field(name="Account Age", value=f"{summary.get('account_age_days', 0)} days", inline=True)
 
-            embed.set_footer(text="Export valid for 48 hours • Keep this file secure")
+            embed.set_footer(text="Export valid for 48 hours - Keep this file secure")
             embed.timestamp = datetime.now()
 
             await interaction.followup.send(
@@ -182,39 +227,58 @@ def setup_privacy_commands(bot, db, privacy_manager):
             )
 
         except Exception as e:
-            print(f"❌ Data export error: {e}")
+            print(f"Data export error: {e}")
             import traceback
             traceback.print_exc()
 
             await interaction.followup.send(
-                "❌ An error occurred during data export. Please contact an administrator.",
+                "An error occurred during data export. Please contact an administrator.",
                 ephemeral=True
             )
 
     @bot.tree.command(name="delete_my_data", description="Permanently delete all your data (GDPR Art. 17 - Right to Erasure)")
     async def delete_my_data(interaction: discord.Interaction):
-        """Request permanent deletion of all user data"""
+        """Request permanent deletion of all user data, or cancel a pending deletion"""
         user_id = interaction.user.id
 
-        # Show warning and confirmation
+        # Check if there's already a pending deletion
+        has_pending = privacy_manager.has_pending_deletion(user_id)
+
+        if has_pending:
+            # Show cancel option instead of creating a new deletion request
+            embed = discord.Embed(
+                title="Pending Data Deletion",
+                description=(
+                    "You already have a data deletion scheduled.\n\n"
+                    "Your data will be permanently deleted after the 30-day grace period.\n\n"
+                    "Would you like to **cancel** the pending deletion and restore your account?"
+                ),
+                color=discord.Color.orange()
+            )
+
+            view = CancelDeletionView(privacy_manager, user_id)
+            await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+            return
+
+        # No pending deletion - show the normal deletion confirmation
         embed = discord.Embed(
-            title="⚠️ Permanent Data Deletion",
+            title="Permanent Data Deletion",
             description=(
                 "**WARNING: This action will delete ALL your data!**\n\n"
                 "This will permanently delete:\n"
-                "• All your messages (stored)\n"
-                "• Your profile and statistics\n"
-                "• All claims, quotes, and hot takes\n"
-                "• Behavior analysis data\n"
-                "• Debate history\n"
-                "• iRacing linkage\n"
-                "• Search history\n"
-                "• Everything else\n\n"
+                "- All your messages (stored)\n"
+                "- Your profile and statistics\n"
+                "- All claims, quotes, and hot takes\n"
+                "- Behavior analysis data\n"
+                "- Debate history\n"
+                "- iRacing linkage\n"
+                "- Search history\n"
+                "- Everything else\n\n"
                 "**30-Day Grace Period:**\n"
                 "Your data collection stops immediately, but permanent deletion "
-                "happens in 30 days. You can cancel within this period.\n\n"
+                "happens in 30 days. You can cancel by running `/delete_my_data` again.\n\n"
                 "**GDPR Article 17 - Right to Erasure**\n\n"
-                "⚠️ **This cannot be easily undone after 30 days!**"
+                "**This cannot be easily undone after 30 days!**"
             ),
             color=discord.Color.red()
         )
@@ -222,439 +286,4 @@ def setup_privacy_commands(bot, db, privacy_manager):
         view = DeleteConfirmView(privacy_manager, user_id)
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
-    @bot.tree.command(name="privacy_settings", description="Review WompBot privacy posture for this server")
-    @app_commands.default_permissions(administrator=True)
-    async def privacy_settings(interaction: discord.Interaction):
-        summary = db.get_consent_summary()
-        storage = db.get_data_storage_overview()
-
-        policy = privacy_manager.get_privacy_policy()
-        policy_version = policy['version'] if policy else privacy_manager.CURRENT_POLICY_VERSION
-        policy_date = (
-            policy.get('effective_date').strftime('%Y-%m-%d')
-            if policy and policy.get('effective_date')
-            else 'N/A'
-        )
-
-        embed = discord.Embed(
-            title="🔒 WompBot Privacy Settings",
-            description=(
-                "Overview of how WompBot operates in this server."
-                " Use `/privacy_audit` for a detailed export."
-            ),
-            color=discord.Color.blue()
-        )
-
-        embed.add_field(
-            name="Consent Snapshot",
-            value=(
-                f"Active consent: **{summary['active_consent']}**\n"
-                f"Withdrawn / declined: **{summary['withdrawn']}**\n"
-                f"Pending replies: **{summary['pending']}**\n"
-                f"Profiles marked opted-out: **{summary['opted_out_profiles']}**"
-            ),
-            inline=False
-        )
-
-        message_stats = storage.get('messages', {})
-        message_count = message_stats.get('count', 0)
-        last_entry = message_stats.get('last_entry')
-        last_entry_display = last_entry.strftime('%Y-%m-%d %H:%M') if last_entry else 'N/A'
-
-        embed.add_field(
-            name="Stored Data (approx)",
-            value=(
-                f"Messages: **{message_count:,}** (latest: {last_entry_display})\n"
-                f"Claims: **{storage.get('claims', {}).get('count', 0):,}** | "
-                f"Behavior Analyses: **{storage.get('user_behavior', {}).get('count', 0):,}**\n"
-                f"Stats Cache: **{storage.get('stats_cache', {}).get('count', 0):,}** entries\n"
-                f"iRacing Meta Cache: **{storage.get('iracing_meta_cache', {}).get('count', 0):,}** | "
-                f"History Cache: **{storage.get('iracing_history_cache', {}).get('count', 0):,}**"
-            ),
-            inline=False
-        )
-
-        embed.add_field(
-            name="Key Modules Using Data",
-            value=(
-                "• Conversational AI (context up to 6 messages)\n"
-                "• Claims tracking & quotes\n"
-                "• Chat statistics & behavior insights\n"
-                "• iRacing analytics & visualizations"
-            ),
-            inline=False
-        )
-
-        embed.set_footer(text=f"Privacy policy version {policy_version} • Effective {policy_date}")
-
-        try:
-            privacy_manager.log_audit_action(
-                user_id=interaction.user.id,
-                action="privacy_settings_view",
-                details=f"Guild {interaction.guild_id}",
-                performed_by=interaction.user.id,
-                success=True,
-            )
-        except Exception as audit_error:
-            print(f"⚠️ Failed to log privacy_settings audit: {audit_error}")
-
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-
-    @bot.tree.command(name="privacy_audit", description="Generate a privacy compliance summary")
-    @app_commands.default_permissions(administrator=True)
-    async def privacy_audit(interaction: discord.Interaction):
-        await interaction.response.defer(ephemeral=True)
-
-        summary = db.get_consent_summary()
-        storage = db.get_data_storage_overview()
-
-        audit_report = {
-            "generated_at": datetime.utcnow().isoformat(),
-            "guild_id": interaction.guild_id,
-            "consent": summary,
-            "storage": storage,
-            "policy_version": privacy_manager.CURRENT_POLICY_VERSION,
-        }
-
-        policy = privacy_manager.get_privacy_policy()
-        if policy:
-            audit_report["policy"] = {
-                "version": policy.get("version"),
-                "effective_date": policy.get("effective_date").isoformat() if policy.get("effective_date") else None,
-            }
-
-        buffer = io.StringIO()
-        json.dump(audit_report, buffer, indent=2)
-        buffer.seek(0)
-
-        file = discord.File(fp=io.BytesIO(buffer.getvalue().encode('utf-8')), filename="wompbot_privacy_audit.json")
-
-        await interaction.followup.send(
-            content=(
-                "📄 Audit report generated. Share this with server moderators or members "
-                "who want to understand what WompBot stores."
-            ),
-            file=file,
-            ephemeral=True
-        )
-
-        try:
-            privacy_manager.log_audit_action(
-                user_id=interaction.user.id,
-                action="privacy_audit_export",
-                details=f"Guild {interaction.guild_id}",
-                performed_by=interaction.user.id,
-                success=True,
-            )
-        except Exception as audit_error:
-            print(f"⚠️ Failed to log privacy_audit action: {audit_error}")
-
-    @bot.tree.command(name="cancel_deletion", description="Cancel your scheduled data deletion")
-    async def cancel_deletion(interaction: discord.Interaction):
-        """Cancel a scheduled data deletion"""
-        user_id = interaction.user.id
-
-        success = privacy_manager.cancel_scheduled_deletion(user_id)
-
-        if success:
-            await interaction.response.send_message(
-                "✅ **Deletion Cancelled**\n\n"
-                "Your scheduled data deletion has been cancelled.\n\n"
-                "**What This Means:**\n"
-                "• Your data is safe and will not be deleted\n"
-                "• Data collection has been re-enabled\n"
-                "• You can use all bot features again\n\n"
-                "Welcome back! 👋",
-                ephemeral=True
-            )
-        else:
-            await interaction.response.send_message(
-                "❌ No scheduled deletion found for your account.\n\n"
-                "If you believe this is an error, contact an administrator.",
-                ephemeral=True
-            )
-
-    @bot.tree.command(name="privacy_policy", description="View the complete privacy policy")
-    async def privacy_policy_command(interaction: discord.Interaction):
-        """Display the full privacy policy"""
-        policy = privacy_manager.get_privacy_policy()
-
-        if not policy:
-            await interaction.response.send_message(
-                "❌ Failed to load privacy policy. Please try again later.",
-                ephemeral=True
-            )
-            return
-
-        # Split policy into chunks for Discord's embed limits
-        policy_text = policy['policy_text']
-        chunks = [policy_text[i:i+4000] for i in range(0, len(policy_text), 4000)]
-
-        embeds = []
-        for i, chunk in enumerate(chunks[:10]):  # Max 10 embeds
-            embed = discord.Embed(
-                title=f"🔒 WompBot Privacy Policy (Part {i+1}/{len(chunks)})" if i > 0 else "🔒 WompBot Privacy Policy",
-                description=chunk,
-                color=discord.Color.blue()
-            )
-
-            if i == 0:
-                embed.add_field(
-                    name="📱 Quick Links",
-                    value=(
-                        "`/wompbot_optout` - Opt out of data collection\n"
-                        "`/download_my_data` - Export your data\n"
-                        "`/delete_my_data` - Delete your data\n"
-                        "`/privacy_support` - Get help"
-                    ),
-                    inline=False
-                )
-
-            embed.set_footer(text=f"Version {policy['version']} • Effective {policy['effective_date'].strftime('%Y-%m-%d')}")
-            embeds.append(embed)
-
-        await interaction.response.send_message(embeds=embeds, ephemeral=True)
-
-    @bot.tree.command(name="my_privacy_status", description="View your current privacy and consent status")
-    async def my_privacy_status(interaction: discord.Interaction):
-        """Show user's current privacy status"""
-        user_id = interaction.user.id
-
-        consent = privacy_manager.check_consent(user_id)
-
-        # Opt-out model: Active by default unless explicitly opted out
-        opted_out = consent and consent.get('consent_withdrawn', False)
-
-        embed = discord.Embed(
-            title="🔒 Your Privacy Status",
-            color=discord.Color.orange() if opted_out else discord.Color.green()
-        )
-
-        if not opted_out:
-            status = "✅ Active - Data collection enabled (default)"
-            embed.add_field(name="Status", value=status, inline=False)
-            embed.add_field(
-                name="Legal Basis",
-                value="Legitimate Interest (GDPR Art. 6.1.f)",
-                inline=False
-            )
-            embed.add_field(
-                name="Data Processing",
-                value="• Message history stored\n• Behavioral profiling enabled\n• Personalized responses active",
-                inline=False
-            )
-        else:
-            status = "❌ Opted Out - Data collection disabled"
-            embed.add_field(name="Status", value=status, inline=False)
-
-            if consent and consent.get('consent_withdrawn_date'):
-                embed.add_field(
-                    name="Opted Out On",
-                    value=consent['consent_withdrawn_date'].strftime('%Y-%m-%d %H:%M UTC'),
-                    inline=True
-                )
-
-            embed.add_field(
-                name="Current State",
-                value="• No message content stored\n• No behavioral profiling\n• Generic responses only",
-                inline=False
-            )
-
-        embed.add_field(
-            name="Your Rights",
-            value=(
-                "`/download_my_data` - Export all your data\n"
-                "`/delete_my_data` - Request deletion\n"
-                "`/wompbot_optout` - Opt out of data collection"
-            ),
-            inline=False
-        )
-
-        embed.set_footer(text="Questions? Use /privacy_support")
-
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-
-    @bot.tree.command(name="privacy_support", description="Get help with privacy and data questions")
-    async def privacy_support(interaction: discord.Interaction):
-        """Provide privacy support information"""
-        embed = discord.Embed(
-            title="🛟 Privacy Support",
-            description=(
-                "Need help with your privacy or data?\n\n"
-                "**Common Questions:**"
-            ),
-            color=discord.Color.blue()
-        )
-
-        embed.add_field(
-            name="What data do you collect?",
-            value=(
-                "Messages, usernames, interactions, claims, quotes, behavioral patterns, "
-                "and usage statistics. See `/privacy_policy` for full details."
-            ),
-            inline=False
-        )
-
-        embed.add_field(
-            name="Can I see all my data?",
-            value="Yes! Use `/download_my_data` to export everything in JSON format.",
-            inline=False
-        )
-
-        embed.add_field(
-            name="How do I delete my data?",
-            value=(
-                "Use `/delete_my_data` to schedule permanent deletion. You'll have "
-                "a 30-day grace period to change your mind."
-            ),
-            inline=False
-        )
-
-        embed.add_field(
-            name="What if I opt out?",
-            value=(
-                "Use `/wompbot_optout` to stop data collection. The bot will still respond "
-                "but without personalization. Your existing data remains until you delete it."
-            ),
-            inline=False
-        )
-
-        embed.add_field(
-            name="Is my data secure?",
-            value=(
-                "Yes! We use encryption, parameterized queries, access controls, and "
-                "audit logging to protect your data."
-            ),
-            inline=False
-        )
-
-        embed.add_field(
-            name="Do you sell my data?",
-            value="**NO.** We never sell your data to third parties.",
-            inline=False
-        )
-
-        embed.add_field(
-            name="Who can I contact?",
-            value=(
-                "For privacy concerns, contact the bot administrator:\n"
-                "[Administrator Contact Information Here]\n\n"
-                "For GDPR complaints (EU residents):\n"
-                "You have the right to lodge a complaint with your supervisory authority."
-            ),
-            inline=False
-        )
-
-        embed.set_footer(text="GDPR Compliant • Your data, your rights")
-
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-
-    @bot.tree.command(name="tos", description="View WompBot Terms of Service")
-    async def tos_command(interaction: discord.Interaction):
-        """Display Terms of Service"""
-        import os
-
-        try:
-            # Read TOS file
-            tos_path = os.path.join(os.path.dirname(__file__), '..', 'docs', 'TERMS_OF_SERVICE.md')
-
-            if not os.path.exists(tos_path):
-                await interaction.response.send_message(
-                    "Terms of Service document not found. Please contact the administrator.",
-                    ephemeral=True
-                )
-                return
-
-            with open(tos_path, 'r', encoding='utf-8') as f:
-                tos_text = f.read()
-
-            # Extract key sections for Discord embed (full text is too long)
-            # Split by ## headers
-            sections = tos_text.split('\n## ')
-
-            # Header
-            header = sections[0].split('\n---')[0].strip()
-
-            # Create main embed with summary
-            embed = discord.Embed(
-                title="WompBot Terms of Service",
-                description=(
-                    "By using WompBot, you agree to these Terms.\n\n"
-                    "**Key Points:**\n"
-                    "• Bot collects data with your consent\n"
-                    "• You control your data via `/download_my_data` and `/delete_my_data`\n"
-                    "• Bot personality can be crude/sarcastic (matches your energy)\n"
-                    "• No warranties - use at your own risk\n"
-                    "• ⚠️ GDPR partial compliance - see full docs\n\n"
-                    "**Last Updated**: November 7, 2025"
-                ),
-                color=discord.Color.blue()
-            )
-
-            # Add key sections as fields
-            embed.add_field(
-                name="📋 What We Collect",
-                value=(
-                    "With consent: messages, usernames, behavior analysis, "
-                    "claims/quotes, iRacing data (if linked), search queries. "
-                    "See Section 2 for full details."
-                ),
-                inline=False
-            )
-
-            embed.add_field(
-                name="🔒 Your Rights",
-                value=(
-                    "`/download_my_data` - Export all data\n"
-                    "`/delete_my_data` - Request deletion\n"
-                    "`/wompbot_optout` - Opt out\n"
-                    "`/my_privacy_status` - Check status"
-                ),
-                inline=False
-            )
-
-            embed.add_field(
-                name="⚖️ Acceptable Use",
-                value=(
-                    "✅ Use for legitimate purposes\n"
-                    "✅ Crude language OK (Bot matches your energy)\n"
-                    "❌ No spam, abuse, harassment, or illegal activity\n"
-                    "❌ No exploitation or data extraction"
-                ),
-                inline=False
-            )
-
-            embed.add_field(
-                name="⚠️ Disclaimers",
-                value=(
-                    "• Bot provided AS IS with no warranties\n"
-                    "• Not always accurate despite safeguards\n"
-                    "• No SLA or uptime guarantees\n"
-                    "• Not liable for decisions made using Bot info"
-                ),
-                inline=False
-            )
-
-            embed.add_field(
-                name="📚 Full Documentation",
-                value=(
-                    "Full TOS: `docs/TERMS_OF_SERVICE.md`\n"
-                    "`/privacy_policy` - Privacy details\n"
-                    "[GDPR Compliance](docs/compliance/GDPR_COMPLIANCE.md)\n"
-                    "`/privacy_support` - Questions"
-                ),
-                inline=False
-            )
-
-            embed.set_footer(text="By using WompBot, you accept these Terms")
-
-            await interaction.response.send_message(embed=embed, ephemeral=True)
-
-        except Exception as e:
-            print(f"Error displaying TOS: {e}")
-            await interaction.response.send_message(
-                "Error loading Terms of Service. Please contact the administrator.",
-                ephemeral=True
-            )
-
-    print("✅ GDPR privacy commands registered")
+    print("GDPR privacy commands registered (3 commands: optout, download, delete)")

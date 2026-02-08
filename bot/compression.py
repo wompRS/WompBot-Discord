@@ -53,7 +53,7 @@ class ConversationCompressor:
     def compress_history(
         self,
         conversation_history: List[Dict],
-        keep_recent: int = 3,
+        keep_recent: int = 8,
         bot_user_id: int = None
     ) -> str:
         """

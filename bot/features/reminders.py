@@ -5,9 +5,13 @@ Zero cost - no LLM needed
 """
 
 import discord
+import logging
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import re
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Union
+
+logger = logging.getLogger(__name__)
 
 
 class ReminderSystem:
@@ -16,7 +20,20 @@ class ReminderSystem:
     def __init__(self, db):
         self.db = db
 
-    def parse_reminder_time(self, time_string: str) -> Optional[datetime]:
+    def _get_guild_timezone(self, guild_id: int) -> ZoneInfo:
+        """Get the timezone configured for a guild, defaulting to UTC."""
+        try:
+            with self.db.get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT timezone FROM guild_config WHERE guild_id = %s", (guild_id,))
+                    result = cur.fetchone()
+                    if result and result[0]:
+                        return ZoneInfo(result[0])
+        except (ZoneInfoNotFoundError, Exception) as e:
+            logger.warning("Failed to get guild timezone for %s: %s", guild_id, e)
+        return ZoneInfo('UTC')
+
+    def parse_reminder_time(self, time_string: str, guild_id: int = None) -> Union[datetime, str, None]:
         """
         Parse natural language time expressions into datetime.
 
@@ -26,10 +43,18 @@ class ReminderSystem:
         - Time: "at 3pm", "at 15:00"
         - Combined: "tomorrow at 3pm"
 
-        Returns None if parsing fails.
+        Returns:
+            datetime if successful,
+            str error message if input is recognized but invalid,
+            None if input can't be parsed at all.
         """
         time_string = time_string.lower().strip()
-        now = datetime.now()
+
+        if not time_string:
+            return "Please provide a time for the reminder."
+
+        tz = self._get_guild_timezone(guild_id) if guild_id else ZoneInfo('UTC')
+        now = datetime.now(tz)
 
         # Pattern 1: "in X minutes/hours/days/weeks" or "X minutes/hours/days/weeks"
         relative_pattern = r'(?:in )?(\d+)\s*(minute|minutes|min|mins|hour|hours|hr|hrs|day|days|week|weeks)'
@@ -158,14 +183,18 @@ class ReminderSystem:
         Returns (reminder_id, remind_at) if successful, None otherwise.
         """
         try:
-            remind_at = self.parse_reminder_time(time_string)
+            remind_at = self.parse_reminder_time(time_string, guild_id=None)
+
+            # Return error message string as-is for the caller to display
+            if isinstance(remind_at, str):
+                return remind_at
 
             if not remind_at:
-                return None
+                return "Couldn't understand that time. Try: 'in 30 minutes', 'tomorrow at 3pm', or 'next friday'."
 
             # Don't allow reminders in the past
-            if remind_at <= datetime.now():
-                return None
+            if remind_at <= datetime.now(remind_at.tzinfo):
+                return "That time is in the past. Try a future time like 'in 1 hour' or 'tomorrow'."
 
             with self.db.get_connection() as conn:
 
@@ -247,19 +276,59 @@ class ReminderSystem:
         except Exception as e:
             print(f"❌ Error marking reminder complete: {e}")
 
+    def _parse_interval_to_timedelta(self, interval_string: str) -> Optional[timedelta]:
+        """Parse a recurring interval string like '1 day', '2 hours', 'daily', 'weekly' into a timedelta."""
+        interval_string = interval_string.lower().strip()
+
+        # Named intervals
+        named = {
+            'daily': timedelta(days=1),
+            'weekly': timedelta(weeks=1),
+            'hourly': timedelta(hours=1),
+            'biweekly': timedelta(weeks=2),
+        }
+        if interval_string in named:
+            return named[interval_string]
+
+        # Numeric intervals: "2 hours", "1 day", "30 minutes"
+        match = re.search(r'(\d+)\s*(minute|minutes|min|mins|hour|hours|hr|hrs|day|days|week|weeks)', interval_string)
+        if match:
+            amount = int(match.group(1))
+            unit = match.group(2)
+            if unit in ['minute', 'minutes', 'min', 'mins']:
+                return timedelta(minutes=amount)
+            elif unit in ['hour', 'hours', 'hr', 'hrs']:
+                return timedelta(hours=amount)
+            elif unit in ['day', 'days']:
+                return timedelta(days=amount)
+            elif unit in ['week', 'weeks']:
+                return timedelta(weeks=amount)
+
+        return None
+
     async def reschedule_recurring(self, reminder: dict):
         """
-        Reschedule a recurring reminder by creating a new one.
+        Reschedule a recurring reminder based on the last trigger time + interval.
+        This prevents drift from accumulating over time.
         """
         try:
             if not reminder['recurring'] or not reminder['recurring_interval']:
                 return
 
-            # Parse the interval and calculate next time
-            next_remind_at = self.parse_reminder_time(reminder['recurring_interval'])
-
-            if not next_remind_at:
+            # Parse the interval into a timedelta
+            interval = self._parse_interval_to_timedelta(reminder['recurring_interval'])
+            if not interval:
+                logger.warning("Could not parse recurring interval: %s", reminder['recurring_interval'])
                 return
+
+            # Calculate next time from last trigger (not now!) to prevent drift
+            last_trigger = reminder.get('remind_at', datetime.now())
+            next_remind_at = last_trigger + interval
+
+            # If the next time is still in the past (e.g. bot was down), skip ahead
+            now = datetime.now(next_remind_at.tzinfo) if next_remind_at.tzinfo else datetime.now()
+            while next_remind_at <= now:
+                next_remind_at += interval
 
             # Create new reminder
             with self.db.get_connection() as conn:

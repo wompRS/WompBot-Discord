@@ -4,7 +4,6 @@ from discord.ext import commands
 import json
 import logging
 import re
-import requests
 from datetime import datetime
 from features.claim_detector import ClaimDetector
 
@@ -64,31 +63,24 @@ Respond in JSON format:
     "reasoning": "brief explanation"
 }}"""
 
-            headers = {
-                "Authorization": f"Bearer {self.llm.api_key}",
-                "Content-Type": "application/json"
-            }
-
-            payload = {
-                "model": self.llm.model,
-                "messages": [
-                    {"role": "system", "content": "You are an expert at identifying trackable claims. Be selective - only flag substantial claims worth tracking."},
-                    {"role": "user", "content": prompt}
-                ],
-                "max_tokens": 300,
-                "temperature": 0.2
-            }
-
-            response = await asyncio.to_thread(
-                requests.post,
-                "https://openrouter.ai/api/v1/chat/completions",
-                headers=headers,
-                json=payload,
-                timeout=30
+            full_prompt = (
+                "You are an expert at identifying trackable claims. "
+                "Be selective - only flag substantial claims worth tracking.\n\n"
+                + prompt
             )
-            response.raise_for_status()
 
-            result_text = response.json()['choices'][0]['message']['content'].strip()
+            result_text = await asyncio.to_thread(
+                self.llm.simple_completion,
+                full_prompt,
+                max_tokens=300,
+                temperature=0.2,
+                cost_request_type="claim_analysis"
+            )
+
+            if not result_text:
+                return None
+
+            result_text = result_text.strip()
             logger.debug("LLM Response: %s", result_text[:200])
 
             # Parse JSON response - extract JSON even if there's extra text
@@ -266,31 +258,23 @@ If no contradiction, respond with:
     "contradicts": false
 }}"""
 
-            headers = {
-                "Authorization": f"Bearer {self.llm.api_key}",
-                "Content-Type": "application/json"
-            }
-
-            payload = {
-                "model": self.llm.model,
-                "messages": [
-                    {"role": "system", "content": "You identify contradictions in claims. Be precise."},
-                    {"role": "user", "content": prompt}
-                ],
-                "max_tokens": 200,
-                "temperature": 0.1
-            }
-
-            response = await asyncio.to_thread(
-                requests.post,
-                "https://openrouter.ai/api/v1/chat/completions",
-                headers=headers,
-                json=payload,
-                timeout=30
+            full_prompt = (
+                "You identify contradictions in claims. Be precise.\n\n"
+                + prompt
             )
-            response.raise_for_status()
 
-            result_text = response.json()['choices'][0]['message']['content'].strip()
+            result_text = await asyncio.to_thread(
+                self.llm.simple_completion,
+                full_prompt,
+                max_tokens=200,
+                temperature=0.1,
+                cost_request_type="claim_contradiction"
+            )
+
+            if not result_text:
+                return None
+
+            result_text = result_text.strip()
 
             json_match = re.search(r'\{.*\}', result_text, re.DOTALL)
             if json_match:

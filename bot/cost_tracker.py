@@ -10,18 +10,32 @@ import discord
 logger = logging.getLogger(__name__)
 
 # Model pricing per million tokens (input/output)
+# Update these when model pricing changes or new models are added
 MODEL_PRICING = {
-    'anthropic/claude-3.7-sonnet': {'input': 3.00, 'output': 15.00},
+    # Anthropic
     'anthropic/claude-3.5-sonnet': {'input': 3.00, 'output': 15.00},
-    'anthropic/claude-opus-4.1': {'input': 15.00, 'output': 75.00},
+    'anthropic/claude-sonnet-4': {'input': 3.00, 'output': 15.00},
+    'anthropic/claude-opus-4': {'input': 15.00, 'output': 75.00},
+    # DeepSeek
+    'deepseek/deepseek-chat': {'input': 0.14, 'output': 0.28},
+    'deepseek/deepseek-chat-v3': {'input': 0.14, 'output': 0.28},
     'deepseek/deepseek-chat-v3.1': {'input': 0.20, 'output': 0.80},
+    'deepseek/deepseek-r1': {'input': 0.55, 'output': 2.19},
     'deepseek/deepseek-r1-distill-qwen-32b': {'input': 0.27, 'output': 0.40},
+    # Google
     'google/gemini-2.5-flash': {'input': 0.10, 'output': 0.40},
     'google/gemini-2.0-flash-001': {'input': 0.125, 'output': 0.50},
+    # OpenAI
+    'openai/gpt-4o-mini': {'input': 0.15, 'output': 0.60},
+    'openai/gpt-4o': {'input': 2.50, 'output': 10.00},
+    # Open source
     'nousresearch/hermes-3-llama-3.1-70b': {'input': 0.30, 'output': 0.30},
     # Default fallback for unknown models
     'default': {'input': 1.00, 'output': 2.00}
 }
+
+# Cost alert threshold in dollars per month (configurable via env var)
+COST_ALERT_THRESHOLD = float(os.getenv('COST_ALERT_THRESHOLD', '1.00'))
 
 class CostTracker:
     def __init__(self, db, bot):
@@ -67,7 +81,7 @@ class CostTracker:
             logger.info("Monthly Total: $%.4f", monthly_total)
 
         # Return alert info for async handling
-        alert_check = self.db.check_cost_alert_threshold(1.00)
+        alert_check = self.db.check_cost_alert_threshold(COST_ALERT_THRESHOLD)
         return alert_check
 
     async def record_and_check_costs(self, model, input_tokens, output_tokens, request_type, user_id=None, username=None):

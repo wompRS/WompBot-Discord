@@ -755,7 +755,7 @@ class DataRetriever:
         query = """
             SELECT EXTRACT(HOUR FROM timestamp) as hour, COUNT(*) as count
             FROM messages
-            WHERE timestamp > NOW() - INTERVAL '%s days'
+            WHERE timestamp > NOW() - INTERVAL '1 day' * %s
             AND LOWER(username) NOT LIKE '%%bot%%'
         """
         params = [days]
@@ -787,7 +787,7 @@ class DataRetriever:
         query = """
             SELECT DATE(timestamp) as day, COUNT(*) as count
             FROM messages
-            WHERE timestamp > NOW() - INTERVAL '%s days'
+            WHERE timestamp > NOW() - INTERVAL '1 day' * %s
             AND LOWER(username) NOT LIKE '%%bot%%'
         """
         params = [days]

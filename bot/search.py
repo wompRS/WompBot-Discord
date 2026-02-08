@@ -27,14 +27,14 @@ class SearchEngine:
 
         logger.info("Search provider: %s", self.provider.upper())
 
-    def search(self, query, max_results=7):
+    def search(self, query, max_results=5):
         """Search the web using configured provider"""
         if self.provider == 'google':
             return self._search_google(query, max_results)
         else:
             return self._search_tavily(query, max_results)
 
-    def _search_google(self, query, max_results=7):
+    def _search_google(self, query, max_results=5):
         """Search using Google Custom Search API"""
         try:
             logger.info("Google Search: %s", query)
@@ -77,7 +77,7 @@ class SearchEngine:
             logger.error("Search error: %s: %s", type(e).__name__, e)
             return []
 
-    def _search_tavily(self, query, max_results=7):
+    def _search_tavily(self, query, max_results=5):
         """Search using Tavily (fallback/default)"""
         try:
             logger.info("Tavily Search: %s", query)

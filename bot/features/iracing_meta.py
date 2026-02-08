@@ -15,6 +15,7 @@ import aiohttp
 from typing import Dict, List, Optional, Tuple
 from datetime import datetime, timedelta
 import statistics
+from cachetools import TTLCache
 
 
 class MetaAnalyzer:
@@ -30,7 +31,7 @@ class MetaAnalyzer:
         """
         self.client = iracing_client
         self.db = database
-        self._cache = {}  # In-memory cache as fallback
+        self._cache = TTLCache(maxsize=50, ttl=604800)  # 7 days, max 50 entries
 
     def _get_cache_key(self, series_id: int, season_id: int, week_num: int, track_id: Optional[int] = None) -> str:
         """Generate cache key for meta data"""
@@ -65,13 +66,10 @@ class MetaAnalyzer:
             except Exception as e:
                 print(f"⚠️ Database cache read error: {e}")
 
-        # Fallback to in-memory cache
+        # Fallback to in-memory cache (TTLCache handles expiry automatically)
         if cache_key in self._cache:
-            cached_data = self._cache[cache_key]
-            # Return cached data if less than 7 days old (race results don't change once week is over)
-            if (datetime.now() - cached_data['timestamp']).total_seconds() < 604800:
-                print(f"✅ Using in-memory cached meta data for {cache_key}")
-                return cached_data['data']
+            print(f"✅ Using in-memory cached meta data for {cache_key}")
+            return self._cache[cache_key]
 
         log_msg = f"🔍 Fetching race results for series {series_id}, season {season_id}, week {week_num}"
         if track_id:
@@ -139,10 +137,7 @@ class MetaAnalyzer:
             meta_data['weather'] = weather_stats
 
             # Cache the results in both database and memory
-            self._cache[cache_key] = {
-                'timestamp': datetime.now(),
-                'data': meta_data
-            }
+            self._cache[cache_key] = meta_data
 
             # Store in database for persistent caching
             if self.db:
@@ -242,188 +237,198 @@ class MetaAnalyzer:
 
         print(f"🔍 Found {len(race_sessions)} competitive sessions (filtered from {len(results_list)} total)")
 
-        for idx, result in enumerate(race_sessions):
-            subsession_id = result.get('subsession_id')
+        # Parallel fetch all subsession data with semaphore to limit concurrency
+        semaphore = asyncio.Semaphore(10)
 
-            if not subsession_id:
+        async def _fetch_subsession(subsession_id):
+            async with semaphore:
+                return await self.client.get_subsession_data(subsession_id)
+
+        # Collect valid subsession IDs
+        subsession_ids = [r.get('subsession_id') for r in race_sessions if r.get('subsession_id')]
+        skipped = len(race_sessions) - len(subsession_ids)
+        if skipped > 0:
+            failed_fetches += skipped
+            print(f"  ⚠️ {skipped} sessions missing subsession_id, skipping")
+
+        print(f"📥 Fetching {len(subsession_ids)} subsessions in parallel (max 10 concurrent)...")
+        raw_results = await asyncio.gather(
+            *[_fetch_subsession(sid) for sid in subsession_ids],
+            return_exceptions=True
+        )
+
+        # Process results from the parallel fetch
+        for idx, (subsession_id, subsession_data) in enumerate(zip(subsession_ids, raw_results)):
+            # Handle fetch exceptions
+            if isinstance(subsession_data, Exception):
                 failed_fetches += 1
                 if failed_fetches <= 3:
-                    print(f"  ⚠️ Session missing subsession_id: {result}")
+                    print(f"  ⚠️ Error fetching subsession {subsession_id}: {subsession_data}")
                 continue
 
-            try:
-                # Fetch subsession result details
-                subsession_data = await self.client.get_subsession_data(subsession_id)
+            if not subsession_data:
+                failed_fetches += 1
+                if failed_fetches <= 5:
+                    print(f"  ⚠️ Subsession {subsession_id} returned None (API call succeeded but no data)")
+                continue
 
-                if not subsession_data:
-                    failed_fetches += 1
-                    if failed_fetches <= 5:
-                        print(f"  ⚠️ Subsession {subsession_id} returned None (API call succeeded but no data)")
-                    continue
+            successful_fetches += 1
 
-                successful_fetches += 1
+            # Track weather conditions for this session
+            weather_stats['total_sessions'] += 1
+            weather = subsession_data.get('weather', {})
 
-                # Track weather conditions for this session
-                weather_stats['total_sessions'] += 1
-                weather = subsession_data.get('weather', {})
-
-                # Store full weather details from first session (all sessions in a week have same weather)
-                if weather_stats['sample_weather'] is None and weather:
-                    track_state = subsession_data.get('track_state', {})
-
-                    weather_stats['sample_weather'] = {
-                        'type': weather.get('type', 0),
-                        'temp_units': weather.get('temp_units', 0),  # 0=F, 1=C
-                        'temp_value': weather.get('temp_value', 0),
-                        'weather_type_name': subsession_data.get('weather_type_name', 'Unknown'),
-                        'skies': weather.get('skies', 0),  # 0=clear, 1=partly cloudy, 2=mostly cloudy, 3=overcast
-                        'wind_speed_units': weather.get('wind_speed_units', 0),
-                        'wind_speed_value': weather.get('wind_speed_value', 0),
-                        'wind_dir': weather.get('wind_dir', 0),
-                        'rel_humidity': weather.get('rel_humidity', 0),
-                        'fog': weather.get('fog', 0),
-                        # Precipitation data
-                        'precip_mm2hr_before': weather.get('precip_mm2hr_before_final_session', 0),
-                        'precip_mm_final': weather.get('precip_mm_final_session', 0),
-                        'precip_option': weather.get('precip_option', 0),
-                        'precip_time_pct': weather.get('precip_time_pct', 0),
-                        'track_water': weather.get('track_water', 0),
-                        # Add track state data
-                        'leave_marbles': track_state.get('leave_marbles') if track_state else None,
-                        'practice_rubber': track_state.get('practice_rubber') if track_state else None,
-                        'qualify_rubber': track_state.get('qualify_rubber') if track_state else None,
-                        'warmup_rubber': track_state.get('warmup_rubber') if track_state else None,
-                        'race_rubber': track_state.get('race_rubber') if track_state else None
-                    }
-
-                # Track weather type (0=constant, 1=dynamic)
-                weather_type = weather.get('type', 0)
-
-                # Track if wet (rain/water on track)
-                # iRacing weather includes: simulated_start_time, weather_var_initial, weather_var_ongoing, etc.
-                # For now, track based on weather_type_name or assume dry for most sessions
-                weather_type_name = subsession_data.get('weather_type_name', '').lower()
+            # Store full weather details from first session (all sessions in a week have same weather)
+            if weather_stats['sample_weather'] is None and weather:
                 track_state = subsession_data.get('track_state', {})
 
-                # Check for wet conditions
-                if 'rain' in weather_type_name or 'wet' in weather_type_name:
-                    weather_stats['wet'] += 1
-                else:
-                    weather_stats['dry'] += 1
+                weather_stats['sample_weather'] = {
+                    'type': weather.get('type', 0),
+                    'temp_units': weather.get('temp_units', 0),  # 0=F, 1=C
+                    'temp_value': weather.get('temp_value', 0),
+                    'weather_type_name': subsession_data.get('weather_type_name', 'Unknown'),
+                    'skies': weather.get('skies', 0),  # 0=clear, 1=partly cloudy, 2=mostly cloudy, 3=overcast
+                    'wind_speed_units': weather.get('wind_speed_units', 0),
+                    'wind_speed_value': weather.get('wind_speed_value', 0),
+                    'wind_dir': weather.get('wind_dir', 0),
+                    'rel_humidity': weather.get('rel_humidity', 0),
+                    'fog': weather.get('fog', 0),
+                    # Precipitation data
+                    'precip_mm2hr_before': weather.get('precip_mm2hr_before_final_session', 0),
+                    'precip_mm_final': weather.get('precip_mm_final_session', 0),
+                    'precip_option': weather.get('precip_option', 0),
+                    'precip_time_pct': weather.get('precip_time_pct', 0),
+                    'track_water': weather.get('track_water', 0),
+                    # Add track state data
+                    'leave_marbles': track_state.get('leave_marbles') if track_state else None,
+                    'practice_rubber': track_state.get('practice_rubber') if track_state else None,
+                    'qualify_rubber': track_state.get('qualify_rubber') if track_state else None,
+                    'warmup_rubber': track_state.get('warmup_rubber') if track_state else None,
+                    'race_rubber': track_state.get('race_rubber') if track_state else None
+                }
 
-                # Process each driver's result
-                session_results = subsession_data.get('session_results', [])
+            # Track weather type (0=constant, 1=dynamic)
+            weather_type = weather.get('type', 0)
 
-                if not session_results and successful_fetches <= 3:
-                    print(f"  ⚠️ Subsession {subsession_id} has no session_results. Keys: {list(subsession_data.keys())[:10]}")
+            # Track if wet (rain/water on track)
+            # iRacing weather includes: simulated_start_time, weather_var_initial, weather_var_ongoing, etc.
+            # For now, track based on weather_type_name or assume dry for most sessions
+            weather_type_name = subsession_data.get('weather_type_name', '').lower()
+            track_state = subsession_data.get('track_state', {})
 
-                # Track which cars are in this subsession
-                cars_in_session = set()
+            # Check for wet conditions
+            if 'rain' in weather_type_name or 'wet' in weather_type_name:
+                weather_stats['wet'] += 1
+            else:
+                weather_stats['dry'] += 1
 
-                for session_result in session_results:
-                    results_data = session_result.get('results', [])
+            # Process each driver's result
+            session_results = subsession_data.get('session_results', [])
 
-                    for driver_result in results_data:
-                        car_id = driver_result.get('car_id')
-                        if not car_id:
-                            continue
+            if not session_results and successful_fetches <= 3:
+                print(f"  ⚠️ Subsession {subsession_id} has no session_results. Keys: {list(subsession_data.keys())[:10]}")
 
-                        # Track that this car participated in this session
-                        cars_in_session.add(car_id)
+            # Track which cars are in this subsession
+            cars_in_session = set()
 
-                        # Initialize car stats if not exists
-                        if car_id not in car_stats:
-                            car_stats[car_id] = {
-                                'lap_times': [],
-                                'finishes': [],
-                                'wins': 0,
-                                'podiums': 0,
-                                'poles': 0,
-                                'total_races': 0,
-                                'total_laps': 0,
-                                'incidents': [],
-                                'iratings': [],  # Track iRatings for averaging
-                                'subsessions': set(),  # Track unique subsessions
-                                'unique_drivers': set()  # Track unique driver IDs
-                            }
+            for session_result in session_results:
+                results_data = session_result.get('results', [])
 
-                        # Extract performance data
-                        finish_position = driver_result.get('finish_position', 999)
-                        best_lap_time = driver_result.get('best_lap_time')  # In 10,000ths of a second
-                        laps_complete = driver_result.get('laps_complete', 0)
-                        incidents = driver_result.get('incidents', 0)
-                        qualifying_position = driver_result.get('starting_position', 999)
+                for driver_result in results_data:
+                    car_id = driver_result.get('car_id')
+                    if not car_id:
+                        continue
 
-                        # Track iRating - handle both individual and team events
-                        # For team events, iRating is nested in driver_results array
-                        irating = 0
-                        driver_iratings = []
+                    # Track that this car participated in this session
+                    cars_in_session.add(car_id)
 
-                        # Check if this is a team entry (has driver_results array)
-                        if 'driver_results' in driver_result and driver_result.get('driver_results'):
-                            # Team event - extract iRatings from individual drivers
-                            for individual_driver in driver_result.get('driver_results', []):
-                                # Try all possible field names, but check each explicitly
-                                individual_irating = 0
-                                for field_name in ['oldi_rating', 'old_i_rating', 'newi_rating', 'new_i_rating']:
-                                    value = individual_driver.get(field_name)
-                                    if value is not None and value > 0:
-                                        individual_irating = value
-                                        break
+                    # Initialize car stats if not exists
+                    if car_id not in car_stats:
+                        car_stats[car_id] = {
+                            'lap_times': [],
+                            'finishes': [],
+                            'wins': 0,
+                            'podiums': 0,
+                            'poles': 0,
+                            'total_races': 0,
+                            'total_laps': 0,
+                            'incidents': [],
+                            'iratings': [],  # Track iRatings for averaging
+                            'subsessions': set(),  # Track unique subsessions
+                            'unique_drivers': set()  # Track unique driver IDs
+                        }
 
-                                if individual_irating > 0:
-                                    driver_iratings.append(individual_irating)
+                    # Extract performance data
+                    finish_position = driver_result.get('finish_position', 999)
+                    best_lap_time = driver_result.get('best_lap_time')  # In 10,000ths of a second
+                    laps_complete = driver_result.get('laps_complete', 0)
+                    incidents = driver_result.get('incidents', 0)
+                    qualifying_position = driver_result.get('starting_position', 999)
 
-                            # Use average iRating of all team drivers
-                            if driver_iratings:
-                                irating = sum(driver_iratings) / len(driver_iratings)
-                        else:
-                            # Individual event - try multiple possible field names
-                            irating = (driver_result.get('oldi_rating') or
-                                     driver_result.get('old_i_rating') or
-                                     driver_result.get('newi_rating') or
-                                     driver_result.get('new_i_rating') or
-                                     0)
+                    # Track iRating - handle both individual and team events
+                    # For team events, iRating is nested in driver_results array
+                    irating = 0
+                    driver_iratings = []
 
-                        driver_id = driver_result.get('cust_id')
+                    # Check if this is a team entry (has driver_results array)
+                    if 'driver_results' in driver_result and driver_result.get('driver_results'):
+                        # Team event - extract iRatings from individual drivers
+                        for individual_driver in driver_result.get('driver_results', []):
+                            # Try all possible field names, but check each explicitly
+                            individual_irating = 0
+                            for field_name in ['oldi_rating', 'old_i_rating', 'newi_rating', 'new_i_rating']:
+                                value = individual_driver.get(field_name)
+                                if value is not None and value > 0:
+                                    individual_irating = value
+                                    break
 
-                        # Record statistics (but don't increment total_races here)
-                        car_stats[car_id]['finishes'].append(finish_position)
-                        car_stats[car_id]['total_laps'] += laps_complete
-                        car_stats[car_id]['incidents'].append(incidents)
+                            if individual_irating > 0:
+                                driver_iratings.append(individual_irating)
 
-                        if irating and irating > 0:
-                            car_stats[car_id]['iratings'].append(irating)
+                        # Use average iRating of all team drivers
+                        if driver_iratings:
+                            irating = sum(driver_iratings) / len(driver_iratings)
+                    else:
+                        # Individual event - try multiple possible field names
+                        irating = (driver_result.get('oldi_rating') or
+                                 driver_result.get('old_i_rating') or
+                                 driver_result.get('newi_rating') or
+                                 driver_result.get('new_i_rating') or
+                                 0)
 
-                        if driver_id:
-                            car_stats[car_id]['unique_drivers'].add(driver_id)
+                    driver_id = driver_result.get('cust_id')
 
-                        if best_lap_time and best_lap_time > 0:
-                            # Convert to seconds
-                            lap_time_seconds = best_lap_time / 10000.0
-                            car_stats[car_id]['lap_times'].append(lap_time_seconds)
+                    # Record statistics (but don't increment total_races here)
+                    car_stats[car_id]['finishes'].append(finish_position)
+                    car_stats[car_id]['total_laps'] += laps_complete
+                    car_stats[car_id]['incidents'].append(incidents)
 
-                        if finish_position == 1:
-                            car_stats[car_id]['wins'] += 1
-                        if finish_position <= 3:
-                            car_stats[car_id]['podiums'] += 1
-                        if qualifying_position == 1:
-                            car_stats[car_id]['poles'] += 1
+                    if irating and irating > 0:
+                        car_stats[car_id]['iratings'].append(irating)
 
-                # After processing all drivers in this subsession, increment race count once per car
-                for car_id in cars_in_session:
-                    if subsession_id not in car_stats[car_id]['subsessions']:
-                        car_stats[car_id]['subsessions'].add(subsession_id)
-                        car_stats[car_id]['total_races'] += 1
+                    if driver_id:
+                        car_stats[car_id]['unique_drivers'].add(driver_id)
 
-                if (idx + 1) % 10 == 0:
-                    print(f"  Processed {idx + 1}/{len(race_sessions)} detailed sessions")
+                    if best_lap_time and best_lap_time > 0:
+                        # Convert to seconds
+                        lap_time_seconds = best_lap_time / 10000.0
+                        car_stats[car_id]['lap_times'].append(lap_time_seconds)
 
-            except Exception as e:
-                failed_fetches += 1
-                if failed_fetches <= 3:
-                    print(f"  ⚠️ Error fetching subsession {subsession_id}: {e}")
-                continue
+                    if finish_position == 1:
+                        car_stats[car_id]['wins'] += 1
+                    if finish_position <= 3:
+                        car_stats[car_id]['podiums'] += 1
+                    if qualifying_position == 1:
+                        car_stats[car_id]['poles'] += 1
+
+            # After processing all drivers in this subsession, increment race count once per car
+            for car_id in cars_in_session:
+                if subsession_id not in car_stats[car_id]['subsessions']:
+                    car_stats[car_id]['subsessions'].add(subsession_id)
+                    car_stats[car_id]['total_races'] += 1
+
+            if (idx + 1) % 10 == 0:
+                print(f"  Processed {idx + 1}/{len(subsession_ids)} detailed sessions")
 
         print(f"✅ Subsession fetch complete: {successful_fetches} successful, {failed_fetches} failed")
         print(f"📊 Car stats collected for {len(car_stats)} cars")

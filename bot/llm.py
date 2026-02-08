@@ -6,6 +6,14 @@ import time
 import requests
 from compression import ConversationCompressor
 
+try:
+    import tiktoken
+    _tiktoken_encoding = tiktoken.get_encoding("cl100k_base")
+    _HAS_TIKTOKEN = True
+except ImportError:
+    _tiktoken_encoding = None
+    _HAS_TIKTOKEN = False
+
 logger = logging.getLogger(__name__)
 
 
@@ -148,7 +156,62 @@ RULES:
 - Provide value first, personality second
 
 Be useful and real. That's the balance."""
-    
+
+    def simple_completion(self, prompt: str, max_tokens: int = 500, temperature: float = 0.3, model: str = None, cost_request_type: str = "simple_completion") -> str:
+        """
+        Simple prompt->response completion for internal use (claims, fact_check, etc.).
+        Centralizes the OpenRouter API call pattern so other modules don't duplicate it.
+
+        Args:
+            prompt: The prompt text
+            max_tokens: Maximum response tokens
+            temperature: Sampling temperature
+            model: Model to use (defaults to self.model)
+            cost_request_type: Label for cost tracking
+
+        Returns:
+            The response text, or empty string on error
+        """
+        model_to_use = model or self.model
+
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+
+        payload = {
+            "model": model_to_use,
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+        }
+
+        try:
+            response = self.session.post(self.base_url, headers=headers, json=payload, timeout=60)
+            response.raise_for_status()
+
+            result = response.json()
+            response_text = result["choices"][0]["message"].get("content", "")
+
+            # Track costs if cost tracker is available
+            usage = result.get("usage", {})
+            input_tokens = usage.get("prompt_tokens", 0)
+            output_tokens = usage.get("completion_tokens", 0)
+
+            if self.cost_tracker and input_tokens > 0:
+                try:
+                    self.cost_tracker.record_costs_sync(
+                        model_to_use, input_tokens, output_tokens, cost_request_type
+                    )
+                except Exception as e:
+                    logger.warning("Error tracking costs for simple_completion: %s", e)
+
+            return response_text
+
+        except Exception as e:
+            logger.error("simple_completion error: %s: %s", type(e).__name__, e)
+            return ""
+
     def should_search(self, message_content, conversation_context):
         """Determine if web search is needed - only for genuine factual queries
         that the LLM likely cannot answer from its training data alone."""
@@ -449,18 +512,31 @@ Use this history to maintain conversation continuity and remember what was discu
                     return sum(len(part.get("text", "")) for part in content if part.get("type") == "text")
                 return 0
 
-            # Estimate tokens (approximately 1 token per 3.5 characters)
-            # Add ~1000 tokens per image for vision models
+            # Estimate tokens using tiktoken if available, else ~1 token per 4 chars
+            # Add ~170 tokens per image (OpenAI low-detail default)
             total_chars = sum(get_content_len(entry["content"]) for entry in messages)
-            image_token_estimate = (len(images or []) + len(base64_images or [])) * 1000
-            estimated_tokens = int(total_chars / 3.5) + image_token_estimate
+            image_token_estimate = (len(images or []) + len(base64_images or [])) * 170
+
+            if _HAS_TIKTOKEN:
+                all_text = " ".join(
+                    _get_text_content(entry["content"]) for entry in messages
+                )
+                estimated_tokens = len(_tiktoken_encoding.encode(all_text)) + image_token_estimate
+            else:
+                estimated_tokens = int(total_chars / 4) + image_token_estimate
 
             # Truncate old messages if we exceed token limit
             messages_removed = 0
             while estimated_tokens > max_context_tokens and len(messages) > 3:
                 removed = messages.pop(1)  # Remove oldest message after system prompt
                 total_chars -= get_content_len(removed["content"])
-                estimated_tokens = int(total_chars / 3.5)
+                if _HAS_TIKTOKEN:
+                    all_text = " ".join(
+                        _get_text_content(entry["content"]) for entry in messages
+                    )
+                    estimated_tokens = len(_tiktoken_encoding.encode(all_text)) + image_token_estimate
+                else:
+                    estimated_tokens = int(total_chars / 4) + image_token_estimate
                 messages_removed += 1
 
             if messages_removed > 0:
@@ -471,8 +547,14 @@ Use this history to maintain conversation continuity and remember what was discu
             # Also enforce character limit as fallback
             while total_chars > self.MAX_HISTORY_CHARS and len(messages) > 3:
                 removed = messages.pop(1)
-                total_chars -= len(removed["content"])
-                estimated_tokens = int(total_chars / 3.5)
+                total_chars -= get_content_len(removed["content"])
+                if _HAS_TIKTOKEN:
+                    all_text = " ".join(
+                        _get_text_content(entry["content"]) for entry in messages
+                    )
+                    estimated_tokens = len(_tiktoken_encoding.encode(all_text)) + image_token_estimate
+                else:
+                    estimated_tokens = int(total_chars / 4) + image_token_estimate
 
             retry_text = f" (retry {retry_count + 1}/3)" if retry_count > 0 else ""
             logger.info("Sending to %s%s", self.model, retry_text)

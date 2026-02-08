@@ -149,7 +149,7 @@ class HotTakesTracker:
 
             # Diversity = 1.0 if equal mix, lower if dominated by one reaction
             if total_reactions > 0:
-                diversity = len(reaction_types) / min(total_reactions, 10)  # Normalize
+                diversity = len(reaction_types) / max(total_reactions, 1)  # Normalize: unique types / total
                 diversity = min(diversity, 1.0)
             else:
                 diversity = 0.0

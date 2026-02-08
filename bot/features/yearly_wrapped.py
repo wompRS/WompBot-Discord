@@ -72,25 +72,19 @@ class YearlyWrapped:
                     """, (user_id, start_date, end_date))
                     total_messages = cur.fetchone()[0] or 0
 
-                    # Server rank
+                    # Server rank using DENSE_RANK (handles ties correctly)
                     cur.execute("""
-                        SELECT COUNT(*) + 1 as rank
-                        FROM (
-                            SELECT user_id, COUNT(*) as msg_count
+                        SELECT rank FROM (
+                            SELECT user_id, DENSE_RANK() OVER (ORDER BY COUNT(*) DESC) as rank
                             FROM messages
                             WHERE timestamp BETWEEN %s AND %s
                               AND opted_out = FALSE
                             GROUP BY user_id
-                            HAVING COUNT(*) > (
-                                SELECT COUNT(*)
-                                FROM messages
-                                WHERE user_id = %s
-                                  AND timestamp BETWEEN %s AND %s
-                                  AND opted_out = FALSE
-                            )
                         ) ranked
-                    """, (start_date, end_date, user_id, start_date, end_date))
-                    server_rank = cur.fetchone()[0] or 1
+                        WHERE user_id = %s
+                    """, (start_date, end_date, user_id))
+                    rank_result = cur.fetchone()
+                    server_rank = rank_result[0] if rank_result else 1
 
                     # Most active month
                     cur.execute("""

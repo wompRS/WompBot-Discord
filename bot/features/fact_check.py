@@ -3,6 +3,11 @@ Fact-Check Feature
 React with ⚠️ emoji to trigger a fact-check on a message
 """
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 class FactChecker:
     def __init__(self, db, llm, search):
         self.db = db
@@ -71,48 +76,38 @@ Provide a structured fact-check with:
 
 REMINDER: Without at least 2 sources agreeing, verdict CANNOT be "True" or "False"."""
 
-            # Get LLM analysis
-            headers = {
-                "Authorization": f"Bearer {self.llm.api_key}",
-                "Content-Type": "application/json"
-            }
-
-            # Use dedicated high-accuracy model for fact-checking
+            # Get LLM analysis using dedicated high-accuracy model
             import os
             fact_check_model = os.getenv('FACT_CHECK_MODEL', self.llm.model)
 
-            print(f"🔍 Using fact-check model: {fact_check_model}")
+            logger.info("Using fact-check model: %s", fact_check_model)
 
-            payload = {
-                "model": fact_check_model,
-                "messages": [
-                    {
-                        "role": "system",
-                        "content": "You are a strict fact-checker. You ONLY state facts that appear in the provided search results. You NEVER make up information, dates, or events. You require AT LEAST 2 DIFFERENT sources to corroborate a fact before declaring it 'True' or 'False'. If search results don't contain the answer or only 1 source mentions it, you say 'Unverifiable'."
-                    },
-                    {
-                        "role": "user",
-                        "content": fact_check_prompt
-                    }
-                ],
-                "max_tokens": 700,  # Increased for source cross-referencing
-                "temperature": 0.1  # Lower temperature to reduce hallucination
-            }
-
-            import requests
-            response = requests.post(
-                "https://openrouter.ai/api/v1/chat/completions",
-                headers=headers,
-                json=payload,
-                timeout=60
+            system_preamble = (
+                "You are a strict fact-checker. You ONLY state facts that appear in "
+                "the provided search results. You NEVER make up information, dates, or "
+                "events. You require AT LEAST 2 DIFFERENT sources to corroborate a fact "
+                "before declaring it 'True' or 'False'. If search results don't contain "
+                "the answer or only 1 source mentions it, you say 'Unverifiable'.\n\n"
             )
-            response.raise_for_status()
 
-            analysis = response.json()['choices'][0]['message']['content']
+            import asyncio
+            analysis = await asyncio.to_thread(
+                self.llm.simple_completion,
+                system_preamble + fact_check_prompt,
+                max_tokens=700,
+                temperature=0.1,
+                model=fact_check_model,
+                cost_request_type="fact_check"
+            )
+
+            if not analysis:
+                return {
+                    'success': False,
+                    'error': 'LLM returned empty response for fact-check'
+                }
 
             # Debug: Log what the LLM returned
-            print(f"🤖 LLM FACT-CHECK RESPONSE:")
-            print(f"   {analysis[:500]}...")
+            logger.debug("LLM fact-check response: %s...", analysis[:500])
 
             # Store fact-check in database
             self.db.store_fact_check(
@@ -134,7 +129,7 @@ REMINDER: Without at least 2 sources agreeing, verdict CANNOT be "True" or "Fals
             }
 
         except Exception as e:
-            print(f"❌ Error fact-checking message: {e}")
+            logger.error("Error fact-checking message: %s", e)
             return {
                 'success': False,
                 'error': str(e)

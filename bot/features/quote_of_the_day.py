@@ -28,7 +28,7 @@ class QuoteOfTheDay:
         now = datetime.now()
 
         if mode == 'daily':
-            start_date = now - timedelta(days=1)
+            start_date = datetime(now.year, now.month, now.day)  # Start of today (midnight)
             return await self._get_top_quote(start_date, now)
         elif mode == 'weekly':
             start_date = now - timedelta(days=7)
@@ -93,12 +93,13 @@ class QuoteOfTheDay:
             return None
 
     async def _get_random_top_quote(self) -> Optional[Dict]:
-        """Get a random quote from the top 20 most reacted quotes of all time"""
+        """Get a weighted random quote from top quotes, balancing reactions with freshness"""
         try:
             with self.db.get_connection() as conn:
 
                 with conn.cursor() as cur:
-                    # Get top 20 quotes by reaction count
+                    # Score = reaction_count + freshness bonus (newer quotes get a boost)
+                    # freshness = 30 / (days_old + 30) gives newer quotes up to 1.0 bonus, decaying over time
                     cur.execute("""
                         SELECT
                             q.id,
@@ -114,7 +115,7 @@ class QuoteOfTheDay:
                             q.channel_name,
                             q.message_id
                         FROM quotes q
-                        ORDER BY q.reaction_count DESC, q.timestamp DESC
+                        ORDER BY (q.reaction_count + 30.0 / (EXTRACT(EPOCH FROM (NOW() - q.timestamp)) / 86400.0 + 30.0)) DESC
                         LIMIT 20
                     """)
 

@@ -4,10 +4,14 @@ Supports scheduled events with configurable reminder intervals
 """
 
 import discord
+import logging
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import json
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Union
 import re
+
+logger = logging.getLogger(__name__)
 
 
 class EventSystem:
@@ -16,7 +20,20 @@ class EventSystem:
     def __init__(self, db):
         self.db = db
 
-    def parse_event_time(self, time_string: str) -> Optional[datetime]:
+    def _get_guild_timezone(self, guild_id: int) -> ZoneInfo:
+        """Get the timezone configured for a guild, defaulting to UTC."""
+        try:
+            with self.db.get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT timezone FROM guild_config WHERE guild_id = %s", (guild_id,))
+                    result = cur.fetchone()
+                    if result and result[0]:
+                        return ZoneInfo(result[0])
+        except (ZoneInfoNotFoundError, Exception) as e:
+            logger.warning("Failed to get guild timezone for %s: %s", guild_id, e)
+        return ZoneInfo('UTC')
+
+    def parse_event_time(self, time_string: str, guild_id: int = None) -> Union[datetime, str, None]:
         """
         Parse natural language time expressions into datetime for event scheduling.
         Reuses logic from reminder system but focuses on future dates.
@@ -30,7 +47,12 @@ class EventSystem:
         Returns None if parsing fails.
         """
         time_string = time_string.lower().strip()
-        now = datetime.now()
+
+        if not time_string:
+            return "Please provide a date/time for the event."
+
+        tz = self._get_guild_timezone(guild_id) if guild_id else ZoneInfo('UTC')
+        now = datetime.now(tz)
 
         # Pattern 1: "in X minutes/hours/days/weeks"
         relative_pattern = r'(?:in )?(\d+)\s*(minute|minutes|min|mins|hour|hours|hr|hrs|day|days|week|weeks|month|months)'
@@ -136,23 +158,25 @@ class EventSystem:
 
                 # Validate day
                 if day < 1 or day > 31:
-                    return None
+                    return f"Invalid day: {day}. Day must be between 1 and 31."
 
                 # Determine year (this year or next year)
                 year = now.year
+                month_names = ['', 'January', 'February', 'March', 'April', 'May', 'June',
+                               'July', 'August', 'September', 'October', 'November', 'December']
                 try:
-                    target = datetime(year, month_num, day)
+                    target = datetime(year, month_num, day, tzinfo=tz)
                 except ValueError:
                     # Invalid date (e.g., Feb 30)
-                    return None
+                    return f"{month_names[month_num]} doesn't have {day} days."
 
                 # If date has passed this year, use next year
                 if target.date() < now.date():
                     year += 1
                     try:
-                        target = datetime(year, month_num, day)
+                        target = datetime(year, month_num, day, tzinfo=tz)
                     except ValueError:
-                        return None
+                        return f"{month_names[month_num]} {year} doesn't have {day} days."
 
                 # Check for specific time
                 time_match = re.search(r'at (\d{1,2}):?(\d{2})?\s*(am|pm)?', time_string)
@@ -339,18 +363,18 @@ class EventSystem:
     async def cancel_event(self, event_id: int, user_id: int) -> bool:
         """
         Cancel an event. Only the creator or admin can cancel.
-        Returns True if successful.
+        Returns True if successful, False if not found or not authorized.
         """
         try:
             with self.db.get_connection() as conn:
                 with conn.cursor() as cur:
-                    # Check if user is the creator (permission check should be done by caller)
+                    # Only allow the event creator to cancel their own event
                     cur.execute("""
                         UPDATE events
                         SET cancelled = TRUE, cancelled_at = NOW()
-                        WHERE id = %s AND cancelled = FALSE
+                        WHERE id = %s AND cancelled = FALSE AND created_by = %s
                         RETURNING id
-                    """, (event_id,))
+                    """, (event_id, user_id))
 
                     result = cur.fetchone()
                     conn.commit()

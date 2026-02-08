@@ -10,7 +10,35 @@ import base64
 from datetime import datetime, timedelta
 from typing import Dict, Optional, List
 import json
+import logging
 import time
+
+try:
+    from tenacity import (
+        retry,
+        stop_after_attempt,
+        wait_exponential,
+        retry_if_exception_type,
+        before_sleep_log,
+        RetryCallState,
+    )
+    HAS_TENACITY = True
+except ImportError:
+    HAS_TENACITY = False
+
+logger = logging.getLogger(__name__)
+
+
+class iRacingRateLimitError(Exception):
+    """Raised when iRacing API returns 429 rate limit response."""
+    def __init__(self, retry_after: float = 1.5):
+        self.retry_after = retry_after
+        super().__init__(f"Rate limited, retry after {retry_after}s")
+
+
+class iRacingAuthExpiredError(Exception):
+    """Raised when iRacing API returns 401 auth expired response."""
+    pass
 
 
 class iRacingClient:
@@ -32,6 +60,9 @@ class iRacingClient:
         self._request_lock = asyncio.Lock()
         self._next_request_time = 0.0
         self._min_rate_limit_backoff = 0.75
+        self._use_tenacity = HAS_TENACITY
+        if not HAS_TENACITY:
+            logger.warning("tenacity not installed, falling back to legacy retry logic")
 
     async def _get_session(self) -> aiohttp.ClientSession:
         """Get or create aiohttp session with cookie jar and timeout"""
@@ -207,9 +238,104 @@ class iRacingClient:
             # If refresh failed or no refresh token, do full auth
             await self.authenticate()
 
+    async def _make_single_request(self, endpoint: str, params: Optional[Dict] = None) -> Optional[Dict]:
+        """
+        Execute a single GET request to iRacing API (no retry logic).
+
+        This is the inner request method called by retry wrappers.
+        Raises iRacingRateLimitError or iRacingAuthExpiredError for retryable conditions.
+
+        Args:
+            endpoint: API endpoint (e.g., "/data/series/seasons")
+            params: Query parameters
+
+        Returns:
+            JSON response or None if failed
+
+        Raises:
+            iRacingRateLimitError: When API returns 429 (retryable)
+            iRacingAuthExpiredError: When API returns 401 (retryable after re-auth)
+        """
+        session = await self._get_session()
+        url = f"{self.BASE_URL}{endpoint}"
+
+        async with self._request_lock:
+            wait = self._next_request_time - time.monotonic()
+            if wait > 0:
+                await asyncio.sleep(wait)
+
+            if endpoint in ["/data/member/info", "/data/member/get"]:
+                logger.debug("Making GET request to: %s with params: %s", url, params)
+
+            # Add Bearer token for OAuth2 authentication
+            request_headers = {}
+            if self.access_token:
+                request_headers['Authorization'] = f'Bearer {self.access_token}'
+
+            async with session.get(url, params=params, headers=request_headers) as response:
+                status = response.status
+                headers = dict(response.headers)
+
+                if endpoint in ["/data/member/info", "/data/member/get"]:
+                    logger.debug("Actual URL: %s", response.url)
+                if 'x-ratelimit-remaining' in headers:
+                    remaining = headers.get('x-ratelimit-remaining')
+                    if remaining is not None and remaining.isdigit() and int(remaining) < 10:
+                        logger.warning("iRacing API rate limit low: %s remaining", remaining)
+
+                if status == 200:
+                    self._next_request_time = time.monotonic()
+                    data = await response.json()
+                    if isinstance(data, dict) and 'link' in data:
+                        async with session.get(data['link']) as link_response:
+                            if link_response.status == 200:
+                                return await link_response.json()
+                            logger.error("Failed to fetch cached data: %d", link_response.status)
+                            return None
+                    return data
+
+                if status == 401:
+                    try:
+                        response_payload = await response.text()
+                    except Exception:
+                        response_payload = None
+                    self._next_request_time = time.monotonic()
+                    logger.warning("Session expired (401), re-authenticating...")
+                    await self.authenticate()
+                    raise iRacingAuthExpiredError()
+
+                if status == 429:
+                    retry_after_header = headers.get('retry-after')
+                    try:
+                        retry_delay = float(retry_after_header) if retry_after_header else self._min_rate_limit_backoff * 2
+                    except (TypeError, ValueError):
+                        retry_delay = self._min_rate_limit_backoff * 2
+                    self._next_request_time = time.monotonic() + retry_delay
+                    logger.warning("Rate limited by iRacing API, retry after %.2fs", retry_delay)
+                    raise iRacingRateLimitError(retry_after=retry_delay)
+
+                if status == 503:
+                    logger.error("iRacing API is in maintenance")
+                    return None
+
+                # Non-retryable error
+                response_payload = None
+                try:
+                    response_payload = await response.text()
+                except Exception:
+                    pass
+                logger.error("iRacing API error %d: %s", status, endpoint)
+                if response_payload:
+                    snippet = response_payload[:200].replace("\n", " ")
+                    logger.error("Response snippet: %s", snippet)
+                return None
+
     async def _get(self, endpoint: str, params: Optional[Dict] = None) -> Optional[Dict]:
         """
-        Make GET request to iRacing API.
+        Make GET request to iRacing API with automatic retry.
+
+        Uses tenacity for exponential backoff if available, otherwise falls back
+        to legacy manual retry logic.
 
         Args:
             endpoint: API endpoint (e.g., "/data/series/seasons")
@@ -220,102 +346,61 @@ class iRacingClient:
         """
         await self._ensure_authenticated()
 
-        session = await self._get_session()
-        url = f"{self.BASE_URL}{endpoint}"
+        if self._use_tenacity:
+            return await self._get_with_tenacity(endpoint, params)
+        else:
+            return await self._get_legacy(endpoint, params)
 
+    async def _get_with_tenacity(self, endpoint: str, params: Optional[Dict] = None) -> Optional[Dict]:
+        """
+        Make GET request using tenacity for retry/backoff.
+
+        Retries on rate limit (429) and auth expired (401) errors with
+        exponential backoff. Respects retry-after headers from the API.
+        """
+        @retry(
+            stop=stop_after_attempt(3),
+            wait=wait_exponential(multiplier=1, min=1, max=30),
+            retry=retry_if_exception_type((iRacingRateLimitError, iRacingAuthExpiredError)),
+            before_sleep=lambda retry_state: logger.info(
+                "Retrying iRacing API call to %s, attempt %d",
+                endpoint, retry_state.attempt_number
+            ),
+            reraise=True,
+        )
+        async def _do_request():
+            return await self._make_single_request(endpoint, params)
+
+        try:
+            return await _do_request()
+        except (iRacingRateLimitError, iRacingAuthExpiredError):
+            logger.error("Failed to fetch %s after multiple attempts", endpoint)
+            return None
+        except Exception as e:
+            logger.error("iRacing API request error: %s", e, exc_info=True)
+            return None
+
+    async def _get_legacy(self, endpoint: str, params: Optional[Dict] = None) -> Optional[Dict]:
+        """
+        Make GET request with legacy manual retry logic (fallback when tenacity is not installed).
+        """
         attempt = 0
         while attempt < 3:
-            status = None
-            headers = {}
-            response_payload = None
             try:
-                async with self._request_lock:
-                    wait = self._next_request_time - time.monotonic()
-                    if wait > 0:
-                        await asyncio.sleep(wait)
-
-                    if endpoint in ["/data/member/info", "/data/member/get"]:
-                        print(f"🌐 Making GET request to: {url}")
-                        print(f"   Query params: {params}")
-
-                    # Add Bearer token for OAuth2 authentication
-                    request_headers = {}
-                    if self.access_token:
-                        request_headers['Authorization'] = f'Bearer {self.access_token}'
-
-                    async with session.get(url, params=params, headers=request_headers) as response:
-                        status = response.status
-                        headers = dict(response.headers)
-
-                        if endpoint in ["/data/member/info", "/data/member/get"]:
-                            print(f"   Actual URL: {response.url}")
-                        if 'x-ratelimit-remaining' in headers:
-                            remaining = headers.get('x-ratelimit-remaining')
-                            if remaining is not None and remaining.isdigit() and int(remaining) < 10:
-                                print(f"⚠️ iRacing API rate limit low: {remaining} remaining")
-
-                        if status == 200:
-                            self._next_request_time = time.monotonic()
-                            data = await response.json()
-                            if isinstance(data, dict) and 'link' in data:
-                                async with session.get(data['link']) as link_response:
-                                    if link_response.status == 200:
-                                        return await link_response.json()
-                                    print(f"❌ Failed to fetch cached data: {link_response.status}")
-                                    return None
-                            return data
-
-                        if status in (401, 429):
-                            try:
-                                response_payload = await response.text()
-                            except Exception:
-                                response_payload = None
-
-                        if status == 429:
-                            retry_after = headers.get('retry-after')
-                            try:
-                                retry_delay = float(retry_after) if retry_after else self._min_rate_limit_backoff * 2
-                            except (TypeError, ValueError):
-                                retry_delay = self._min_rate_limit_backoff * 2
-                            self._next_request_time = time.monotonic() + retry_delay
-                        else:
-                            self._next_request_time = time.monotonic()
-
-                # After releasing lock, handle retry logic
-                if status == 401:
-                    print("⚠️ Session expired, re-authenticating...")
-                    await self.authenticate()
-                    attempt += 1
-                    continue
-
-                if status == 429:
-                    retry_after = headers.get('retry-after')
-                    try:
-                        retry_delay = float(retry_after) if retry_after else self._min_rate_limit_backoff * 2
-                    except (TypeError, ValueError):
-                        retry_delay = self._min_rate_limit_backoff * 2
-                    print(f"❌ Rate limited by iRacing API — retrying in {retry_delay:.2f}s")
-                    attempt += 1
-                    await asyncio.sleep(retry_delay)
-                    continue
-
-                if status == 503:
-                    print("❌ iRacing API is in maintenance")
-                    return None
-
-                print(f"❌ iRacing API error {status}: {endpoint}")
-                if response_payload:
-                    snippet = response_payload[:200].replace("\n", " ")
-                    print(f"   Response snippet: {snippet}")
-                return None
-
+                return await self._make_single_request(endpoint, params)
+            except iRacingAuthExpiredError:
+                attempt += 1
+                continue
+            except iRacingRateLimitError as e:
+                attempt += 1
+                logger.warning("Rate limited, retrying in %.2fs (attempt %d/3)", e.retry_after, attempt)
+                await asyncio.sleep(e.retry_after)
+                continue
             except Exception as e:
-                print(f"❌ iRacing API request error: {e}")
-                import traceback
-                traceback.print_exc()
+                logger.error("iRacing API request error: %s", e, exc_info=True)
                 return None
 
-        print(f"❌ Failed to fetch {endpoint} after multiple attempts due to rate limiting")
+        logger.error("Failed to fetch %s after multiple attempts due to rate limiting", endpoint)
         return None
 
     async def get_member_info(self, cust_id: Optional[int] = None) -> Optional[Dict]:

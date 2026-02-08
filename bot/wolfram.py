@@ -26,8 +26,8 @@ class WolframAlpha:
         if not self.app_id:
             raise ValueError("Wolfram Alpha App ID not configured. Set WOLFRAM_APP_ID environment variable.")
 
-        self.short_answer_url = "http://api.wolframalpha.com/v1/result"
-        self.simple_api_url = "http://api.wolframalpha.com/v1/simple"
+        self.short_answer_url = "https://api.wolframalpha.com/v1/result"
+        self.simple_api_url = "https://api.wolframalpha.com/v1/simple"
 
         # Reusable HTTP session for connection pooling (avoids redundant TCP+TLS handshakes)
         self.session = requests.Session()

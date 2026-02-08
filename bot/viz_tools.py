@@ -8,6 +8,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
+import os
 from io import BytesIO
 from typing import Dict, List, Optional, Union
 from datetime import datetime
@@ -52,6 +53,22 @@ class GeneralVisualizer:
         '#06b6d4',  # cyan
         '#ec4899',  # pink
     ]
+
+    # Okabe-Ito colorblind-friendly palette
+    COLORBLIND_COLORS = [
+        '#E69F00',  # orange
+        '#56B4E9',  # sky blue
+        '#009E73',  # bluish green
+        '#F0E442',  # yellow
+        '#0072B2',  # blue
+        '#D55E00',  # vermillion
+        '#CC79A7',  # reddish purple
+        '#999999',  # grey
+    ]
+
+    # Select palette based on environment variable
+    USE_COLORBLIND = os.getenv('VIZ_COLORBLIND_MODE', 'false').lower() == 'true'
+    ACTIVE_COLORS = COLORBLIND_COLORS if USE_COLORBLIND else MULTI_COLORS
 
     def _smart_rotation(self, labels: list) -> tuple:
         """Determine optimal x-axis label rotation based on label length.
@@ -98,7 +115,7 @@ class GeneralVisualizer:
         if color:
             bar_colors = color
         elif len(labels) > 1:
-            bar_colors = [self.MULTI_COLORS[i % len(self.MULTI_COLORS)] for i in range(len(labels))]
+            bar_colors = [self.ACTIVE_COLORS[i % len(self.ACTIVE_COLORS)] for i in range(len(labels))]
         else:
             bar_colors = self.COLORS['accent_blue']
 
@@ -232,7 +249,7 @@ class GeneralVisualizer:
         labels = list(data.keys())
         values = list(data.values())
 
-        colors = self.MULTI_COLORS[:len(labels)]
+        colors = self.ACTIVE_COLORS[:len(labels)]
 
         autopct = '%1.1f%%' if show_percentages else None
 
@@ -353,7 +370,7 @@ class GeneralVisualizer:
         for i, (name, values) in enumerate(datasets.items()):
             offset = (i - len(datasets)/2 + 0.5) * width
             bars = ax.bar(x + offset, values, width, label=name,
-                  color=self.MULTI_COLORS[i % len(self.MULTI_COLORS)])
+                  color=self.ACTIVE_COLORS[i % len(self.ACTIVE_COLORS)])
             # Add value labels on comparison bars
             ax.bar_label(bars, fmt=lambda v: f'{int(v):,}' if v == int(v) else f'{v:,.1f}',
                         padding=2, color=self.COLORS['text_white'], fontsize=8)

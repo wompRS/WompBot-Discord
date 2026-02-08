@@ -26,8 +26,8 @@ class Weather:
         if not self.api_key:
             raise ValueError("OpenWeatherMap API key not configured. Set OPENWEATHER_API_KEY environment variable.")
 
-        self.base_url = "http://api.openweathermap.org/data/2.5"
-        self.geo_url = "http://api.openweathermap.org/geo/1.0"
+        self.base_url = "https://api.openweathermap.org/data/2.5"
+        self.geo_url = "https://api.openweathermap.org/geo/1.0"
 
         # Reusable HTTP session for connection pooling (avoids redundant TCP+TLS handshakes)
         self.session = requests.Session()

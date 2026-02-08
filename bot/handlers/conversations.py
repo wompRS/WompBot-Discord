@@ -22,6 +22,7 @@ from llm_tools import VISUALIZATION_TOOLS, COMPUTATIONAL_TOOLS, ALL_TOOLS, DataR
 from tool_executor import ToolExecutor
 from media_processor import get_media_processor
 from redis_cache import get_cache
+from constants import SELF_CONTAINED_TOOLS
 
 # Rotating search status messages
 SEARCH_STATUS_MESSAGES = [
@@ -74,6 +75,210 @@ def _select_tools_for_message(message_content: str) -> list:
     else:
         logger.debug("No visualization intent, passing COMPUTATIONAL tools only")
         return COMPUTATIONAL_TOOLS
+
+
+async def _execute_tool_calls(tool_calls, tool_executor, message, channel_id, guild_id):
+    """Execute tool calls in parallel and collect results.
+
+    Args:
+        tool_calls: List of tool call dicts from LLM response
+        tool_executor: ToolExecutor instance
+        message: Discord message (for user_id)
+        channel_id: Channel ID for context
+        guild_id: Guild/server ID for context
+
+    Returns:
+        Tuple of (images_to_send, text_responses, tool_results, tool_names)
+    """
+    images_to_send = []
+    text_responses = []
+    tool_results = []
+    tool_names = [tc.get("function", {}).get("name", "") for tc in tool_calls]
+
+    # Run all tool calls concurrently with asyncio.gather, wrapped in a timeout
+    tool_call_coros = [
+        tool_executor.execute_tool(
+            tool_call,
+            channel_id=channel_id,
+            user_id=message.author.id,
+            guild_id=guild_id
+        )
+        for tool_call in tool_calls
+    ]
+
+    try:
+        all_results = await asyncio.wait_for(
+            asyncio.gather(*tool_call_coros, return_exceptions=True),
+            timeout=30
+        )
+    except asyncio.TimeoutError:
+        logger.error("Tool execution timed out after 30s")
+        return images_to_send, ["Tool execution timed out. Please try again."], ["Error: Tool execution timed out"], tool_names
+
+    for tool_call, result in zip(tool_calls, all_results):
+        tool_name = tool_call.get("function", {}).get("name", "unknown")
+
+        # Handle exceptions from gather
+        if isinstance(result, Exception):
+            error_msg = f"{type(result).__name__}: {result}"
+            tool_results.append(f"Error in {tool_name}: {error_msg}")
+            text_responses.append(f"Error: {error_msg}")
+            logger.error("Tool %s raised exception: %s", tool_name, error_msg)
+            continue
+
+        # Collect tool results for LLM feedback
+        if result.get("success"):
+            if result.get("type") == "image":
+                images_to_send.append(result["image"])
+                tool_results.append(f"Successfully created {tool_name} visualization")
+                logger.info("Tool %s created image", tool_name)
+            elif result.get("type") == "image_url":
+                # Send image as Discord embed
+                image_url = result.get("url")
+                image_title = result.get("title", "Image")
+                if image_url:
+                    embed = discord.Embed(title=image_title, color=0x3498db)
+                    embed.set_image(url=image_url)
+                    await message.channel.send(embed=embed)
+                    tool_results.append(f"Successfully found and displayed image of {image_title}")
+                    logger.info("Tool %s sent image embed: %s...", tool_name, image_url[:50])
+            elif result.get("type") == "text":
+                text_response = result.get("text", "")
+                # web_search results should only go to LLM for synthesis, not directly to user
+                if tool_name != "web_search":
+                    text_responses.append(text_response)
+                # Always include full results for LLM to analyze
+                tool_results.append(f"{tool_name}: {text_response}")
+                logger.info("Tool %s returned text: %s...", tool_name, text_response[:100])
+        else:
+            error_msg = result.get("error", "Unknown error")
+            tool_results.append(f"Error in {tool_name}: {error_msg}")
+            # Show errors to user immediately
+            text_responses.append(f"Error: {error_msg}")
+            logger.error("Tool %s failed: %s", tool_name, error_msg)
+
+    return images_to_send, text_responses, tool_results, tool_names
+
+
+async def _send_tool_output(message, images_to_send, text_responses):
+    """Send tool-generated images and text responses to Discord.
+
+    Args:
+        message: Discord message (for channel)
+        images_to_send: List of image buffers
+        text_responses: List of text strings
+    """
+    if images_to_send:
+        logger.info("Sending %d image(s) to user", len(images_to_send))
+        files = [discord.File(img_buffer, filename=f"chart_{i}.png")
+                 for i, img_buffer in enumerate(images_to_send)]
+        await message.channel.send(files=files)
+        logger.info("Images sent successfully")
+
+    if text_responses:
+        combined_text = "\n\n".join(text_responses)
+        logger.info("Sending text response (%d chars)", len(combined_text))
+        if len(combined_text) > 2000:
+            chunks = [combined_text[i:i+2000] for i in range(0, len(combined_text), 2000)]
+            for chunk in chunks:
+                if chunk.strip():
+                    await message.channel.send(chunk)
+            logger.info("Sent %d text chunks", len(chunks))
+        else:
+            await message.channel.send(combined_text)
+            logger.info("Text response sent")
+
+
+async def _synthesize_tool_response(tool_results, tool_names, original_content,
+                                     conversation_history, llm, user_context,
+                                     context_for_llm, rag_context, bot_user_id,
+                                     is_text_mention, message_author_id,
+                                     message_author_str, personality,
+                                     initial_response_text, has_viz=False):
+    """Decide whether to synthesize tool results and do so if needed.
+
+    Args:
+        tool_results: List of tool result strings
+        tool_names: List of tool names that were called
+        original_content: The user's original message content
+        conversation_history: Conversation history for LLM
+        llm: LLMClient instance
+        user_context: User context dict
+        context_for_llm: Search results or bot docs context
+        rag_context: RAG context
+        bot_user_id: Bot's Discord user ID
+        is_text_mention: Whether this was a text mention
+        message_author_id: Message author's Discord user ID (or None)
+        message_author_str: Message author's display string (or None)
+        personality: Server personality setting
+        initial_response_text: Any response text from the initial LLM call
+        has_viz: Whether visualization tools were used
+
+    Returns:
+        Response string or None (if self-contained tools handled output)
+    """
+    # Check if web_search was used - always synthesize search results
+    has_search_results = any("web_search:" in tr for tr in tool_results)
+
+    # Identify self-contained tools that DON'T need LLM commentary
+    # These tools return fully formatted, user-ready output (centralised in constants.py)
+    only_self_contained = all(
+        any(st in tn for st in SELF_CONTAINED_TOOLS) for tn in tool_names
+    )
+
+    # Synthesis decision:
+    # 1. Web search was used -> always synthesize (LLM must interpret results)
+    # 2. Self-contained tools -> skip synthesis (output speaks for itself)
+    # 3. Visualization tools (charts) -> synthesize a brief text accompaniment
+    # 4. Other tools -> synthesize if no initial response text
+    needs_synthesis = has_search_results or (not only_self_contained and not initial_response_text)
+
+    logger.debug("Synthesis decision: self_contained=%s, has_search=%s, needs_synthesis=%s",
+                 only_self_contained, has_search_results, needs_synthesis)
+
+    if tool_results and needs_synthesis:
+        logger.info("Synthesizing %d tool results...", len(tool_results))
+        tool_results_summary = "\n".join(tool_results)
+
+        if has_viz:
+            follow_up_prompt = (
+                f"The user asked: {original_content}\n\n"
+                f"You created a visualization. Tool results:\n{tool_results_summary}\n\n"
+                "Provide a brief 1-2 sentence text summary to accompany the chart. "
+                "Keep it short since the chart is already shown."
+            )
+        else:
+            follow_up_prompt = (
+                f"The user asked: {original_content}\n\n"
+                f"Tool execution results:\n{tool_results_summary}\n\n"
+                "Based on the tool results above, provide a clear, concise answer "
+                "to the user's question."
+            )
+
+        response = await asyncio.to_thread(
+            llm.generate_response,
+            follow_up_prompt,
+            conversation_history,
+            user_context,
+            context_for_llm,
+            rag_context,
+            0,
+            bot_user_id,
+            message_author_id if is_text_mention else None,
+            message_author_str if is_text_mention else None,
+            None,  # max_tokens (use default)
+            personality,
+            None,  # No more tools on follow-up
+        )
+        logger.info("Synthesis complete")
+        return response
+    elif initial_response_text:
+        logger.debug("Using initial LLM response text")
+        return initial_response_text
+    else:
+        # Self-contained tools completed - output speaks for itself
+        logger.debug("Self-contained tools complete, skipping synthesis")
+        return None
 
 
 # Rate limiting state for mention handling
@@ -805,159 +1010,34 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                 else:
                     status_msg = await message.channel.send(status_text)
 
-                # Execute all tool calls in parallel for better latency (P12 fix)
-                images_to_send = []
-                text_responses = []
-                tool_results = []  # For feeding back to LLM
+                # Execute all tool calls in parallel with timeout
+                images_to_send, text_responses, tool_results, tool_names = await _execute_tool_calls(
+                    response["tool_calls"], tool_executor, message,
+                    message.channel.id, message.guild.id if message.guild else None
+                )
 
-                # Run all tool calls concurrently with asyncio.gather
-                tool_call_coros = [
-                    tool_executor.execute_tool(
-                        tool_call,
-                        channel_id=message.channel.id,
-                        user_id=message.author.id,
-                        guild_id=message.guild.id if message.guild else None
-                    )
-                    for tool_call in response["tool_calls"]
-                ]
-                all_results = await asyncio.gather(*tool_call_coros, return_exceptions=True)
+                # Send tool output (images and text) to Discord
+                await _send_tool_output(message, images_to_send, text_responses)
 
-                for tool_call, result in zip(response["tool_calls"], all_results):
-                    tool_name = tool_call.get("function", {}).get("name", "unknown")
-
-                    # Handle exceptions from gather
-                    if isinstance(result, Exception):
-                        error_msg = f"{type(result).__name__}: {result}"
-                        tool_results.append(f"Error in {tool_name}: {error_msg}")
-                        text_responses.append(f"❌ {error_msg}")
-                        logger.error("Tool %s raised exception: %s", tool_name, error_msg)
-                        continue
-
-                    # Collect tool results for LLM feedback
-                    if result.get("success"):
-                        if result.get("type") == "image":
-                            images_to_send.append(result["image"])
-                            tool_results.append(f"Successfully created {tool_name} visualization")
-                            logger.info("Tool %s created image", tool_name)
-                        elif result.get("type") == "image_url":
-                            # Send image as Discord embed
-                            image_url = result.get("url")
-                            image_title = result.get("title", "Image")
-                            if image_url:
-                                embed = discord.Embed(title=image_title, color=0x3498db)
-                                embed.set_image(url=image_url)
-                                await message.channel.send(embed=embed)
-                                tool_results.append(f"Successfully found and displayed image of {image_title}")
-                                logger.info("Tool %s sent image embed: %s...", tool_name, image_url[:50])
-                        elif result.get("type") == "text":
-                            text_response = result.get("text", "")
-                            # web_search results should only go to LLM for synthesis, not directly to user
-                            if tool_name != "web_search":
-                                text_responses.append(text_response)
-                            # Always include full results for LLM to analyze
-                            tool_results.append(f"{tool_name}: {text_response}")
-                            logger.info("Tool %s returned text: %s...", tool_name, text_response[:100])
-                    else:
-                        error_msg = result.get("error", "Unknown error")
-                        tool_results.append(f"Error in {tool_name}: {error_msg}")
-                        # Show errors to user immediately
-                        text_responses.append(f"❌ {error_msg}")
-                        logger.error("Tool %s failed: %s", tool_name, error_msg)
-
-                # Send images to Discord
-                if images_to_send:
-                    logger.info("Sending %d image(s) to user", len(images_to_send))
-                    files = []
-                    for i, img_buffer in enumerate(images_to_send):
-                        files.append(discord.File(img_buffer, filename=f"chart_{i}.png"))
-                    await message.channel.send(files=files)
-                    logger.info("Images sent successfully")
-
-                # Send text responses (from tools like Wolfram/Weather/Search)
-                if text_responses:
-                    combined_text = "\n\n".join(text_responses)
-                    logger.info("Sending text response (%d chars)", len(combined_text))
-                    # Chunk if longer than Discord's 2000 char limit
-                    if len(combined_text) > 2000:
-                        chunks = [combined_text[i:i+2000] for i in range(0, len(combined_text), 2000)]
-                        for chunk in chunks:
-                            if chunk.strip():
-                                await message.channel.send(chunk)
-                        logger.info("Sent %d text chunks", len(chunks))
-                    else:
-                        await message.channel.send(combined_text)
-                        logger.info("Text response sent")
-
-                # If tools were executed AND there's no response_text from LLM,
-                # ask LLM to provide commentary on the tool results
+                # Synthesize tool results if needed
                 initial_response_text = response.get("response_text", "").strip()
 
-                # Check if web_search was used - always synthesize search results
+                # Update status to show we're analyzing (if synthesis will happen)
                 has_search_results = any("web_search:" in tr for tr in tool_results)
-
-                # Identify self-contained tools that DON'T need LLM commentary
-                # These tools return fully formatted, user-ready output
-                self_contained_tools = [
-                    "get_weather", "get_weather_forecast", "wolfram_query",
-                    "wikipedia", "define_word", "movie_info", "stock_price",
-                    "sports_scores", "currency_convert", "translate", "get_time",
-                    "url_preview", "random_choice", "stock_history",
-                    "fetch_crypto_price", "create_reminder",
-                ]
-                only_self_contained = all(any(st in tn for st in self_contained_tools) for tn in tool_names)
-
-                # Synthesis decision:
-                # 1. Web search was used → always synthesize (LLM must interpret results)
-                # 2. Self-contained tools → skip synthesis (output speaks for itself)
-                # 3. Visualization tools (charts) → synthesize a brief text accompaniment
-                # 4. Other tools (user_stats, iracing) → synthesize if no initial response text
-                needs_synthesis = has_search_results or (not only_self_contained and not initial_response_text)
-
-                logger.debug("Synthesis decision: self_contained=%s, has_search=%s, needs_synthesis=%s", only_self_contained, has_search_results, needs_synthesis)
-
-                if tool_results and needs_synthesis:
-                    logger.info("Synthesizing %d tool results...", len(tool_results))
-                    # Update status to show we're analyzing
+                only_self_contained = all(any(st in tn for st in SELF_CONTAINED_TOOLS) for tn in tool_names)
+                if tool_results and (has_search_results or (not only_self_contained and not initial_response_text)):
                     await status_msg.edit(content="🤔 Analyzing results...")
 
-                    # Feed tool results back to LLM for commentary
-                    tool_results_summary = "\n".join(tool_results)
+                response = await _synthesize_tool_response(
+                    tool_results, tool_names, content,
+                    conversation_history, llm, user_context,
+                    context_for_llm, rag_context, bot.user.id,
+                    is_text_mention, message.author.id,
+                    str(message.author), personality,
+                    initial_response_text, has_viz=has_viz
+                )
 
-                    # For chart tools, ask for a brief text accompaniment
-                    if has_viz:
-                        follow_up_prompt = f"The user asked: {content}\n\nYou created a visualization. Tool results:\n{tool_results_summary}\n\nProvide a brief 1-2 sentence text summary to accompany the chart. Keep it short since the chart is already shown."
-                    else:
-                        follow_up_prompt = f"The user asked: {content}\n\nTool execution results:\n{tool_results_summary}\n\nBased on the tool results above, provide a clear, concise answer to the user's question."
-
-                    response = await asyncio.to_thread(
-                        llm.generate_response,
-                        follow_up_prompt,
-                        conversation_history,
-                        user_context,
-                        context_for_llm,
-                        rag_context,
-                        0,
-                        bot.user.id,
-                        message.author.id if is_text_mention else None,
-                        str(message.author) if is_text_mention else None,
-                        None,  # max_tokens (use default)
-                        personality,  # personality setting
-                        None,  # No more tools on follow-up
-                    )
-
-                    # Delete status message after synthesis
-                    await status_msg.delete()
-                    logger.info("Synthesis complete")
-                elif initial_response_text:
-                    # LLM provided commentary along with tool call - use it
-                    logger.debug("Using initial LLM response text")
-                    response = initial_response_text
-                    await status_msg.delete()
-                else:
-                    # Self-contained tools completed (weather, wolfram) - output speaks for itself
-                    logger.debug("Self-contained tools complete, skipping synthesis")
-                    response = None
-                    await status_msg.delete()
+                await status_msg.delete()
 
             # Check if response is empty (but allow None for tool-only responses)
             if response is not None and (not response or (isinstance(response, str) and len(response.strip()) == 0)):
@@ -1012,9 +1092,9 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                         placeholder_msg = None
 
                     # Determine what kind of tools are being called
-                    tool_names = [tc.get("function", {}).get("name", "") for tc in response["tool_calls"]]
-                    has_search = "web_search" in tool_names
-                    has_viz = any(name in ["create_bar_chart", "create_line_chart", "create_pie_chart", "create_table", "create_comparison_chart"] for name in tool_names)
+                    retry_tool_names = [tc.get("function", {}).get("name", "") for tc in response["tool_calls"]]
+                    has_search = "web_search" in retry_tool_names
+                    has_viz = any(name in ["create_bar_chart", "create_line_chart", "create_pie_chart", "create_table", "create_comparison_chart"] for name in retry_tool_names)
 
                     # Show appropriate status message
                     if has_search:
@@ -1024,120 +1104,34 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                     else:
                         status_msg = await message.channel.send("⚙️ Processing...")
 
-                    images_to_send = []
-                    text_responses = []
-                    tool_results = []
+                    # Execute all tool calls in parallel with timeout
+                    images_to_send, text_responses, tool_results, tool_names = await _execute_tool_calls(
+                        response["tool_calls"], tool_executor, message,
+                        message.channel.id, message.guild.id if message.guild else None
+                    )
 
-                    for tool_call in response["tool_calls"]:
-                        result = await tool_executor.execute_tool(
-                            tool_call,
-                            channel_id=message.channel.id,
-                            user_id=message.author.id,
-                            guild_id=message.guild.id if message.guild else None
-                        )
+                    # Send tool output to Discord
+                    await _send_tool_output(message, images_to_send, text_responses)
 
-                        tool_name = tool_call.get("function", {}).get("name", "unknown")
-                        if result.get("success"):
-                            if result.get("type") == "image":
-                                images_to_send.append(result["image"])
-                                tool_results.append(f"Successfully created {tool_name} visualization")
-                                logger.info("Tool %s created image", tool_name)
-                            elif result.get("type") == "image_url":
-                                # Send image as Discord embed
-                                image_url = result.get("url")
-                                image_title = result.get("title", "Image")
-                                if image_url:
-                                    embed = discord.Embed(title=image_title, color=0x3498db)
-                                    embed.set_image(url=image_url)
-                                    await message.channel.send(embed=embed)
-                                    tool_results.append(f"Successfully found and displayed image of {image_title}")
-                                    logger.info("Tool %s sent image embed: %s...", tool_name, image_url[:50])
-                            elif result.get("type") == "text":
-                                text_response = result.get("text", "")
-                                # web_search results should only go to LLM for synthesis, not directly to user
-                                if tool_name != "web_search":
-                                    text_responses.append(text_response)
-                                # Always include full results for LLM to analyze
-                                tool_results.append(f"{tool_name}: {text_response}")
-                                logger.info("Tool %s returned text: %s...", tool_name, text_response[:100])
-                        else:
-                            error_msg = result.get("error", "Unknown error")
-                            tool_results.append(f"Error in {tool_name}: {error_msg}")
-                            # Show errors to user immediately
-                            text_responses.append(f"❌ {error_msg}")
-                            logger.error("Tool %s failed: %s", tool_name, error_msg)
-
-                    if images_to_send:
-                        logger.info("Sending %d image(s) to user", len(images_to_send))
-                        files = []
-                        for i, img_buffer in enumerate(images_to_send):
-                            files.append(discord.File(img_buffer, filename=f"chart_{i}.png"))
-                        await message.channel.send(files=files)
-                        logger.info("Images sent successfully")
-
-                    if text_responses:
-                        combined_text = "\n\n".join(text_responses)
-                        logger.info("Sending text response (%d chars)", len(combined_text))
-                        # Chunk if longer than Discord's 2000 char limit
-                        if len(combined_text) > 2000:
-                            chunks = [combined_text[i:i+2000] for i in range(0, len(combined_text), 2000)]
-                            for chunk in chunks:
-                                if chunk.strip():
-                                    await message.channel.send(chunk)
-                            logger.info("Sent %d text chunks", len(chunks))
-                        else:
-                            await message.channel.send(combined_text)
-                            logger.info("Text response sent")
-
-                    # Get LLM commentary on tool results if needed
+                    # Synthesize tool results if needed
                     initial_response_text = response.get("response_text", "").strip()
 
-                    # Check if web_search was used - always synthesize search results
+                    # Update status if synthesis will happen
                     has_search_results = any("web_search:" in tr for tr in tool_results)
-
-                    # Check if all tools are self-contained (output speaks for itself)
-                    self_contained_tools = [
-                        "get_weather", "get_weather_forecast", "wolfram_query",
-                        "wikipedia", "define_word", "movie_info", "stock_price",
-                        "sports_scores", "currency_convert", "translate", "get_time",
-                        "url_preview", "random_choice", "stock_history",
-                        "fetch_crypto_price", "create_reminder",
-                    ]
-                    only_self_contained = all(any(st in tn for st in self_contained_tools) for tn in tool_names)
-
-                    needs_synthesis = has_search_results or (not only_self_contained and not initial_response_text)
-
-                    if tool_results and needs_synthesis:
-                        # Update status to show we're analyzing
+                    only_self_contained = all(any(st in tn for st in SELF_CONTAINED_TOOLS) for tn in tool_names)
+                    if tool_results and (has_search_results or (not only_self_contained and not initial_response_text)):
                         await status_msg.edit(content="🤔 Analyzing results...")
 
-                        tool_results_summary = "\n".join(tool_results)
-                        follow_up_prompt = f"The user asked: {content}\n\nTool execution results:\n{tool_results_summary}\n\nBased on the tool results above, provide a clear, concise answer to the user's question."
+                    response = await _synthesize_tool_response(
+                        tool_results, tool_names, content,
+                        conversation_history, llm, user_context,
+                        context_for_llm, rag_context, bot.user.id,
+                        is_text_mention, message.author.id,
+                        str(message.author), personality,
+                        initial_response_text, has_viz=has_viz
+                    )
 
-                        response = await asyncio.to_thread(
-                            llm.generate_response,
-                            follow_up_prompt,
-                            conversation_history,
-                            user_context,
-                            context_for_llm,
-                            rag_context,
-                            0,
-                            bot.user.id,
-                            message.author.id if is_text_mention else None,
-                            str(message.author) if is_text_mention else None,
-                            None,
-                            personality,
-                            None,  # No more tools
-                        )
-
-                        # Delete status message after synthesis
-                        await status_msg.delete()
-                    elif initial_response_text:
-                        response = initial_response_text
-                        await status_msg.delete()
-                    else:
-                        response = None
-                        await status_msg.delete()
+                    await status_msg.delete()
 
             # Final check for empty response (but allow None for tool-only responses)
             if response is not None and (not response or (isinstance(response, str) and len(response.strip()) == 0)):

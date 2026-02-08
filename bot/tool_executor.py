@@ -16,6 +16,7 @@ import pytz
 import requests
 from bs4 import BeautifulSoup
 from redis_cache import get_cache
+from constants import TIMEZONE_ALIASES, LANGUAGE_CODES, STOCK_TICKERS, CRYPTO_TICKERS
 
 logger = logging.getLogger(__name__)
 
@@ -51,37 +52,43 @@ class ToolExecutor:
         self.session = requests.Session()
         self.session.headers.update({"User-Agent": "WompBot/1.0"})
 
-        # Common timezone aliases
-        self.timezone_aliases = {
-            'est': 'America/New_York', 'edt': 'America/New_York',
-            'cst': 'America/Chicago', 'cdt': 'America/Chicago',
-            'mst': 'America/Denver', 'mdt': 'America/Denver',
-            'pst': 'America/Los_Angeles', 'pdt': 'America/Los_Angeles',
-            'gmt': 'Europe/London', 'bst': 'Europe/London',
-            'utc': 'UTC',
-            'tokyo': 'Asia/Tokyo', 'japan': 'Asia/Tokyo',
-            'london': 'Europe/London', 'uk': 'Europe/London',
-            'paris': 'Europe/Paris', 'france': 'Europe/Paris',
-            'berlin': 'Europe/Berlin', 'germany': 'Europe/Berlin',
-            'sydney': 'Australia/Sydney', 'australia': 'Australia/Sydney',
-            'new york': 'America/New_York', 'nyc': 'America/New_York',
-            'los angeles': 'America/Los_Angeles', 'la': 'America/Los_Angeles',
-            'chicago': 'America/Chicago',
-            'denver': 'America/Denver',
-            'phoenix': 'America/Phoenix',
-            'seattle': 'America/Los_Angeles',
-            'miami': 'America/New_York',
-            'dallas': 'America/Chicago',
-            'houston': 'America/Chicago',
-            'toronto': 'America/Toronto', 'canada': 'America/Toronto',
-            'vancouver': 'America/Vancouver',
-            'moscow': 'Europe/Moscow', 'russia': 'Europe/Moscow',
-            'beijing': 'Asia/Shanghai', 'china': 'Asia/Shanghai', 'shanghai': 'Asia/Shanghai',
-            'hong kong': 'Asia/Hong_Kong',
-            'singapore': 'Asia/Singapore',
-            'dubai': 'Asia/Dubai',
-            'india': 'Asia/Kolkata', 'mumbai': 'Asia/Kolkata', 'delhi': 'Asia/Kolkata',
-            'seoul': 'Asia/Seoul', 'korea': 'Asia/Seoul',
+        # Common timezone aliases (centralised in constants.py)
+        self.timezone_aliases = TIMEZONE_ALIASES
+
+        # Tool registry: maps function name to (handler, extra_args_needed)
+        # extra_args_needed is a tuple of context keys the handler requires beyond `arguments`
+        self._registry = {
+            # Visualization tools (need channel_id, guild_id)
+            "create_bar_chart":       (self._create_bar_chart, ("channel_id", "guild_id")),
+            "create_line_chart":      (self._create_line_chart, ("channel_id", "guild_id")),
+            "create_pie_chart":       (self._create_pie_chart, ("channel_id", "guild_id")),
+            "create_table":           (self._create_table, ("channel_id", "guild_id")),
+            "create_comparison_chart": (self._create_comparison_chart, ("channel_id", "guild_id")),
+            # Computational tools (no extra context)
+            "wolfram_query":          (self._wolfram_query, ()),
+            "web_search":             (self._web_search, ()),
+            "image_search":           (self._image_search, ()),
+            "get_time":               (self._get_time, ()),
+            "translate":              (self._translate, ()),
+            "wikipedia":              (self._wikipedia, ()),
+            "youtube_search":         (self._youtube_search, ()),
+            "random_choice":          (self._random_choice, ()),
+            "url_preview":            (self._url_preview, ()),
+            "iracing_series_info":    (self._iracing_series_info, ()),
+            "stock_price":            (self._stock_price, ()),
+            "stock_history":          (self._stock_history, ()),
+            "movie_info":             (self._movie_info, ()),
+            "define_word":            (self._define_word, ()),
+            "currency_convert":       (self._currency_convert, ()),
+            "sports_scores":          (self._sports_scores, ()),
+            # Tools needing user_id
+            "get_weather":            (self._get_weather, ("user_id",)),
+            "get_weather_forecast":   (self._get_weather_forecast, ("user_id",)),
+            "iracing_driver_stats":   (self._iracing_driver_stats, ("user_id",)),
+            # Tools needing user_id + channel_id
+            "create_reminder":        (self._create_reminder, ("user_id", "channel_id")),
+            # Tools needing all context
+            "user_stats":             (self._user_stats, ("channel_id", "user_id", "guild_id")),
         }
 
     def _cache_key(self, prefix: str, *args) -> str:
@@ -89,7 +96,7 @@ class ToolExecutor:
         raw = f"{prefix}:{':'.join(str(a).lower().strip() for a in args)}"
         # Use hash for long keys to stay within Redis key limits
         if len(raw) > 100:
-            return f"{prefix}:{hashlib.md5(raw.encode()).hexdigest()}"
+            return f"{prefix}:{hashlib.sha256(raw.encode()).hexdigest()}"
         return raw
 
     async def execute_tool(
@@ -134,62 +141,18 @@ class ToolExecutor:
             }
 
         try:
-            if function_name == "create_bar_chart":
-                return await self._create_bar_chart(arguments, channel_id, guild_id)
-            elif function_name == "create_line_chart":
-                return await self._create_line_chart(arguments, channel_id, guild_id)
-            elif function_name == "create_pie_chart":
-                return await self._create_pie_chart(arguments, channel_id, guild_id)
-            elif function_name == "create_table":
-                return await self._create_table(arguments, channel_id, guild_id)
-            elif function_name == "create_comparison_chart":
-                return await self._create_comparison_chart(arguments, channel_id, guild_id)
-
-            # Computational tools
-            elif function_name == "wolfram_query":
-                return await self._wolfram_query(arguments)
-            elif function_name == "get_weather":
-                return await self._get_weather(arguments, user_id)
-            elif function_name == "get_weather_forecast":
-                return await self._get_weather_forecast(arguments, user_id)
-            elif function_name == "web_search":
-                return await self._web_search(arguments)
-            elif function_name == "image_search":
-                return await self._image_search(arguments)
-
-            # New utility tools
-            elif function_name == "get_time":
-                return await self._get_time(arguments)
-            elif function_name == "translate":
-                return await self._translate(arguments)
-            elif function_name == "wikipedia":
-                return await self._wikipedia(arguments)
-            elif function_name == "youtube_search":
-                return await self._youtube_search(arguments)
-            elif function_name == "random_choice":
-                return await self._random_choice(arguments)
-            elif function_name == "url_preview":
-                return await self._url_preview(arguments)
-            elif function_name == "iracing_driver_stats":
-                return await self._iracing_driver_stats(arguments, user_id)
-            elif function_name == "iracing_series_info":
-                return await self._iracing_series_info(arguments)
-            elif function_name == "user_stats":
-                return await self._user_stats(arguments, channel_id, user_id, guild_id)
-            elif function_name == "create_reminder":
-                return await self._create_reminder(arguments, user_id, channel_id)
-            elif function_name == "stock_price":
-                return await self._stock_price(arguments)
-            elif function_name == "stock_history":
-                return await self._stock_history(arguments)
-            elif function_name == "movie_info":
-                return await self._movie_info(arguments)
-            elif function_name == "define_word":
-                return await self._define_word(arguments)
-            elif function_name == "currency_convert":
-                return await self._currency_convert(arguments)
-            elif function_name == "sports_scores":
-                return await self._sports_scores(arguments)
+            # Registry-based dispatch: look up handler and required context args
+            registry_entry = self._registry.get(function_name)
+            if registry_entry:
+                handler, extra_keys = registry_entry
+                # Build positional args: arguments first, then any needed context
+                context_map = {
+                    "channel_id": channel_id,
+                    "user_id": user_id,
+                    "guild_id": guild_id,
+                }
+                call_args = [arguments] + [context_map[k] for k in extra_keys]
+                return await handler(*call_args)
             else:
                 return {
                     "success": False,
@@ -662,33 +625,13 @@ class ToolExecutor:
         target = args["target_language"].lower().strip()
         source = args.get("source_language", "").lower().strip() or "auto"
 
-        # Language code mapping for common names
-        lang_codes = {
-            'spanish': 'es', 'french': 'fr', 'german': 'de', 'italian': 'it',
-            'portuguese': 'pt', 'russian': 'ru', 'japanese': 'ja', 'chinese': 'zh',
-            'korean': 'ko', 'arabic': 'ar', 'hindi': 'hi', 'dutch': 'nl',
-            'swedish': 'sv', 'norwegian': 'no', 'danish': 'da', 'finnish': 'fi',
-            'polish': 'pl', 'turkish': 'tr', 'greek': 'el', 'hebrew': 'he',
-            'thai': 'th', 'vietnamese': 'vi', 'indonesian': 'id', 'malay': 'ms',
-            'english': 'en', 'czech': 'cs', 'romanian': 'ro', 'hungarian': 'hu',
-            'ukrainian': 'uk', 'tagalog': 'tl', 'filipino': 'tl', 'swahili': 'sw',
-            'persian': 'fa', 'farsi': 'fa', 'catalan': 'ca', 'croatian': 'hr',
-            'serbian': 'sr', 'slovak': 'sk', 'slovenian': 'sl', 'bulgarian': 'bg',
-            'latvian': 'lv', 'lithuanian': 'lt', 'estonian': 'et', 'icelandic': 'is',
-            'welsh': 'cy', 'irish': 'ga', 'maltese': 'mt', 'basque': 'eu',
-            'galician': 'gl', 'afrikaans': 'af', 'albanian': 'sq', 'macedonian': 'mk',
-            'bosnian': 'bs', 'belarusian': 'be', 'georgian': 'ka', 'armenian': 'hy',
-            'urdu': 'ur', 'bengali': 'bn', 'tamil': 'ta', 'telugu': 'te',
-            'marathi': 'mr', 'gujarati': 'gu', 'kannada': 'kn', 'malayalam': 'ml',
-            'punjabi': 'pa', 'nepali': 'ne', 'sinhala': 'si',
-            'mandarin': 'zh', 'simplified chinese': 'zh', 'traditional chinese': 'zh-TW',
-        }
-        target = lang_codes.get(target, target)
+        # Language code mapping (centralised in constants.py)
+        target = LANGUAGE_CODES.get(target, target)
         if source != "auto":
-            source = lang_codes.get(source, source)
+            source = LANGUAGE_CODES.get(source, source)
 
         # Reverse lookup for display names
-        code_to_name = {v: k.title() for k, v in lang_codes.items()}
+        code_to_name = {v: k.title() for k, v in LANGUAGE_CODES.items()}
 
         # Use MyMemory API (free, no API key needed for low volume)
         try:
@@ -1274,50 +1217,13 @@ class ToolExecutor:
             logger.debug("Stock cache hit: %s", query)
             return cached
 
-        # Common company name to ticker mappings
-        name_to_ticker = {
-            'MICROSOFT': 'MSFT', 'APPLE': 'AAPL', 'GOOGLE': 'GOOGL', 'ALPHABET': 'GOOGL',
-            'AMAZON': 'AMZN', 'META': 'META', 'FACEBOOK': 'META', 'NETFLIX': 'NFLX',
-            'NVIDIA': 'NVDA', 'TESLA': 'TSLA', 'AMD': 'AMD', 'INTEL': 'INTC',
-            'IBM': 'IBM', 'ORACLE': 'ORCL', 'CISCO': 'CSCO', 'ADOBE': 'ADBE',
-            'SALESFORCE': 'CRM', 'PAYPAL': 'PYPL', 'SQUARE': 'SQ', 'BLOCK': 'SQ',
-            'SHOPIFY': 'SHOP', 'SPOTIFY': 'SPOT', 'UBER': 'UBER', 'LYFT': 'LYFT',
-            'AIRBNB': 'ABNB', 'TWITTER': 'X', 'SNAP': 'SNAP', 'SNAPCHAT': 'SNAP',
-            'PALANTIR': 'PLTR', 'SNOWFLAKE': 'SNOW', 'DATADOG': 'DDOG',
-            'CROWDSTRIKE': 'CRWD', 'CLOUDFLARE': 'NET',
-            'JPMORGAN': 'JPM', 'JP MORGAN': 'JPM', 'CHASE': 'JPM',
-            'BANK OF AMERICA': 'BAC', 'BOFA': 'BAC', 'WELLS FARGO': 'WFC',
-            'GOLDMAN': 'GS', 'GOLDMAN SACHS': 'GS', 'MORGAN STANLEY': 'MS',
-            'VISA': 'V', 'MASTERCARD': 'MA', 'AMEX': 'AXP',
-            'BERKSHIRE': 'BRK.A', 'BERKSHIRE HATHAWAY': 'BRK.A',
-            'WALMART': 'WMT', 'TARGET': 'TGT', 'COSTCO': 'COST', 'HOME DEPOT': 'HD',
-            'NIKE': 'NKE', 'STARBUCKS': 'SBUX', 'MCDONALDS': 'MCD', 'DISNEY': 'DIS',
-            'PFIZER': 'PFE', 'MODERNA': 'MRNA', 'MERCK': 'MRK',
-            'EXXON': 'XOM', 'EXXONMOBIL': 'XOM', 'CHEVRON': 'CVX',
-        }
-
-        # Crypto name to CoinGecko ID
-        crypto_to_coingecko = {
-            'BITCOIN': 'bitcoin', 'BTC': 'bitcoin', 'BTC-USD': 'bitcoin',
-            'ETHEREUM': 'ethereum', 'ETH': 'ethereum', 'ETH-USD': 'ethereum',
-            'DOGECOIN': 'dogecoin', 'DOGE': 'dogecoin', 'DOGE-USD': 'dogecoin',
-            'SOLANA': 'solana', 'SOL': 'solana', 'SOL-USD': 'solana',
-            'CARDANO': 'cardano', 'ADA': 'cardano', 'ADA-USD': 'cardano',
-            'XRP': 'ripple', 'RIPPLE': 'ripple', 'XRP-USD': 'ripple',
-            'LITECOIN': 'litecoin', 'LTC': 'litecoin', 'LTC-USD': 'litecoin',
-            'POLKADOT': 'polkadot', 'DOT': 'polkadot', 'DOT-USD': 'polkadot',
-            'AVALANCHE': 'avalanche-2', 'AVAX': 'avalanche-2', 'AVAX-USD': 'avalanche-2',
-            'CHAINLINK': 'chainlink', 'LINK': 'chainlink', 'LINK-USD': 'chainlink',
-            'SHIBA': 'shiba-inu', 'SHIB': 'shiba-inu', 'SHIB-USD': 'shiba-inu',
-        }
-
-        # Check if it's a crypto
-        coingecko_id = crypto_to_coingecko.get(query)
+        # Check if it's a crypto (centralised in constants.py)
+        coingecko_id = CRYPTO_TICKERS.get(query)
         if coingecko_id:
             return await self._fetch_crypto_price_tool(coingecko_id, query)
 
-        # It's a stock - use Finnhub
-        symbol = name_to_ticker.get(query, query)
+        # It's a stock - use Finnhub (ticker mapping centralised in constants.py)
+        symbol = STOCK_TICKERS.get(query, query)
         finnhub_key = os.getenv('FINNHUB_API_KEY')
 
         if not finnhub_key:
@@ -1373,18 +1279,8 @@ class ToolExecutor:
         period = args.get("period", "1Y")
         chart_type = args.get("chart_type", "line")  # "line" or "candle"
 
-        # Common company name to ticker mappings
-        name_to_ticker = {
-            'MICROSOFT': 'MSFT', 'APPLE': 'AAPL', 'GOOGLE': 'GOOGL', 'ALPHABET': 'GOOGL',
-            'AMAZON': 'AMZN', 'META': 'META', 'FACEBOOK': 'META', 'NETFLIX': 'NFLX',
-            'NVIDIA': 'NVDA', 'TESLA': 'TSLA', 'AMD': 'AMD', 'INTEL': 'INTC',
-            'IBM': 'IBM', 'ORACLE': 'ORCL', 'CISCO': 'CSCO', 'ADOBE': 'ADBE',
-            'SALESFORCE': 'CRM', 'PAYPAL': 'PYPL', 'SQUARE': 'SQ', 'BLOCK': 'SQ',
-            'SHOPIFY': 'SHOP', 'SPOTIFY': 'SPOT', 'UBER': 'UBER', 'LYFT': 'LYFT',
-            'AIRBNB': 'ABNB', 'PALANTIR': 'PLTR', 'SNOWFLAKE': 'SNOW',
-        }
-
-        symbol = name_to_ticker.get(symbol, symbol)
+        # Company name to ticker mapping (centralised in constants.py)
+        symbol = STOCK_TICKERS.get(symbol, symbol)
 
         # Period mapping: internal -> (yfinance period, display name)
         period_map = {

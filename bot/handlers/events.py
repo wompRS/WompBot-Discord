@@ -418,8 +418,8 @@ def register_events(bot, db, privacy_manager, claims_tracker, debate_scorekeeper
                     "**Your choices:**\n"
                     "• Run `/wompbot_consent` to enable full functionality.\n"
                     "• Run `/wompbot_noconsent` if you prefer that we collect nothing.\n"
-                    "• Use `/privacy_policy` or `/privacy_settings` for details.\n\n"
-                    "You can change your mind anytime, and there are commands to export or delete your data."
+                    "• Use `/download_my_data` to export or `/delete_my_data` to erase your data.\n\n"
+                    "You can change your mind anytime."
                 ),
                 color=discord.Color.blue(),
             )

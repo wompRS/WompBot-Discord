@@ -7,6 +7,35 @@ import discord
 from discord import ui
 from typing import Optional, List
 from datetime import datetime
+import math
+
+
+# --- Pagination Helpers ---
+
+ITEMS_PER_PAGE = 25
+
+
+def _paginate(items: list, page: int) -> tuple:
+    """
+    Return a page slice and total page count.
+
+    Args:
+        items: Full list of items
+        page: Zero-indexed page number
+
+    Returns:
+        (page_items, total_pages)
+    """
+    total_pages = max(1, math.ceil(len(items) / ITEMS_PER_PAGE))
+    page = max(0, min(page, total_pages - 1))
+    start = page * ITEMS_PER_PAGE
+    end = start + ITEMS_PER_PAGE
+    return items[start:end], total_pages
+
+
+def _page_footer(page: int, total_pages: int) -> str:
+    """Return 'Page X of Y' string for embed footers."""
+    return f"Page {page + 1} of {total_pages}"
 
 
 class TeamMenuView(ui.View):
@@ -159,9 +188,10 @@ class TeamMenuView(ui.View):
 
 
 class InvitationResponseView(ui.View):
-    """View for responding to invitations"""
+    """View for responding to invitations with pagination support"""
 
-    def __init__(self, team_manager, user_id: int, guild_id: int, guild_name: str, invitations: List[dict], bot=None):
+    def __init__(self, team_manager, user_id: int, guild_id: int, guild_name: str,
+                 invitations: List[dict], bot=None, page: int = 0):
         super().__init__(timeout=300)
         self.team_manager = team_manager
         self.user_id = user_id
@@ -169,16 +199,18 @@ class InvitationResponseView(ui.View):
         self.guild_name = guild_name
         self.invitations = invitations
         self.bot = bot
+        self.page = page
 
-        # Add select menu for invitations if there are any
+        # Paginate and add select menu for invitations if there are any
         if invitations:
+            page_items, self.total_pages = _paginate(invitations, page)
             options = [
                 discord.SelectOption(
                     label=f"{inv['team_name']}" + (f" [{inv['team_tag']}]" if inv.get('team_tag') else ""),
                     description=f"Role: {inv['role'].title()}",
                     value=str(inv['id'])
                 )
-                for inv in invitations[:25]
+                for inv in page_items
             ]
             self.invitation_select = ui.Select(
                 placeholder="Select an invitation...",
@@ -188,7 +220,65 @@ class InvitationResponseView(ui.View):
             self.invitation_select.callback = self.select_callback
             self.add_item(self.invitation_select)
 
+            # Add pagination buttons if needed
+            if self.total_pages > 1:
+                prev_btn = ui.Button(
+                    label="Previous Page",
+                    style=discord.ButtonStyle.secondary,
+                    disabled=(page <= 0),
+                    row=2
+                )
+                prev_btn.callback = self._prev_page
+                self.add_item(prev_btn)
+
+                page_indicator = ui.Button(
+                    label=_page_footer(page, self.total_pages),
+                    style=discord.ButtonStyle.secondary,
+                    disabled=True,
+                    row=2
+                )
+                self.add_item(page_indicator)
+
+                next_btn = ui.Button(
+                    label="Next Page",
+                    style=discord.ButtonStyle.secondary,
+                    disabled=(page >= self.total_pages - 1),
+                    row=2
+                )
+                next_btn.callback = self._next_page
+                self.add_item(next_btn)
+        else:
+            self.total_pages = 1
+
         self.selected_invitation_id = None
+
+    async def _prev_page(self, interaction: discord.Interaction):
+        embed = discord.Embed(
+            title="Pending Invitations",
+            description="Select an invitation to respond:",
+            color=discord.Color.blue()
+        )
+        if self.total_pages > 1:
+            embed.set_footer(text=_page_footer(self.page - 1, self.total_pages))
+        view = InvitationResponseView(
+            self.team_manager, self.user_id, self.guild_id, self.guild_name,
+            self.invitations, self.bot, page=self.page - 1
+        )
+        await interaction.response.edit_message(embed=embed, view=view)
+
+    async def _next_page(self, interaction: discord.Interaction):
+        embed = discord.Embed(
+            title="Pending Invitations",
+            description="Select an invitation to respond:",
+            color=discord.Color.blue()
+        )
+        if self.total_pages > 1:
+            embed.set_footer(text=_page_footer(self.page + 1, self.total_pages))
+        view = InvitationResponseView(
+            self.team_manager, self.user_id, self.guild_id, self.guild_name,
+            self.invitations, self.bot, page=self.page + 1
+        )
+        await interaction.response.edit_message(embed=embed, view=view)
 
     async def select_callback(self, interaction: discord.Interaction):
         self.selected_invitation_id = int(self.invitation_select.values[0])
@@ -260,9 +350,10 @@ class InvitationResponseView(ui.View):
 
 
 class LeaveTeamView(ui.View):
-    """View for leaving a team"""
+    """View for leaving a team with pagination support"""
 
-    def __init__(self, team_manager, user_id: int, guild_id: int, guild_name: str, teams: List[dict], bot=None):
+    def __init__(self, team_manager, user_id: int, guild_id: int, guild_name: str,
+                 teams: List[dict], bot=None, page: int = 0):
         super().__init__(timeout=300)
         self.team_manager = team_manager
         self.user_id = user_id
@@ -270,15 +361,17 @@ class LeaveTeamView(ui.View):
         self.guild_name = guild_name
         self.teams = teams
         self.bot = bot
+        self.page = page
 
-        # Add select menu for teams
+        # Paginate and add select menu for teams
+        page_items, self.total_pages = _paginate(teams, page)
         options = [
             discord.SelectOption(
                 label=f"{team['name']}" + (f" [{team['tag']}]" if team.get('tag') else ""),
                 description=f"Role: {team['role'].title()}",
                 value=str(team['id'])
             )
-            for team in teams[:25]
+            for team in page_items
         ]
         self.team_select = ui.Select(
             placeholder="Select a team to leave...",
@@ -288,8 +381,64 @@ class LeaveTeamView(ui.View):
         self.team_select.callback = self.select_callback
         self.add_item(self.team_select)
 
+        # Add pagination buttons if needed
+        if self.total_pages > 1:
+            prev_btn = ui.Button(
+                label="Previous Page",
+                style=discord.ButtonStyle.secondary,
+                disabled=(page <= 0),
+                row=2
+            )
+            prev_btn.callback = self._prev_page
+            self.add_item(prev_btn)
+
+            page_indicator = ui.Button(
+                label=_page_footer(page, self.total_pages),
+                style=discord.ButtonStyle.secondary,
+                disabled=True,
+                row=2
+            )
+            self.add_item(page_indicator)
+
+            next_btn = ui.Button(
+                label="Next Page",
+                style=discord.ButtonStyle.secondary,
+                disabled=(page >= self.total_pages - 1),
+                row=2
+            )
+            next_btn.callback = self._next_page
+            self.add_item(next_btn)
+
         self.selected_team_id = None
         self.selected_team_name = None
+
+    async def _prev_page(self, interaction: discord.Interaction):
+        embed = discord.Embed(
+            title="Leave Team",
+            description="Select a team to leave:",
+            color=discord.Color.orange()
+        )
+        if self.total_pages > 1:
+            embed.set_footer(text=_page_footer(self.page - 1, self.total_pages))
+        view = LeaveTeamView(
+            self.team_manager, self.user_id, self.guild_id, self.guild_name,
+            self.teams, self.bot, page=self.page - 1
+        )
+        await interaction.response.edit_message(embed=embed, view=view)
+
+    async def _next_page(self, interaction: discord.Interaction):
+        embed = discord.Embed(
+            title="Leave Team",
+            description="Select a team to leave:",
+            color=discord.Color.orange()
+        )
+        if self.total_pages > 1:
+            embed.set_footer(text=_page_footer(self.page + 1, self.total_pages))
+        view = LeaveTeamView(
+            self.team_manager, self.user_id, self.guild_id, self.guild_name,
+            self.teams, self.bot, page=self.page + 1
+        )
+        await interaction.response.edit_message(embed=embed, view=view)
 
     async def select_callback(self, interaction: discord.Interaction):
         self.selected_team_id = int(self.team_select.values[0])
@@ -338,9 +487,10 @@ class LeaveTeamView(ui.View):
 
 
 class ManageTeamSelectView(ui.View):
-    """View for selecting which team to manage members for"""
+    """View for selecting which team to manage members for, with pagination support"""
 
-    def __init__(self, team_manager, user_id: int, guild_id: int, guild_name: str, teams: List[dict], bot=None):
+    def __init__(self, team_manager, user_id: int, guild_id: int, guild_name: str,
+                 teams: List[dict], bot=None, page: int = 0):
         super().__init__(timeout=300)
         self.team_manager = team_manager
         self.user_id = user_id
@@ -348,15 +498,17 @@ class ManageTeamSelectView(ui.View):
         self.guild_name = guild_name
         self.teams = teams
         self.bot = bot
+        self.page = page
 
-        # Add select menu for teams
+        # Paginate and add select menu for teams
+        page_items, self.total_pages = _paginate(teams, page)
         options = [
             discord.SelectOption(
                 label=f"{team['name']}" + (f" [{team['tag']}]" if team.get('tag') else ""),
                 description=f"{team['member_count']} members",
                 value=str(team['id'])
             )
-            for team in teams[:25]
+            for team in page_items
         ]
         self.team_select = ui.Select(
             placeholder="Select a team to manage...",
@@ -365,6 +517,62 @@ class ManageTeamSelectView(ui.View):
         )
         self.team_select.callback = self.select_callback
         self.add_item(self.team_select)
+
+        # Add pagination buttons if needed
+        if self.total_pages > 1:
+            prev_btn = ui.Button(
+                label="Previous Page",
+                style=discord.ButtonStyle.secondary,
+                disabled=(page <= 0),
+                row=2
+            )
+            prev_btn.callback = self._prev_page
+            self.add_item(prev_btn)
+
+            page_indicator = ui.Button(
+                label=_page_footer(page, self.total_pages),
+                style=discord.ButtonStyle.secondary,
+                disabled=True,
+                row=2
+            )
+            self.add_item(page_indicator)
+
+            next_btn = ui.Button(
+                label="Next Page",
+                style=discord.ButtonStyle.secondary,
+                disabled=(page >= self.total_pages - 1),
+                row=2
+            )
+            next_btn.callback = self._next_page
+            self.add_item(next_btn)
+
+    async def _prev_page(self, interaction: discord.Interaction):
+        embed = discord.Embed(
+            title="Manage Teams",
+            description="Select a team to manage:",
+            color=discord.Color.blue()
+        )
+        if self.total_pages > 1:
+            embed.set_footer(text=_page_footer(self.page - 1, self.total_pages))
+        view = ManageTeamSelectView(
+            self.team_manager, self.user_id, self.guild_id, self.guild_name,
+            self.teams, self.bot, page=self.page - 1
+        )
+        await interaction.response.edit_message(embed=embed, view=view)
+
+    async def _next_page(self, interaction: discord.Interaction):
+        embed = discord.Embed(
+            title="Manage Teams",
+            description="Select a team to manage:",
+            color=discord.Color.blue()
+        )
+        if self.total_pages > 1:
+            embed.set_footer(text=_page_footer(self.page + 1, self.total_pages))
+        view = ManageTeamSelectView(
+            self.team_manager, self.user_id, self.guild_id, self.guild_name,
+            self.teams, self.bot, page=self.page + 1
+        )
+        await interaction.response.edit_message(embed=embed, view=view)
 
     def _get_member_name(self, member):
         """Get display name for a member"""
@@ -423,10 +631,10 @@ class ManageTeamSelectView(ui.View):
 
 
 class MemberManagementView(ui.View):
-    """View for managing team members"""
+    """View for managing team members with pagination support"""
 
     def __init__(self, team_manager, user_id: int, guild_id: int, guild_name: str,
-                 team_id: int, team_name: str, members: List[dict], bot=None):
+                 team_id: int, team_name: str, members: List[dict], bot=None, page: int = 0):
         super().__init__(timeout=300)
         self.team_manager = team_manager
         self.user_id = user_id
@@ -436,18 +644,21 @@ class MemberManagementView(ui.View):
         self.team_name = team_name
         self.members = members
         self.bot = bot
+        self.page = page
 
         # Add select menu for members (exclude self - can't manage yourself)
         other_members = [m for m in members if m['discord_user_id'] != user_id]
+        self._other_members = other_members
 
         if other_members:
+            page_items, self.total_pages = _paginate(other_members, page)
             options = [
                 discord.SelectOption(
                     label=self._get_member_name(m)[:100],
                     description=f"Role: {m['role'].replace('_', ' ').title()}",
                     value=str(m['discord_user_id'])
                 )
-                for m in other_members[:25]
+                for m in page_items
             ]
             self.member_select = ui.Select(
                 placeholder="Select a member...",
@@ -457,7 +668,65 @@ class MemberManagementView(ui.View):
             self.member_select.callback = self.select_callback
             self.add_item(self.member_select)
 
+            # Add pagination buttons if needed
+            if self.total_pages > 1:
+                prev_btn = ui.Button(
+                    label="Previous Page",
+                    style=discord.ButtonStyle.secondary,
+                    disabled=(page <= 0),
+                    row=2
+                )
+                prev_btn.callback = self._prev_page
+                self.add_item(prev_btn)
+
+                page_indicator = ui.Button(
+                    label=_page_footer(page, self.total_pages),
+                    style=discord.ButtonStyle.secondary,
+                    disabled=True,
+                    row=2
+                )
+                self.add_item(page_indicator)
+
+                next_btn = ui.Button(
+                    label="Next Page",
+                    style=discord.ButtonStyle.secondary,
+                    disabled=(page >= self.total_pages - 1),
+                    row=2
+                )
+                next_btn.callback = self._next_page
+                self.add_item(next_btn)
+        else:
+            self.total_pages = 1
+
         self.selected_member = None
+
+    async def _prev_page(self, interaction: discord.Interaction):
+        embed = discord.Embed(
+            title=f"{self.team_name} Members",
+            description="Select a member to manage:",
+            color=discord.Color.blue()
+        )
+        if self.total_pages > 1:
+            embed.set_footer(text=_page_footer(self.page - 1, self.total_pages))
+        view = MemberManagementView(
+            self.team_manager, self.user_id, self.guild_id, self.guild_name,
+            self.team_id, self.team_name, self.members, self.bot, page=self.page - 1
+        )
+        await interaction.response.edit_message(embed=embed, view=view)
+
+    async def _next_page(self, interaction: discord.Interaction):
+        embed = discord.Embed(
+            title=f"{self.team_name} Members",
+            description="Select a member to manage:",
+            color=discord.Color.blue()
+        )
+        if self.total_pages > 1:
+            embed.set_footer(text=_page_footer(self.page + 1, self.total_pages))
+        view = MemberManagementView(
+            self.team_manager, self.user_id, self.guild_id, self.guild_name,
+            self.team_id, self.team_name, self.members, self.bot, page=self.page + 1
+        )
+        await interaction.response.edit_message(embed=embed, view=view)
 
     def _get_member_name(self, member):
         """Get display name for a member"""
@@ -668,22 +937,24 @@ class ConfirmRemoveMemberView(ui.View):
 
 
 class ServerSelectView(ui.View):
-    """View for selecting which server to manage teams for"""
+    """View for selecting which server to manage teams for, with pagination support"""
 
-    def __init__(self, team_manager, user_id: int, guilds: List[dict], bot=None):
+    def __init__(self, team_manager, user_id: int, guilds: List[dict], bot=None, page: int = 0):
         super().__init__(timeout=300)
         self.team_manager = team_manager
         self.user_id = user_id
         self.guilds = guilds
         self.bot = bot
+        self.page = page
 
-        # Add select menu for servers
+        # Paginate and add select menu for servers
+        page_items, self.total_pages = _paginate(guilds, page)
         options = [
             discord.SelectOption(
                 label=guild['name'][:100],
                 value=str(guild['id'])
             )
-            for guild in guilds[:25]
+            for guild in page_items
         ]
         self.server_select = ui.Select(
             placeholder="Select a server...",
@@ -692,6 +963,60 @@ class ServerSelectView(ui.View):
         )
         self.server_select.callback = self.select_callback
         self.add_item(self.server_select)
+
+        # Add pagination buttons if needed
+        if self.total_pages > 1:
+            prev_btn = ui.Button(
+                label="Previous Page",
+                style=discord.ButtonStyle.secondary,
+                disabled=(page <= 0),
+                row=1
+            )
+            prev_btn.callback = self._prev_page
+            self.add_item(prev_btn)
+
+            page_indicator = ui.Button(
+                label=_page_footer(page, self.total_pages),
+                style=discord.ButtonStyle.secondary,
+                disabled=True,
+                row=1
+            )
+            self.add_item(page_indicator)
+
+            next_btn = ui.Button(
+                label="Next Page",
+                style=discord.ButtonStyle.secondary,
+                disabled=(page >= self.total_pages - 1),
+                row=1
+            )
+            next_btn.callback = self._next_page
+            self.add_item(next_btn)
+
+    async def _prev_page(self, interaction: discord.Interaction):
+        embed = discord.Embed(
+            title="Team Management",
+            description="Select a server to manage teams:",
+            color=discord.Color.blue()
+        )
+        if self.total_pages > 1:
+            embed.set_footer(text=_page_footer(self.page - 1, self.total_pages))
+        view = ServerSelectView(
+            self.team_manager, self.user_id, self.guilds, self.bot, page=self.page - 1
+        )
+        await interaction.response.edit_message(embed=embed, view=view)
+
+    async def _next_page(self, interaction: discord.Interaction):
+        embed = discord.Embed(
+            title="Team Management",
+            description="Select a server to manage teams:",
+            color=discord.Color.blue()
+        )
+        if self.total_pages > 1:
+            embed.set_footer(text=_page_footer(self.page + 1, self.total_pages))
+        view = ServerSelectView(
+            self.team_manager, self.user_id, self.guilds, self.bot, page=self.page + 1
+        )
+        await interaction.response.edit_message(embed=embed, view=view)
 
     async def select_callback(self, interaction: discord.Interaction):
         guild_id = int(self.server_select.values[0])

@@ -506,35 +506,28 @@ class GDPRPrivacyManager:
             traceback.print_exc()
             return False
 
-    def get_privacy_policy(self, version: str = None) -> Optional[Dict]:
+    def has_pending_deletion(self, user_id: int) -> bool:
         """
-        Get privacy policy text
+        Check if a user has a pending (scheduled) data deletion request
 
         Args:
-            version: Policy version (defaults to current)
+            user_id: Discord user ID
 
         Returns:
-            Dict with policy info or None
+            True if there is a pending deletion, False otherwise
         """
         try:
             with self.db.get_connection() as conn:
-
-                with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-                    if version:
-                        cur.execute("""
-                            SELECT * FROM privacy_policy_versions WHERE version = %s
-                        """, (version,))
-                    else:
-                        cur.execute("""
-                            SELECT * FROM privacy_policy_versions WHERE is_active = TRUE
-                            ORDER BY effective_date DESC LIMIT 1
-                        """, )
-
-                    result = cur.fetchone()
-                    return dict(result) if result else None
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT 1 FROM data_deletion_requests
+                        WHERE user_id = %s AND status = 'scheduled'
+                        LIMIT 1
+                    """, (user_id,))
+                    return cur.fetchone() is not None
         except Exception as e:
-            print(f"❌ Error fetching privacy policy: {e}")
-            return None
+            print(f"❌ Error checking pending deletion: {e}")
+            return False
 
     def schedule_data_deletion(self, user_id: int, grace_period_days: int = 30) -> bool:
         """

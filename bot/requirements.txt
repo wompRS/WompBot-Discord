@@ -19,6 +19,8 @@ matplotlib==3.9.0  # Visualization library for charts and tables
 seaborn==0.13.2  # Statistical visualizations built on matplotlib
 llmlingua==0.2.2  # Prompt compression for reducing context token usage
 redis==5.0.1  # Redis client for in-memory caching
+cachetools==5.3.3  # In-memory caching with TTL support (used by iRacing meta analyzer)
+tenacity==8.2.3  # Retry logic with exponential backoff (used by iRacing API client)
 yfinance==0.2.37  # Stock/crypto price lookups
 curl_cffi==0.7.4  # Required by yfinance to bypass Yahoo Finance bot detection
 beautifulsoup4==4.12.3  # HTML parsing for URL previews

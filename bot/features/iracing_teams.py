@@ -601,15 +601,16 @@ class iRacingTeamManager:
                 with conn.cursor() as cur:
                     cur.execute("""
                         SELECT t.id, t.team_name, t.team_tag,
-                               (SELECT COUNT(*) FROM iracing_team_members m
-                                WHERE m.team_id = t.id AND m.is_active = TRUE) as member_count
+                               COUNT(m.id) as member_count
                         FROM iracing_teams t
                         JOIN iracing_team_members tm ON t.id = tm.team_id
+                        LEFT JOIN iracing_team_members m ON t.id = m.team_id AND m.is_active = TRUE
                         WHERE tm.discord_user_id = %s
                           AND t.guild_id = %s
                           AND tm.role = 'manager'
                           AND tm.is_active = TRUE
                           AND t.is_active = TRUE
+                        GROUP BY t.id, t.team_name, t.team_tag
                         ORDER BY t.team_name
                     """, (user_id, guild_id))
 

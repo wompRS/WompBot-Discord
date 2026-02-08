@@ -34,6 +34,131 @@ class TriviaSystem:
         # {channel_id: asyncio.Task}
         self.timeout_tasks = {}
 
+    # ===== SESSION PERSISTENCE =====
+
+    async def _save_session_to_db(self, channel_id, session):
+        """Upsert trivia session state to database for crash recovery"""
+        try:
+            # Build a JSON-serializable copy of the session state
+            state = {
+                'session_id': session.get('session_id'),
+                'guild_id': session.get('guild_id'),
+                'channel_id': session.get('channel_id'),
+                'topic': session.get('topic'),
+                'difficulty': session.get('difficulty'),
+                'question_count': session.get('question_count'),
+                'time_per_question': session.get('time_per_question'),
+                'started_by': list(session.get('started_by', ())),
+                'started_at': session.get('started_at').isoformat() if session.get('started_at') else None,
+                'questions': session.get('questions', []),
+                'current_question_num': session.get('current_question_num', 0),
+                'status': session.get('status', 'waiting'),
+                'participants': {
+                    str(uid): data for uid, data in session.get('participants', {}).items()
+                },
+                'answers_this_round': list(session.get('answers_this_round', set())),
+            }
+
+            guild_id = session.get('guild_id')
+            started_by = session.get('started_by', (None,))[0]
+
+            await asyncio.to_thread(
+                self._save_session_to_db_sync, channel_id, guild_id, started_by, state
+            )
+        except Exception as e:
+            print(f"⚠️ Failed to save trivia session to DB: {e}")
+
+    def _save_session_to_db_sync(self, channel_id, guild_id, started_by, state):
+        """Synchronous DB upsert for trivia session state"""
+        with self.db.get_connection() as conn:
+            with conn.cursor() as cur:
+                # Check if an active session row exists for this channel
+                cur.execute("""
+                    SELECT id FROM active_trivia_sessions
+                    WHERE channel_id = %s AND is_active = TRUE
+                    LIMIT 1
+                """, (channel_id,))
+                existing = cur.fetchone()
+
+                if existing:
+                    cur.execute("""
+                        UPDATE active_trivia_sessions
+                        SET session_state = %s, updated_at = NOW()
+                        WHERE id = %s
+                    """, (json.dumps(state), existing[0]))
+                else:
+                    cur.execute("""
+                        INSERT INTO active_trivia_sessions (channel_id, guild_id, started_by, session_state, is_active, updated_at)
+                        VALUES (%s, %s, %s, %s, TRUE, NOW())
+                    """, (channel_id, guild_id, started_by, json.dumps(state)))
+
+    async def _load_sessions_from_db(self):
+        """Load all active trivia sessions from database into memory on startup"""
+        try:
+            rows = await asyncio.to_thread(self._load_sessions_from_db_sync)
+            loaded = 0
+            for row in rows:
+                channel_id = row['channel_id']
+                state = row['session_state']
+
+                # Reconstruct in-memory session from persisted state
+                session = {
+                    'session_id': state.get('session_id'),
+                    'guild_id': state.get('guild_id'),
+                    'channel_id': state.get('channel_id'),
+                    'topic': state.get('topic'),
+                    'difficulty': state.get('difficulty'),
+                    'question_count': state.get('question_count'),
+                    'time_per_question': state.get('time_per_question'),
+                    'started_by': tuple(state.get('started_by', [None, None])),
+                    'started_at': datetime.fromisoformat(state['started_at']) if state.get('started_at') else datetime.now(),
+                    'questions': state.get('questions', []),
+                    'current_question_num': state.get('current_question_num', 0),
+                    'current_question_start': None,
+                    'status': state.get('status', 'waiting'),
+                    'participants': {
+                        int(uid): data for uid, data in state.get('participants', {}).items()
+                    },
+                    'answers_this_round': set(state.get('answers_this_round', [])),
+                }
+
+                self.active_sessions[channel_id] = session
+                loaded += 1
+
+            if loaded:
+                print(f"✅ Loaded {loaded} active trivia session(s) from database")
+        except Exception as e:
+            print(f"⚠️ Failed to load trivia sessions from DB: {e}")
+
+    def _load_sessions_from_db_sync(self):
+        """Synchronous DB read for active trivia sessions"""
+        with self.db.get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT channel_id, session_state
+                    FROM active_trivia_sessions
+                    WHERE is_active = TRUE
+                """)
+                columns = [desc[0] for desc in cur.description]
+                return [dict(zip(columns, row)) for row in cur.fetchall()]
+
+    async def _deactivate_session_in_db(self, channel_id):
+        """Mark a trivia session as inactive in the database when it ends"""
+        try:
+            await asyncio.to_thread(self._deactivate_session_in_db_sync, channel_id)
+        except Exception as e:
+            print(f"⚠️ Failed to deactivate trivia session in DB: {e}")
+
+    def _deactivate_session_in_db_sync(self, channel_id):
+        """Synchronous DB update to deactivate a trivia session"""
+        with self.db.get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    UPDATE active_trivia_sessions
+                    SET is_active = FALSE, updated_at = NOW()
+                    WHERE channel_id = %s AND is_active = TRUE
+                """, (channel_id,))
+
     # ===== SESSION MANAGEMENT =====
 
     async def start_session(self, guild_id, channel_id, user_id, username,
@@ -83,6 +208,9 @@ class TriviaSystem:
             'answers_this_round': set(),
         }
 
+        # Persist session state to database for crash recovery
+        await self._save_session_to_db(channel_id, self.active_sessions[channel_id])
+
         return session_id
 
     async def end_session(self, channel_id):
@@ -127,6 +255,9 @@ class TriviaSystem:
         if leaderboard:
             winner_id = leaderboard[0][0]
             winner_overall_stats = await self.get_user_stats(session['guild_id'], winner_id)
+
+        # Deactivate session in database
+        await self._deactivate_session_in_db(channel_id)
 
         # Clean up in-memory session
         result = {
@@ -489,6 +620,9 @@ Generate {count} questions now:"""
                 time_taken,
                 points
             )
+
+        # Persist updated session state for crash recovery
+        await self._save_session_to_db(channel_id, session)
 
         return {
             'is_correct': is_correct,
