@@ -621,6 +621,15 @@ openssl rand -base64 32
 
 **Note:** Database is only accessible from Docker network (not exposed externally)
 
+### Connection Pool Size
+
+```bash
+# Maximum database connections in the pool (default: 25)
+DB_POOL_MAX=25
+```
+
+The default was increased from 10 to 25 for better concurrent throughput when handling multiple simultaneous Discord events (messages, reactions, slash commands).
+
 ---
 
 ### Database Connection

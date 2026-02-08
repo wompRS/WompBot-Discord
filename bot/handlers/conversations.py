@@ -50,7 +50,8 @@ MENTION_RATE_STATE = {}
 USER_CONCURRENT_REQUESTS = {}
 _LAST_CLEANUP_TIME = 0
 
-# Channel-level locks to prevent concurrent request processing (causes response mixing)
+# Channel-level semaphores to limit concurrent request processing (prevents response mixing)
+# Each channel allows up to 3 concurrent requests
 CHANNEL_LOCKS = {}
 _CHANNEL_LOCKS_LOCK = asyncio.Lock()
 
@@ -59,11 +60,11 @@ _RATE_STATE_LOCK = asyncio.Lock()
 _CONCURRENT_REQUESTS_LOCK = asyncio.Lock()
 
 
-async def get_channel_lock(channel_id: int) -> asyncio.Lock:
-    """Get or create a lock for a specific channel to prevent concurrent processing"""
+async def get_channel_lock(channel_id: int) -> asyncio.Semaphore:
+    """Get or create a semaphore for a specific channel to limit concurrent processing to 3 requests"""
     async with _CHANNEL_LOCKS_LOCK:
         if channel_id not in CHANNEL_LOCKS:
-            CHANNEL_LOCKS[channel_id] = asyncio.Lock()
+            CHANNEL_LOCKS[channel_id] = asyncio.Semaphore(3)
         return CHANNEL_LOCKS[channel_id]
 
 async def cleanup_stale_rate_state():
@@ -90,21 +91,21 @@ async def cleanup_stale_rate_state():
     if stale_users:
         logger.debug("Cleaned up %d stale rate limit entries", len(stale_users))
 
-    # Cleanup CHANNEL_LOCKS - remove locks for channels no longer in active rate state
-    # and not currently locked (i.e., not actively processing a request)
+    # Cleanup CHANNEL_LOCKS - remove semaphores for channels no longer in active rate state
+    # and not currently in use (i.e., all 3 slots are free)
     async with _CHANNEL_LOCKS_LOCK:
         active_channels = set()
-        # Keep locks for channels that are currently locked (in-use)
+        # Keep semaphores for channels that are currently in use
         stale_channels = [
-            ch_id for ch_id, lock in CHANNEL_LOCKS.items()
-            if not lock.locked()
+            ch_id for ch_id, sem in CHANNEL_LOCKS.items()
+            if sem._value == 3  # All slots free, safe to remove
         ]
         # Only clean up if we have more than 1000 entries to avoid unbounded growth
         if len(CHANNEL_LOCKS) > 1000:
             for ch_id in stale_channels:
                 del CHANNEL_LOCKS[ch_id]
             if stale_channels:
-                logger.debug("Cleaned up %d stale channel locks", len(stale_channels))
+                logger.debug("Cleaned up %d stale channel semaphores", len(stale_channels))
 
 # Initialize visualization tools (module-level, reused across calls)
 _visualizer = None
@@ -627,16 +628,16 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
             )
             return
 
-        # Get channel lock to prevent concurrent processing (causes response mixing)
+        # Get channel semaphore to limit concurrent processing (prevents response mixing)
         channel_lock = await get_channel_lock(message.channel.id)
 
-        # Try to acquire lock with timeout - if channel is busy, queue the request
+        # Try to acquire semaphore slot with timeout - if all 3 slots are busy, queue the request
         try:
-            # Wait up to 10 seconds for the channel to be free
+            # Wait up to 10 seconds for a slot to be free
             async with asyncio.timeout(10):
                 await channel_lock.acquire()
         except asyncio.TimeoutError:
-            await message.channel.send("⏳ Channel is busy, please wait a moment and try again.")
+            await message.channel.send("⏳ Channel has too many concurrent requests (3 max), please wait a moment and try again.")
             return
 
         # Get conversation context - use CONTEXT_WINDOW_MESSAGES env var
@@ -657,7 +658,9 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
 
         # Always send a placeholder message immediately for better UX
         # Use search message if search is likely needed, otherwise use thinking message
-        if search and llm.should_search(content, conversation_history):
+        # Cache should_search result to avoid calling it again later (P15 fix)
+        needs_search = search and llm.should_search(content, conversation_history)
+        if needs_search:
             placeholder_msg = await message.channel.send(random.choice(SEARCH_STATUS_MESSAGES))
         else:
             placeholder_msg = await message.channel.send(random.choice(THINKING_STATUS_MESSAGES))
@@ -676,23 +679,17 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
             # Check if question is about WompBot itself - load documentation
             bot_docs = None
             if self_knowledge:
-                # Get full conversation history (including bot messages) for context-aware detection
-                full_conversation_history = db.get_recent_messages(
-                    message.channel.id,
-                    limit=3,  # Just need last few messages
-                    exclude_opted_out=True,
-                    exclude_bot_id=None,  # Don't exclude bot messages
-                    user_id=message.author.id,
-                    guild_id=message.guild.id if message.guild else None
-                )
-                bot_docs = self_knowledge.format_for_llm(content, full_conversation_history, bot.user.id)
+                # Reuse already-fetched conversation_history instead of a second DB query (P14 fix)
+                # Take last 3 messages as context for self-knowledge detection
+                recent_context = conversation_history[-3:] if conversation_history else []
+                bot_docs = self_knowledge.format_for_llm(content, recent_context, bot.user.id)
                 if bot_docs:
                     logger.info("Loading WompBot documentation for self-knowledge question")
 
             # Check if search is needed (skip if we're using docs)
             search_results = None
 
-            if search and not bot_docs and llm.should_search(content, conversation_history):
+            if needs_search and not bot_docs:
                 # Build contextual query that considers recent conversation
                 search_query = search.build_contextual_query(content, conversation_history)
                 search_results_raw = await asyncio.to_thread(search.search, search_query)
@@ -762,21 +759,35 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                 else:
                     status_msg = await message.channel.send("⚙️ Processing...")
 
-                # Execute all tool calls and collect results
+                # Execute all tool calls in parallel for better latency (P12 fix)
                 images_to_send = []
                 text_responses = []
                 tool_results = []  # For feeding back to LLM
 
-                for tool_call in response["tool_calls"]:
-                    result = await tool_executor.execute_tool(
+                # Run all tool calls concurrently with asyncio.gather
+                tool_call_coros = [
+                    tool_executor.execute_tool(
                         tool_call,
                         channel_id=message.channel.id,
                         user_id=message.author.id,
                         guild_id=message.guild.id if message.guild else None
                     )
+                    for tool_call in response["tool_calls"]
+                ]
+                all_results = await asyncio.gather(*tool_call_coros, return_exceptions=True)
+
+                for tool_call, result in zip(response["tool_calls"], all_results):
+                    tool_name = tool_call.get("function", {}).get("name", "unknown")
+
+                    # Handle exceptions from gather
+                    if isinstance(result, Exception):
+                        error_msg = f"{type(result).__name__}: {result}"
+                        tool_results.append(f"Error in {tool_name}: {error_msg}")
+                        text_responses.append(f"❌ {error_msg}")
+                        logger.error("Tool %s raised exception: %s", tool_name, error_msg)
+                        continue
 
                     # Collect tool results for LLM feedback
-                    tool_name = tool_call.get("function", {}).get("name", "unknown")
                     if result.get("success"):
                         if result.get("type") == "image":
                             images_to_send.append(result["image"])
@@ -1130,12 +1141,14 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
 
         await message.channel.send(f"Error processing request: {str(e)}")
     finally:
-        # Release channel lock to allow next request
+        # Release channel semaphore slot to allow next request
         try:
-            if channel_lock is not None and channel_lock.locked():
+            if channel_lock is not None:
                 channel_lock.release()
+        except ValueError:
+            pass  # Semaphore was not acquired (e.g., timeout path)
         except Exception as lock_error:
-            logger.warning("Error releasing channel lock: %s", lock_error)
+            logger.warning("Error releasing channel semaphore: %s", lock_error)
 
         # Decrement concurrent request counter (with lock for thread safety)
         try:

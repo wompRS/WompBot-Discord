@@ -18,3 +18,15 @@ CREATE INDEX IF NOT EXISTS idx_iracing_meta_cache_expires ON iracing_meta_cache(
 CREATE INDEX IF NOT EXISTS idx_messages_guild_id ON messages(guild_id);
 
 -- embedding_queue already has priority_idx on (priority, created_at) - no additional index needed
+
+-- Composite index for get_recent_messages (hottest query path - called on every bot response)
+CREATE INDEX IF NOT EXISTS idx_messages_channel_timestamp ON messages(channel_id, timestamp DESC);
+
+-- Composite index for check_repeated_messages (spam detection on every bot mention)
+CREATE INDEX IF NOT EXISTS idx_messages_user_timestamp ON messages(user_id, timestamp DESC);
+
+-- Composite index for stats_cache lookups
+CREATE INDEX IF NOT EXISTS idx_stats_cache_lookup ON stats_cache(stat_type, scope, start_date, end_date);
+
+-- Composite index for hot_takes community reaction tracking
+CREATE INDEX IF NOT EXISTS idx_messages_channel_id_timestamp ON messages(channel_id, timestamp);

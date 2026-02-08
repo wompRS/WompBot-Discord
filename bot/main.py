@@ -1,4 +1,5 @@
 import asyncio
+import concurrent.futures
 import re
 import random
 import discord
@@ -269,6 +270,11 @@ if __name__ == "__main__":
     if not token:
         logger.error("DISCORD_TOKEN not found in environment variables!")
         exit(1)
-    
+
+    # Set larger thread pool for asyncio.to_thread() calls
+    # Default is ~40, but LLM calls hold threads for 5-60 seconds each
+    loop = asyncio.get_event_loop()
+    loop.set_default_executor(concurrent.futures.ThreadPoolExecutor(max_workers=100))
+
     logger.info("Starting WompBot...")
     bot.run(token)

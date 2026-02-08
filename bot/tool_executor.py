@@ -41,6 +41,10 @@ class ToolExecutor:
         self.reminder_manager = reminder_manager
         self.bot = bot
 
+        # Reusable HTTP session for connection pooling (avoids redundant TCP+TLS handshakes)
+        self.session = requests.Session()
+        self.session.headers.update({"User-Agent": "WompBot/1.0"})
+
         # Common timezone aliases
         self.timezone_aliases = {
             'est': 'America/New_York', 'edt': 'America/New_York',
@@ -524,7 +528,6 @@ class ToolExecutor:
         try:
             def search_images():
                 from duckduckgo_search import DDGS
-                import requests
 
                 # Use duckduckgo-search library with safe search ON
                 with DDGS() as ddgs:
@@ -539,7 +542,7 @@ class ToolExecutor:
                             if image_url and image_url.startswith('http'):
                                 # Verify the image is accessible
                                 try:
-                                    check = requests.head(image_url, headers=headers, timeout=5, allow_redirects=True)
+                                    check = self.session.head(image_url, headers=headers, timeout=5, allow_redirects=True)
                                     if check.status_code == 200:
                                         return {
                                             'url': image_url,
@@ -633,7 +636,7 @@ class ToolExecutor:
                     "q": text[:500],  # Limit text length
                     "langpair": f"{source_param}|{target}"
                 }
-                return requests.get(url, params=params, timeout=15)
+                return self.session.get(url, params=params, timeout=15)
 
             response = await asyncio.to_thread(do_translate)
 
@@ -679,7 +682,7 @@ class ToolExecutor:
                     "format": "json",
                     "srlimit": 1
                 }
-                resp = requests.get(search_url, params=search_params, headers=headers, timeout=10)
+                resp = self.session.get(search_url, params=search_params, headers=headers, timeout=10)
                 return resp
 
             search_response = await asyncio.to_thread(do_search)
@@ -693,7 +696,7 @@ class ToolExecutor:
             # Get the summary
             def do_summary():
                 summary_url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{title.replace(' ', '_')}"
-                resp = requests.get(summary_url, headers=headers, timeout=10)
+                resp = self.session.get(summary_url, headers=headers, timeout=10)
                 return resp
 
             summary_response = await asyncio.to_thread(do_summary)
@@ -735,7 +738,7 @@ class ToolExecutor:
                 headers = {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
                 }
-                resp = requests.get(search_url, headers=headers, timeout=10)
+                resp = self.session.get(search_url, headers=headers, timeout=10)
                 return resp.text
 
             html = await asyncio.to_thread(do_search)
@@ -903,7 +906,7 @@ class ToolExecutor:
                 headers = {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
                 }
-                resp = requests.get(url, headers=headers, timeout=15, allow_redirects=False)
+                resp = self.session.get(url, headers=headers, timeout=15, allow_redirects=False)
                 return resp
 
             response = await asyncio.to_thread(do_fetch)
@@ -1227,7 +1230,7 @@ class ToolExecutor:
         try:
             def fetch_finnhub():
                 url = f"https://finnhub.io/api/v1/quote?symbol={symbol}&token={finnhub_key}"
-                resp = requests.get(url, timeout=10)
+                resp = self.session.get(url, timeout=10)
                 return resp.json()
 
             data = await asyncio.to_thread(fetch_finnhub)
@@ -1242,7 +1245,7 @@ class ToolExecutor:
             # Get company name
             def fetch_profile():
                 url = f"https://finnhub.io/api/v1/stock/profile2?symbol={symbol}&token={finnhub_key}"
-                resp = requests.get(url, timeout=10)
+                resp = self.session.get(url, timeout=10)
                 return resp.json()
 
             profile = await asyncio.to_thread(fetch_profile)
@@ -1382,7 +1385,7 @@ class ToolExecutor:
         try:
             def fetch():
                 url = f"https://api.coingecko.com/api/v3/simple/price?ids={coingecko_id}&vs_currencies=usd&include_24hr_change=true&include_market_cap=true"
-                resp = requests.get(url, timeout=10)
+                resp = self.session.get(url, timeout=10)
                 return resp.json()
 
             data = await asyncio.to_thread(fetch)
@@ -1433,7 +1436,7 @@ class ToolExecutor:
                 params = {"apikey": omdb_key, "t": title, "plot": "short"}
                 if year:
                     params["y"] = year
-                resp = requests.get("http://www.omdbapi.com/", params=params, timeout=10)
+                resp = self.session.get("http://www.omdbapi.com/", params=params, timeout=10)
                 return resp.json()
 
             data = await asyncio.to_thread(do_fetch)
@@ -1470,7 +1473,7 @@ class ToolExecutor:
                 from urllib.parse import quote
                 # URL encode word to handle special characters safely
                 url = f"https://api.dictionaryapi.dev/api/v2/entries/en/{quote(word, safe='')}"
-                resp = requests.get(url, timeout=10)
+                resp = self.session.get(url, timeout=10)
                 return resp
 
             response = await asyncio.to_thread(do_fetch)
@@ -1560,7 +1563,7 @@ class ToolExecutor:
             def do_convert():
                 # Frankfurter API - free, no key required
                 url = f"https://api.frankfurter.app/latest?amount={amount}&from={from_curr}&to={to_curr}"
-                resp = requests.get(url, timeout=10)
+                resp = self.session.get(url, timeout=10)
                 return resp
 
             response = await asyncio.to_thread(do_convert)
@@ -1627,7 +1630,7 @@ class ToolExecutor:
         try:
             def fetch_scores():
                 url = f"https://site.api.espn.com/apis/site/v2/sports/{endpoint}/scoreboard"
-                resp = requests.get(url, timeout=15)
+                resp = self.session.get(url, timeout=15)
                 return resp.json()
 
             data = await asyncio.to_thread(fetch_scores)

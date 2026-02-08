@@ -1,6 +1,6 @@
 # WompBot - Discord Bot
 
-A Discord bot powered by DeepSeek through OpenRouter, featuring intelligent conversation memory (RAG), media analysis (images, GIFs, YouTube transcripts, video transcription), 18 LLM tools, web search integration, claims tracking, user behavior analysis, and iRacing integration.
+A Discord bot powered by DeepSeek through OpenRouter, featuring intelligent conversation memory (RAG), media analysis (images, GIFs, YouTube transcripts, video transcription), 26 LLM tools, web search integration, claims tracking, user behavior analysis, and iRacing integration.
 
 ## Core Features
 
@@ -84,7 +84,7 @@ WompBot can analyze images, GIFs, YouTube videos, and video attachments using vi
 [Image attachment]
 ```
 
-### LLM Tools (18 Available)
+### LLM Tools (26 Available)
 
 WompBot can automatically invoke tools to provide real-time information:
 
@@ -108,13 +108,16 @@ WompBot can automatically invoke tools to provide real-time information:
 - `youtube_search` - Search YouTube videos
 - `movie_info` - Movie/TV ratings and info
 - `stock_price` - Stock and crypto prices
+- `stock_history` - Historical stock price charts with technical analysis
+- `sports_scores` - Live sports scores and schedules
+- `image_search` - Search for images on the web
 
 **Utility:**
 - `random_choice` - Dice rolls, coin flips, random picks
 - `create_reminder` - Set reminders
 
 **Visualization:**
-- `create_bar_chart`, `create_line_chart`, `create_pie_chart`, `create_table`
+- `create_bar_chart`, `create_line_chart`, `create_pie_chart`, `create_table`, `create_comparison_chart`
 - Natural language: "show me a chart of who talks the most"
 
 ### Weather and Computational Tools
@@ -319,7 +322,7 @@ nano .env
 - DISCORD_TOKEN: Your Discord bot token
 - OPENROUTER_API_KEY: Your OpenRouter API key
 - TAVILY_API_KEY: Your Tavily search API key
-- MODEL_NAME: LLM model for chat (default: anthropic/claude-3.7-sonnet)
+- MODEL_NAME: LLM model for chat (recommended: deepseek/deepseek-chat)
 - POSTGRES_PASSWORD: Choose a secure database password
 
 **Optional Rate Limiting:**
@@ -589,7 +592,7 @@ Comprehensive guides are available in the docs directory.
 **Feature Documentation:**
 - [Conversational AI](docs/features/CONVERSATIONAL_AI.md) - Personality modes, LLM configuration
 - [Media Analysis](docs/features/MEDIA_ANALYSIS.md) - Images, GIFs, YouTube, video transcription
-- [LLM Tools](docs/features/LLM_TOOLS.md) - 18 available tools, currency conversion, weather
+- [LLM Tools](docs/features/LLM_TOOLS.md) - 26 available tools, currency conversion, weather
 - [Claims Tracking](docs/features/CLAIMS_TRACKING.md) - Auto-detection, edit tracking
 - [Fact-Checking](docs/features/FACT_CHECK.md) - Web search, verdict system
 - [Quotes System](docs/features/QUOTES.md) - Emoji reactions, context
@@ -895,6 +898,7 @@ discord-bot/
     ├── search.py                # Tavily web search
     ├── rag.py                   # RAG system for intelligent memory
     ├── compression.py           # LLMLingua semantic compression
+    ├── cost_tracker.py          # API cost tracking and spending alerts
     ├── backup_manager.py        # Automated database backups
     ├── logging_config.py        # Centralized logging
     ├── weather.py               # OpenWeatherMap API client
@@ -904,8 +908,10 @@ discord-bot/
     ├── llm_tools.py             # LLM tool definitions
     ├── data_retriever.py        # Database query engine
     ├── media_processor.py       # Media analysis (images, GIFs, videos, YouTube)
+    ├── self_knowledge.py        # Bot self-awareness (reads own docs)
     ├── iracing_client.py        # iRacing API client
     ├── iracing_viz.py           # iRacing visualizations
+    ├── iracing_graphics.py      # iRacing chart generation
     ├── requirements.txt         # Python dependencies
     ├── handlers/
     │   ├── conversations.py     # Message handling and LLM conversations
@@ -923,9 +929,13 @@ discord-bot/
     │   ├── gdpr_privacy.py      # GDPR compliance system
     │   ├── iracing.py           # iRacing integration
     │   ├── iracing_teams.py     # iRacing team management
+    │   ├── iracing_meta.py      # iRacing meta analysis (best cars/tracks)
     │   ├── yearly_wrapped.py    # Yearly summaries
+    │   ├── quote_of_the_day.py  # Featured quotes system
+    │   ├── claim_detector.py    # Fast regex pre-filter for claims
     │   ├── trivia.py            # LLM-powered trivia games
-    │   ├── help_system.py       # Comprehensive help system (67 commands)
+    │   ├── help_system.py       # Comprehensive help system
+    │   ├── admin_utils.py       # Admin permission utilities
     │   ├── debate_scorekeeper.py # Debate tracking and analysis
     │   └── bug_tracking.py      # Bug reporting system
     ├── prompts/

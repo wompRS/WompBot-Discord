@@ -3,6 +3,7 @@ Cost tracking and alerting system for LLM API usage
 """
 import logging
 import os
+from datetime import datetime, timezone
 
 import discord
 
@@ -52,8 +53,10 @@ class CostTracker:
             model, input_tokens, output_tokens, total_cost, request_type, user_id, username
         )
 
-        # Get monthly total
-        monthly_total = self.db.get_total_cost()
+        # Get monthly total (pass start of current month to avoid full table scan)
+        now = datetime.now(timezone.utc)
+        start_of_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        monthly_total = self.db.get_total_cost(since_timestamp=start_of_month)
 
         # Log individual request cost with breakdown
         # Only log detailed costs if username is provided (text mentions only)

@@ -125,7 +125,7 @@ Users see status messages during processing:
 ## Configuration
 
 No additional configuration required. Media analysis is automatically enabled when:
-1. Vision-capable model is configured (Claude 3.7 Sonnet supports vision)
+1. Vision-capable model is configured (set via `VISION_MODEL` env var, default: `openai/gpt-4o-mini`)
 2. OpenAI API key is set (for Whisper transcription)
 3. ffmpeg is installed (included in Docker image)
 

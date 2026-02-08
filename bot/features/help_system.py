@@ -998,7 +998,7 @@ class HelpSystem:
         """Generate general help embed with all commands"""
         embed = discord.Embed(
             title="WompBot Commands",
-            description="**62+ slash commands** and **18 AI tools** organized by category\n\nChat: @WompBot, 'wompbot', or '!wb' • Powered by DeepSeek\nSupports images, GIFs, YouTube videos, and video attachments\nUse `/help <command>` for details",
+            description="**65+ slash commands** and **26 AI tools** organized by category\n\nChat: @WompBot, 'wompbot', or '!wb' • Powered by DeepSeek\nSupports images, GIFs, YouTube videos, and video attachments\nUse `/help <command>` for details",
             color=discord.Color.purple()
         )
 
@@ -1014,14 +1014,15 @@ class HelpSystem:
         )
 
         embed.add_field(
-            name="Conversational AI Tools (18 tools)",
+            name="Conversational AI Tools (26 tools)",
             value=(
                 "WompBot can use tools automatically when you ask questions:\n"
-                "**Weather:** `get_weather`, `get_weather_forecast`\n"
-                "**Search:** `web_search`, `wikipedia`, `define_word`, `url_preview`\n"
-                "**Utility:** `currency_convert`, `get_time`, `translate`, `random_choice`\n"
-                "**Media:** `youtube_search`, `movie_info`, `stock_price`\n"
-                "**Charts:** `create_bar_chart`, `create_line_chart`, `create_pie_chart`\n"
+                "**Weather:** `get_weather`, `get_weather_forecast`, `wolfram_query`\n"
+                "**Search:** `web_search`, `image_search`, `wikipedia`, `define_word`, `url_preview`\n"
+                "**Utility:** `currency_convert`, `get_time`, `translate`, `random_choice`, `create_reminder`\n"
+                "**Media:** `youtube_search`, `movie_info`, `stock_price`, `stock_history`, `sports_scores`\n"
+                "**Charts:** `create_bar_chart`, `create_line_chart`, `create_pie_chart`, `create_table`, `create_comparison_chart`\n"
+                "**Data:** `user_stats`, `iracing_driver_stats`, `iracing_series_info`\n"
                 "Just ask naturally - e.g., 'convert 100 USD to EUR' or 'weather in Tokyo'"
             ),
             inline=False

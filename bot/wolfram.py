@@ -29,6 +29,9 @@ class WolframAlpha:
         self.short_answer_url = "http://api.wolframalpha.com/v1/result"
         self.simple_api_url = "http://api.wolframalpha.com/v1/simple"
 
+        # Reusable HTTP session for connection pooling (avoids redundant TCP+TLS handshakes)
+        self.session = requests.Session()
+
     def query(self, question: str, units: str = "metric") -> Dict[str, Any]:
         """
         Query Wolfram Alpha with a question.
@@ -49,7 +52,7 @@ class WolframAlpha:
                 'timeout': 5,
             }
 
-            response = requests.get(self.short_answer_url, params=params, timeout=10)
+            response = self.session.get(self.short_answer_url, params=params, timeout=10)
 
             if response.status_code == 200:
                 answer = response.text.strip()

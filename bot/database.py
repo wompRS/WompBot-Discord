@@ -30,7 +30,7 @@ class Database:
 
         # Get pool size from environment or use sensible defaults
         min_connections = int(os.getenv('DB_POOL_MIN', '2'))
-        max_connections = int(os.getenv('DB_POOL_MAX', '10'))
+        max_connections = int(os.getenv('DB_POOL_MAX', '25'))
 
         for attempt in range(max_retries):
             try:

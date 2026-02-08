@@ -43,6 +43,12 @@ class LLMClient:
         # Initialize conversation compressor for token reduction
         self.compressor = ConversationCompressor()
 
+        # Reusable HTTP session for connection pooling (avoids redundant TCP+TLS handshakes)
+        self.session = requests.Session()
+        self.session.headers.update({
+            "Content-Type": "application/json"
+        })
+
         # Load system prompts from files (cache all personalities)
         self.system_prompt_default = self._load_system_prompt('default')
         self.system_prompt_feyd = self._load_system_prompt('feyd')
@@ -492,7 +498,7 @@ Use this history to maintain conversation continuity and remember what was discu
             response = None
 
             while rate_limit_retry <= max_rate_limit_retries:
-                response = requests.post(self.base_url, headers=headers, json=payload, timeout=60)
+                response = self.session.post(self.base_url, headers=headers, json=payload, timeout=60)
 
                 # Handle 429 rate limiting specifically
                 if response.status_code == 429:
@@ -572,6 +578,13 @@ Use this history to maintain conversation continuity and remember what was discu
                         rag_context,
                         retry_count + 1,
                         bot_user_id=bot_user_id,
+                        user_id=user_id,
+                        username=username,
+                        max_tokens=max_tokens,
+                        personality=personality,
+                        tools=tools,
+                        images=images,
+                        base64_images=base64_images,
                     )
                 else:
                     logger.error("Failed after %d attempts", retry_count + 1)
@@ -591,6 +604,13 @@ Use this history to maintain conversation continuity and remember what was discu
                     rag_context,
                     retry_count + 1,
                     bot_user_id=bot_user_id,
+                    user_id=user_id,
+                    username=username,
+                    max_tokens=max_tokens,
+                    personality=personality,
+                    tools=tools,
+                    images=images,
+                    base64_images=base64_images,
                 )
             return None
     
@@ -630,7 +650,7 @@ Be objective and base your analysis only on observable patterns."""
                 "temperature": 0.3
             }
             
-            response = requests.post(self.base_url, headers=headers, json=payload, timeout=60)
+            response = self.session.post(self.base_url, headers=headers, json=payload, timeout=60)
             response.raise_for_status()
             
             result = response.json()
@@ -727,7 +747,7 @@ If no questions, respond with: NONE"""
                     "temperature": 0.1
                 }
                 
-                response = requests.post(self.base_url, headers=headers, json=payload, timeout=30)
+                response = self.session.post(self.base_url, headers=headers, json=payload, timeout=30)
                 response.raise_for_status()
                 
                 result_text = response.json()['choices'][0]['message']['content'].strip()

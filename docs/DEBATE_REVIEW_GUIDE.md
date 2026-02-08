@@ -334,7 +334,7 @@ The transcript parser:
 
 ### Analysis Model
 
-The debate is analyzed using the same LLM (Claude 3.5 Sonnet) as live debates:
+The debate is analyzed using the same LLM (configured via MODEL_NAME) as live debates:
 - Evaluates argument quality and coherence
 - Identifies logical fallacies
 - Assesses strengths and weaknesses

@@ -5,6 +5,7 @@ Handles data subject rights per GDPR Articles 15, 17, 20, 21
 
 import json
 import io
+import time
 from datetime import datetime, timedelta
 from typing import Optional, Dict, List
 import psycopg2.extras
@@ -25,6 +26,8 @@ class GDPRPrivacyManager:
             database: Database instance
         """
         self.db = database
+        self._consent_cache = {}  # {user_id: {'status': result, 'expires': timestamp}}
+        self._consent_cache_ttl = 300  # 5 minutes
 
     def log_audit_action(self, user_id: int, action: str, details: str = None,
                         performed_by: int = None, success: bool = True, error: str = None):
@@ -127,6 +130,10 @@ class GDPRPrivacyManager:
                             WHERE user_id = %s
                         """, (user_id,))
 
+                # Invalidate consent cache
+                if user_id in self._consent_cache:
+                    del self._consent_cache[user_id]
+
                 action = 'consent_given' if consent_given else 'consent_withdrawn'
                 self.log_audit_action(user_id, action, f"Method: {consent_method}")
                 return True
@@ -164,23 +171,45 @@ class GDPRPrivacyManager:
         Returns:
             dict with `has_consent` and other metadata keys.
         """
+        # Check cache first
+        if user_id in self._consent_cache:
+            cached = self._consent_cache[user_id]
+            if time.monotonic() < cached['expires']:
+                return cached['status']
+            else:
+                del self._consent_cache[user_id]
+
         record = self.check_consent(user_id)
         if not record:
-            return {
+            result = {
                 'has_consent': False,
                 'extended_retention': False,
                 'consent_date': None,
                 'consent_version': None,
             }
+        else:
+            has_consent = bool(record.get('consent_given')) and not record.get('consent_withdrawn')
+            result = {
+                'has_consent': has_consent,
+                'consent_date': record.get('consent_date'),
+                'extended_retention': record.get('extended_retention', False),
+                'consent_version': record.get('consent_version'),
+                'consent_withdrawn': record.get('consent_withdrawn', False),
+            }
 
-        has_consent = bool(record.get('consent_given')) and not record.get('consent_withdrawn')
-        return {
-            'has_consent': has_consent,
-            'consent_date': record.get('consent_date'),
-            'extended_retention': record.get('extended_retention', False),
-            'consent_version': record.get('consent_version'),
-            'consent_withdrawn': record.get('consent_withdrawn', False),
+        # Cache the result
+        self._consent_cache[user_id] = {
+            'status': result,
+            'expires': time.monotonic() + self._consent_cache_ttl
         }
+        return result
+
+    def _cleanup_consent_cache(self):
+        """Remove expired consent cache entries"""
+        now = time.monotonic()
+        expired = [k for k, v in self._consent_cache.items() if now >= v['expires']]
+        for k in expired:
+            del self._consent_cache[k]
 
     def export_user_data(self, user_id: int) -> Optional[Dict]:
         """
@@ -459,6 +488,10 @@ class GDPRPrivacyManager:
                             VALUES (%s, %s, 'completed', NOW(), 'User requested deletion (GDPR Art. 17)')
                         """, (user_id, f'User_{user_id}'))
 
+                    # Invalidate consent cache
+                    if user_id in self._consent_cache:
+                        del self._consent_cache[user_id]
+
                     print(f"🗑️ User {user_id} data {'anonymized' if anonymize_only else 'deleted'}")
 
             self.log_audit_action(user_id, 'data_deletion_completed',
@@ -535,6 +568,10 @@ class GDPRPrivacyManager:
                         WHERE user_id = %s
                     """, (user_id,))
 
+                    # Invalidate consent cache
+                    if user_id in self._consent_cache:
+                        del self._consent_cache[user_id]
+
                     self.log_audit_action(user_id, 'data_deletion_scheduled',
                                         f"Scheduled for {scheduled_date.isoformat()}")
 
@@ -575,6 +612,10 @@ class GDPRPrivacyManager:
                                 data_processing_allowed = TRUE
                             WHERE user_id = %s
                         """, (user_id,))
+
+                        # Invalidate consent cache
+                        if user_id in self._consent_cache:
+                            del self._consent_cache[user_id]
 
                         self.log_audit_action(user_id, 'data_deletion_cancelled',
                                             'User cancelled scheduled deletion')

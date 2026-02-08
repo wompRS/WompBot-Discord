@@ -15,7 +15,7 @@ The Fact-Check feature allows users to quickly fact-check any message by reactin
 
 ### Technologies
 - Tavily API - Web search (7 sources for cross-reference)
-- OpenRouter LLM (Claude 3.5 Sonnet) - High-accuracy claim analysis
+- OpenRouter LLM (the configured fact-check model, set via FACT_CHECK_MODEL env var, recommended: deepseek/deepseek-chat) - High-accuracy claim analysis
 - Multi-source verification - Requires ≥2 sources to corroborate facts
 - Discord reactions - User trigger
 
@@ -135,7 +135,7 @@ Provide a structured fact-check with:
 REMINDER: Without at least 2 sources agreeing, verdict CANNOT be "True" or "False".
 ```
 
-**Model:** Claude 3.5 Sonnet (dedicated high-accuracy model for fact-checking)
+**Model:** The configured fact-check model (set via FACT_CHECK_MODEL env var, recommended: deepseek/deepseek-chat)
 **Temperature:** 0.1 (minimal hallucination risk)
 
 ---
@@ -182,7 +182,7 @@ def search(self, query: str, max_results: int = 7):
 fact_check_model = os.getenv('FACT_CHECK_MODEL', self.llm.model)
 
 payload = {
-    "model": fact_check_model,  # Claude 3.5 Sonnet by default
+    "model": fact_check_model,  # deepseek/deepseek-chat by default
     "messages": [...],
     "max_tokens": 700,      # Increased for source cross-referencing
     "temperature": 0.1      # Very low to prevent hallucination
@@ -234,34 +234,33 @@ sources_text = "\n".join([
 
 ### Per Fact-Check
 - **Tavily API**: 1 search (7 results) = 1 credit (~$0.001)
-- **Claude 3.5 Sonnet tokens**: ~2,500 input + 700 output tokens
-  - Input: 2,500 × $3/1M = $0.0075
-  - Output: 700 × $15/1M = $0.0105
-  - **LLM subtotal**: ~$0.018
-- **Total per fact-check**: ~$0.019 (~2 cents)
+- **LLM tokens** (deepseek/deepseek-chat): ~2,500 input + 700 output tokens
+  - Costs vary by configured model; see OpenRouter pricing
+  - **LLM subtotal**: model-dependent
+- **Total per fact-check**: ~$0.001-0.019 depending on model
 
 ### Monthly Estimate
 For 50 fact-checks per month (typical usage):
 - Tavily: $0.05
-- LLM (Claude 3.5 Sonnet): $0.90
-- **Total: ~$0.95/month**
+- LLM (varies by model): ~$0.05-0.90
+- **Total: ~$0.10-0.95/month**
 
 For 100 fact-checks per month:
 - Tavily: $0.10
-- LLM (Claude 3.5 Sonnet): $1.80
-- **Total: ~$1.90/month**
+- LLM (varies by model): ~$0.10-1.80
+- **Total: ~$0.20-1.90/month**
 
 ### Model Comparison
-**Claude 3.5 Sonnet** (current, high-accuracy):
+**DeepSeek Chat** (recommended, cost-effective):
+- Cost: very low per fact-check
+- Accuracy: Excellent
+- Speed: Fast (~2-4 seconds)
+
+**Alternative: anthropic/claude-3.5-sonnet** (premium via OpenRouter):
 - Cost: ~$0.018 per fact-check
 - Accuracy: Excellent (minimal hallucination)
 - Speed: Moderate (~3-5 seconds)
-
-**Alternative: Hermes-3 70B** (cheaper):
-- Cost: ~$0.0005 per fact-check
-- Accuracy: Good (some hallucination risk)
-- Speed: Fast (~2-3 seconds)
-- **36x cheaper** but less reliable
+- More expensive but highly reliable
 
 ### Free Tier
 - **Tavily**: 1,000 searches/month free (sufficient for most servers)

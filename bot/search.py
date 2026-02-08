@@ -22,6 +22,9 @@ class SearchEngine:
         if self.provider == 'tavily':
             self.tavily_client = TavilyClient(api_key=os.getenv('TAVILY_API_KEY'))
 
+        # Reusable HTTP session for connection pooling (avoids redundant TCP+TLS handshakes)
+        self.session = requests.Session()
+
         logger.info("Search provider: %s", self.provider.upper())
 
     def search(self, query, max_results=7):
@@ -45,7 +48,7 @@ class SearchEngine:
                 'num': min(max_results, 10)  # Google max is 10 per request
             }
 
-            response = requests.get(url, params=params, timeout=10)
+            response = self.session.get(url, params=params, timeout=10)
             response.raise_for_status()
             data = response.json()
 

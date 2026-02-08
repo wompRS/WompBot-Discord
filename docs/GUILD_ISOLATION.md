@@ -125,6 +125,8 @@ CREATE INDEX idx_messages_guild_timestamp ON messages(guild_id, timestamp);
 
 **Result**: Queries filtered by guild_id are extremely fast even with millions of messages.
 
+> **Note:** Additional composite indexes were added in `sql/12_missing_indexes.sql` covering channel+timestamp, user+timestamp, stats_cache lookups, and feature_rate_limits queries.
+
 ## Migration
 
 The guild isolation system was added via migration:

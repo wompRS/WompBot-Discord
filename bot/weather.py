@@ -29,6 +29,9 @@ class Weather:
         self.base_url = "http://api.openweathermap.org/data/2.5"
         self.geo_url = "http://api.openweathermap.org/geo/1.0"
 
+        # Reusable HTTP session for connection pooling (avoids redundant TCP+TLS handshakes)
+        self.session = requests.Session()
+
         # US state abbreviations for location normalization
         self.us_states = {
             'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA',
@@ -87,7 +90,7 @@ class Weather:
                 'limit': 1,
                 'appid': self.api_key
             }
-            response = requests.get(f"{self.geo_url}/reverse", params=params, timeout=5)
+            response = self.session.get(f"{self.geo_url}/reverse", params=params, timeout=5)
             if response.status_code == 200:
                 data = response.json()
                 if data and len(data) > 0:
@@ -117,7 +120,7 @@ class Weather:
                 'units': units
             }
 
-            response = requests.get(f"{self.base_url}/weather", params=params, timeout=10)
+            response = self.session.get(f"{self.base_url}/weather", params=params, timeout=10)
 
             if response.status_code == 404:
                 return {
@@ -260,7 +263,7 @@ class Weather:
                 'cnt': min(days * 8, 40)  # API returns 3-hour intervals
             }
 
-            response = requests.get(f"{self.base_url}/forecast", params=params, timeout=10)
+            response = self.session.get(f"{self.base_url}/forecast", params=params, timeout=10)
 
             if response.status_code == 404:
                 return {

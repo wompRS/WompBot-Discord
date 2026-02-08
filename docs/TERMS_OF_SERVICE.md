@@ -151,7 +151,7 @@ WompBot is NOT:
 ### 6.3 Fact-Checking Accuracy
 While WompBot uses:
 - Multi-source verification (requires ≥2 sources)
-- Claude 3.5 Sonnet for high-accuracy fact-checking
+- The configured LLM model via OpenRouter for high-accuracy fact-checking
 - Web search for current information
 - Anti-hallucination safeguards
 

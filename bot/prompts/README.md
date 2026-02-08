@@ -65,7 +65,7 @@ Your custom system_prompt.txt is gitignored, so your changes stay private.
 
 The system prompt includes documentation for:
 
-**20 LLM Tools:**
+**26 LLM Tools:**
 - Weather: `get_weather`, `get_weather_forecast`
 - Search: `web_search`, `wikipedia`, `define_word`, `url_preview`
 - Utility: `currency_convert`, `get_time`, `translate`, `random_choice`

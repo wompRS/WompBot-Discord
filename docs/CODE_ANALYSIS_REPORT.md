@@ -25,12 +25,14 @@
 ### HIGH PRIORITY
 
 #### Issue 1.1: N+1 Database Queries in Embedding Processing
+> **Status:** ⚠️ PARTIAL — Improvements planned but individual processing still used
 - **File:** `bot/rag.py`, lines 163-174
 - **Problem:** `process_embedding_queue()` processes items individually, resulting in N database queries for N items
 - **Impact:** Processing 50 messages = 50+ separate DB connections
 - **Fix:** Batch embedding storage using PostgreSQL's multi-row INSERT or `executemany()`
 
 #### Issue 1.2: Missing Composite Indexes on Guild-Scoped Queries
+> **Status:** ✅ FIXED — 11 composite indexes added in `sql/12_missing_indexes.sql`
 - **File:** `sql/init.sql`
 - **Problem:** Tables have `guild_id` columns but lack composite indexes on common query patterns
 - **Impact:** Queries filtering by (guild_id, user_id) scan through guild data inefficiently
@@ -54,6 +56,7 @@
 - **Fix:** Batch requests or limit to top 50 series
 
 #### Issue 1.5: Synchronous Print Statements
+> **Status:** ⚠️ PARTIAL — Most print() calls converted to logger, ~50 remain in database.py and tool_executor.py
 - **Files:** Multiple files throughout codebase
 - **Problem:** Using `print()` in async code can block event loop
 - **Fix:** Use `logger.info()` from logging_config module
@@ -65,6 +68,7 @@
 ### HIGH PRIORITY
 
 #### Issue 2.1: Bare Exception Handlers
+> **Status:** ✅ FIXED — All bare `except:` replaced with `except Exception:`
 - **File:** `bot/handlers/conversations.py`, lines 327-328, 395-396
 - **Problem:** `except: pass` silently discards errors
 - **Fix:** Catch specific exceptions or log: `except Exception as e: logger.warning(f"Error: {e}")`
@@ -75,6 +79,7 @@
 - **Fix:** Create centralized error handling in logging_config.py
 
 #### Issue 2.3: Global Mutable State
+> **Status:** ✅ FIXED — `asyncio.Lock` added to protect mutable state
 - **File:** `bot/handlers/conversations.py`, lines 45-46
 - **Problem:** Module-level dictionaries used for rate limiting state
 - **Fix:** Move to class-based RateLimiter singleton with asyncio.Lock protection
@@ -224,6 +229,7 @@
 ### MEDIUM PRIORITY
 
 #### Issue 7.1: No Transaction Isolation
+> **Status:** ✅ FIXED — Separate `get_connection()` (transactional) and `get_autocommit_connection()` (reads) methods
 - **File:** `bot/features/claims.py`, lines 113-177
 - **Problem:** Multi-step operations not wrapped in transactions
 - **Fix:** Use `BEGIN; ... COMMIT;` or `SELECT ... FOR UPDATE`

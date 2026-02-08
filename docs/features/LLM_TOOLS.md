@@ -48,6 +48,9 @@ The LLM decides when to use tools based on your question.
 | `youtube_search` | Search for YouTube videos | "Find videos about cooking pasta" |
 | `movie_info` | Movie/TV show info and ratings | "What's the rating for Inception?" |
 | `stock_price` | Stock or crypto prices | "What's the price of Microsoft?", "Bitcoin price" |
+| `stock_history` | Historical stock price charts | "Show me AAPL stock over the last year" |
+| `sports_scores` | Live sports scores and schedules | "What's the score of the Lakers game?" |
+| `image_search` | Search for images on the web | "Find me a picture of a golden retriever" |
 
 ### Utility
 

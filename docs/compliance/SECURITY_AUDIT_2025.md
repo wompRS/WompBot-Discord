@@ -131,6 +131,8 @@ A comprehensive security audit was conducted on the WompBot Discord bot applicat
 ### CWE-89: SQL Injection
 ✅ **SECURE** - All queries use parameterized statements
 
+**Remediation Status (Feb 2026):** Confirmed all queries remain parameterized. Additional review performed; no regressions found.
+
 **Evidence:**
 ```python
 # All SQL queries follow this pattern:
@@ -464,6 +466,8 @@ except Exception as e:
     print(f"Operation failed")  # Generic message
     logging.error(f"Details: {e}")  # Detailed logging
 ```
+
+**Remediation Status (Feb 2026):** Bare `except:` clauses (without explicit exception types) have been fixed throughout the codebase to use `except Exception as e:` or more specific exception types. Autocommit issues in database connections have been resolved; connections now use proper transaction management with explicit commit/rollback.
 
 5. **Input Validation:**
 ```python

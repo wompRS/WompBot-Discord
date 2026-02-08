@@ -1,13 +1,13 @@
 # `/iracing_link` - Link iRacing Account
 
-**Usage:** `/iracing_link <customer_id>`
+**Usage:** `/iracing_link <iracing_id_or_name>`
 
 ## Description
-Links your Discord account to your iRacing customer ID, enabling access to iRacing statistics and leaderboards.
+Links your Discord account to your iRacing profile by customer ID or display name, enabling access to iRacing statistics and leaderboards.
 
 ## Why Link Your Account?
-- View your iRacing stats directly in Discord (`/iracing_stats`)
-- Appear on server iRacing leaderboards (`/iracing_leaderboard`)
+- View your iRacing stats directly in Discord (`/iracing_profile`)
+- Appear on server iRacing leaderboards (`/iracing_server_leaderboard`)
 - Track your progress over time
 - Compare stats with other server members
 - Automatic updates of your latest race data
@@ -21,7 +21,7 @@ Links your Discord account to your iRacing customer ID, enabling access to iRaci
 ## Examples
 ```
 /iracing_link 12345
-/iracing_link 678901
+/iracing_link "Dale Earnhardt Jr"
 ```
 
 ## Privacy & Data
@@ -32,8 +32,10 @@ Links your Discord account to your iRacing customer ID, enabling access to iRaci
 - Subject to opt-out: `/wompbot_optout` stops all data collection
 
 ## Related Commands
-- `/iracing_stats [@user]` - View iRacing statistics
-- `/iracing_leaderboard` - Server iRacing leaderboard
+- `/iracing_profile [name]` - View iRacing driver profile
+- `/iracing_server_leaderboard [category]` - Server iRacing rankings
+- `/iracing_compare_drivers <driver1> <driver2>` - Compare two drivers
+- `/iracing_history` - View iRating progression over time
 - `/iracing_team_create` - Create/manage iRacing teams
 - `/my_privacy_status` - Check your data collection status
 

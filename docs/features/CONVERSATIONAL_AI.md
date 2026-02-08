@@ -4,11 +4,11 @@ Context-aware conversations with multiple personality modes and intelligent memo
 
 ## Overview
 
-WompBot uses a dual-model architecture via OpenRouter:
-- **General Chat**: Claude 3.7 Sonnet for fast, high-quality conversational responses
-- **Fact-Checking**: Claude 3.5 Sonnet for maximum accuracy with minimal hallucination
+WompBot uses configurable models via OpenRouter:
+- **General Chat**: Configurable via `MODEL_NAME` env var (recommended: `deepseek/deepseek-chat`)
+- **Fact-Checking**: Configurable via `FACT_CHECK_MODEL` env var (recommended: `deepseek/deepseek-chat`)
 
-The bot engages in natural conversations with customizable personalities, automatically switching to the high-accuracy model when verifying factual claims.
+The bot engages in natural conversations with customizable personalities, using the configured model for all interactions.
 
 ### Key Features
 
@@ -172,7 +172,7 @@ When triggered, the bot gathers multiple sources of context:
 1. Clean mention text from user message
 2. Build context from conversation, RAG, user profile, and search
 3. Select appropriate system prompt based on personality
-4. Send to Claude 3.7 Sonnet via OpenRouter
+4. Send to configured model via OpenRouter
 5. Parse response and handle tool calls if present
 6. Split if response exceeds 2000 characters
 7. Send to Discord
@@ -248,20 +248,20 @@ MIN_MESSAGES_TO_COMPRESS=8
 
 File: .env
 
-**Dual-Model Configuration:**
+**Model Configuration:**
 ```bash
-# General chat - fast, conversational, high quality
-MODEL_NAME=anthropic/claude-3.7-sonnet
+# General chat - cost-effective and high quality
+MODEL_NAME=deepseek/deepseek-chat
 
-# Fact-checking - slower, more accurate, prevents hallucination
-FACT_CHECK_MODEL=anthropic/claude-3.5-sonnet
+# Fact-checking - can use same or different model
+FACT_CHECK_MODEL=deepseek/deepseek-chat
 ```
 
-**Why two models?**
+**Why configurable models?**
+- Choose the best quality/cost ratio for your usage
 - General chat needs speed and conversational ability
-- Fact-checking needs maximum accuracy and zero hallucination
-- Cost optimized: expensive model only used when emoji triggered
-- Best of both worlds for quality and efficiency
+- Fact-checking benefits from maximum accuracy
+- All models available via OpenRouter — switch anytime
 
 **Alternative models via OpenRouter:**
 ```bash
@@ -314,19 +314,19 @@ See [bot/prompts/README.md](../../bot/prompts/README.md) for detailed customizat
 
 ### Per Conversation
 
-**General chat (Claude 3.7 Sonnet):**
+**General chat (configured model):**
 - Tokens: 500-1000 (varies by context and compression)
-- Cost: approximately $0.015-0.03 per response
+- Cost: varies by model (DeepSeek is very cost-effective at ~$0.001-0.005 per response)
 - Time: 1-3 seconds
 
-**With search (Claude 3.7 Sonnet):**
+**With search (configured model):**
 - Tokens: 800-1500
 - Search cost: approximately $0.001 (Tavily, free tier up to 1,000/month)
-- LLM cost: approximately $0.02-0.04
-- Total: approximately $0.02-0.04
+- LLM cost: varies by model
+- Total: approximately $0.002-0.01 with DeepSeek
 - Time: 3-8 seconds
 
-**Fact-check (Claude 3.5 Sonnet):**
+**Fact-check (configured fact-check model):**
 - Tokens: approximately 2,500 input + 700 output
 - Cost: approximately $0.018 per fact-check
 - Time: 4-8 seconds
@@ -457,17 +457,44 @@ If bot is slow to respond:
 - Guild isolation ensures server data separation
 - GDPR-compliant with opt-out, export, and deletion commands
 
+## Performance Architecture
+
+WompBot includes several performance optimizations for responsive conversations under load:
+
+**HTTP Connection Pooling:**
+- All HTTP clients (LLM, search, weather, Wolfram, tools) use `requests.Session()` for connection reuse
+- Eliminates redundant TCP+TLS handshakes, saving 200-400ms per API call
+
+**Concurrent Channel Processing:**
+- Each channel allows up to 3 simultaneous requests via `asyncio.Semaphore(3)`
+- Prevents response mixing while allowing parallel processing
+- 10-second timeout before queuing — users see a clear "channel busy" message if all slots taken
+
+**Parallel Tool Execution:**
+- When the LLM requests multiple tools (e.g., web_search + weather + wolfram), they execute concurrently via `asyncio.gather()`
+- Reduces multi-tool latency by 50-70% (e.g., 3 tools at 5s each: 15s serial → ~5s parallel)
+
+**GDPR Consent Caching:**
+- Consent status cached in memory with 5-minute TTL
+- Eliminates a database query on every incoming message
+
+**Thread and Connection Pools:**
+- Thread pool: 100 workers (up from default ~40) to handle concurrent LLM calls
+- Database pool: 25 max connections (up from 10) for sustained throughput
+
+**Duplicate Call Elimination:**
+- `should_search()` result cached from initial check and reused later in the pipeline
+- Second `get_recent_messages()` call replaced with a slice of already-fetched data
+
 ## Future Enhancements
 
 Potential improvements being considered:
 
 - Per-user personality preferences
 - Voice channel integration for audio responses
-- Image understanding and analysis
 - Proactive responses to server events
 - Custom personality creation interface
-- Conversation memory improvements
-- Multi-modal responses (text + images)
+- Further conversation memory improvements
 
 ## API Reference
 
@@ -481,16 +508,17 @@ llm.generate_response(
     user_message="What is Bitcoin?",
     conversation_history=[...],     # Recent messages
     user_context={...},              # User profile/behavior
-    context_for_llm="...",           # Additional context
-    rag_context={...},               # RAG-retrieved context
     search_results="...",            # Web search results (optional)
+    rag_context={...},               # RAG-retrieved context
     retry_count=0,                   # Retry attempt number
     bot_user_id=123,                 # Bot's Discord ID
-    mentioned_user_id=456,           # ID of mentioned user
-    mentioned_user_name="User",      # Name of mentioned user
+    user_id=456,                     # Requesting user's Discord ID
+    username="User",                 # Requesting user's name
     max_tokens=1000,                 # Max tokens to generate
     personality='default',           # Personality mode
-    tools=[...]                      # Available tool definitions
+    tools=[...],                     # Available tool definitions
+    images=[...],                    # Image URLs for vision model
+    base64_images=[...]              # Base64-encoded images
 )
 ```
 
