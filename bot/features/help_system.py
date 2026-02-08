@@ -565,19 +565,7 @@ class HelpSystem:
                 "examples": [
                     "/weather_clear - Remove saved location"
                 ],
-                "related": ["weather_set", "weather_info"]
-            },
-            "weather_info": {
-                "usage": "/weather_info",
-                "description": "View your saved weather preferences",
-                "details": [
-                    "Shows your default location and units",
-                    "Confirms your weather settings"
-                ],
-                "examples": [
-                    "/weather_info - View saved preferences"
-                ],
-                "related": ["weather_set", "weather_clear"]
+                "related": ["weather_set"]
             },
             # iRacing Commands
             "iracing_link": {
@@ -1051,8 +1039,7 @@ class HelpSystem:
             value=(
                 "Say: 'wompbot weather' or 'wompbot forecast'\n"
                 "`/weather_set` - Set default location\n"
-                "`/weather_clear` - Clear saved location\n"
-                "`/weather_info` - View saved location"
+                "`/weather_clear` - Clear saved location"
             ),
             inline=False
         )
@@ -1380,7 +1367,6 @@ class HelpSystem:
                 ("bug", "Report a bug"),
                 ("bugs", "List tracked bugs"),
                 ("bug_resolve", "Resolve a bug"),
-                ("bug_note", "Add note to bug"),
             ],
             "prefix_commands": [
                 ("!analyze [days]", "Run behavior analysis"),

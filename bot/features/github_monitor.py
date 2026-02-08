@@ -250,7 +250,8 @@ class GitHubMonitor:
         for watch in watches:
             try:
                 # Cache check
-                cache_key = f"gh:{hashlib.sha256(f'{watch["repo_full_name"]}:{watch["watch_type"]}'.encode()).hexdigest()[:16]}"
+                repo_key = f'{watch["repo_full_name"]}:{watch["watch_type"]}'
+                cache_key = f"gh:{hashlib.sha256(repo_key.encode()).hexdigest()[:16]}"
                 if self.cache and self.cache.get(cache_key):
                     continue
 

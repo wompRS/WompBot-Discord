@@ -115,8 +115,9 @@ class DevilsAdvocate:
 
         # Build conversation context (keep last 6 exchanges to stay within context)
         recent_history = session['history'][-12:]  # 6 exchanges = 12 messages
+        da_label = "Devil's Advocate"
         history_text = "\n".join(
-            f"{'User' if h['role'] == 'user' else 'Devil\\'s Advocate'}: {h['content']}"
+            f"{'User' if h['role'] == 'user' else da_label}: {h['content']}"
             for h in recent_history[:-1]  # Exclude the latest user message
         )
 

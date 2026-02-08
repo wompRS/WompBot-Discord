@@ -4491,28 +4491,6 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                 ephemeral=True
             )
 
-    @bot.tree.command(name="weather_info", description="View your saved weather location")
-    async def weather_info(ctx: discord.Interaction):
-        """View your current default weather location setting"""
-        user_id = ctx.user.id
-
-        pref = db.get_weather_preference(user_id)
-
-        if pref:
-            unit_name = "Celsius (°C)" if pref['units'] == 'metric' else "Fahrenheit (°F)"
-            await ctx.response.send_message(
-                f"📍 Your default weather location: **{pref['location']}**\n"
-                f"🌡️ Units: **{unit_name}**\n\n"
-                f"Say `wompbot, weather` to get weather for this location!",
-                ephemeral=True
-            )
-        else:
-            await ctx.response.send_message(
-                "ℹ️ You haven't set a default weather location yet.\n\n"
-                "Use `/weather_set` to set one!",
-                ephemeral=True
-            )
-
     # =============== TRIVIA COMMANDS ===============
 
     @bot.tree.command(name="trivia_start", description="Start a trivia session")
@@ -4876,35 +4854,6 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
             )
         else:
             await interaction.response.send_message(f"❌ Failed to resolve bug #{bug_id}", ephemeral=True)
-
-    @bot.tree.command(name="bug_note", description="Add a note to a bug (Admin only)")
-    @app_commands.describe(
-        bug_id="Bug ID to add note to",
-        note="Note to add"
-    )
-    async def bug_note_cmd(interaction: discord.Interaction, bug_id: int, note: str):
-        """Add a note to a bug"""
-        if not is_bot_admin_interaction(db, interaction):
-            await interaction.response.send_message(
-                "Only bot admins can add bug notes.",
-                ephemeral=True
-            )
-            return
-
-        bug = get_bug(bug_id)
-        if not bug:
-            await interaction.response.send_message(f"❌ Bug #{bug_id} not found.", ephemeral=True)
-            return
-
-        success = add_note(bug_id, note, str(interaction.user))
-
-        if success:
-            await interaction.response.send_message(
-                f"📝 **Note added to Bug #{bug_id}**\n\n"
-                f"*{note}*"
-            )
-        else:
-            await interaction.response.send_message(f"❌ Failed to add note to bug #{bug_id}", ephemeral=True)
 
     print("✅ Bug tracking commands registered")
 
@@ -5575,7 +5524,7 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                         "1️⃣ Use `/jeopardy_pick [category] [value]` to select a clue\n"
                         "2️⃣ Type your answer in chat (e.g. \"What is Python?\")\n"
                         "3️⃣ Correct = earn points, Wrong = lose points!\n"
-                        "4️⃣ `/jeopardy_pass` to skip, `/jeopardy_board` to see the board"
+                        "4️⃣ `/jeopardy_pass` to skip a clue"
                     ),
                     inline=False
                 )
@@ -5648,51 +5597,6 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                     msg += f"\n📋 {result['clues_remaining']} clues remaining. Use `/jeopardy_pick` to continue!"
 
                 await interaction.response.send_message(msg)
-
-            except Exception as e:
-                await interaction.response.send_message(f"❌ Error: {str(e)}", ephemeral=True)
-
-        @bot.tree.command(name="jeopardy_board", description="Show the current Jeopardy board")
-        async def jeopardy_board(interaction: discord.Interaction):
-            """Display the current game board"""
-            try:
-                board_data = jeopardy.get_board_display(interaction.channel_id)
-                if not board_data:
-                    await interaction.response.send_message(
-                        "No active Jeopardy game!", ephemeral=True
-                    )
-                    return
-
-                embed = discord.Embed(
-                    title="🎯 JEOPARDY! Board",
-                    color=discord.Color.blue()
-                )
-
-                for cat in board_data['categories']:
-                    values_display = []
-                    for clue in cat['clues']:
-                        if clue['revealed']:
-                            values_display.append(f"~~${clue['value']}~~")
-                        else:
-                            values_display.append(f"**${clue['value']}**")
-                    embed.add_field(
-                        name=f"📌 {cat['name']}",
-                        value=" | ".join(values_display),
-                        inline=False
-                    )
-
-                # Show scores
-                scores = board_data.get('scores', [])
-                if scores:
-                    score_text = "\n".join(
-                        f"**{s['username']}**: ${s['score']}" for s in scores
-                    )
-                    embed.add_field(name="💰 Scores", value=score_text, inline=False)
-
-                status = "Waiting for clue selection" if board_data['status'] == 'board' else f"Answering: {board_data.get('current_clue', 'Unknown')}"
-                embed.set_footer(text=f"{board_data['clues_remaining']} clues remaining • {status}")
-
-                await interaction.response.send_message(embed=embed)
 
             except Exception as e:
                 await interaction.response.send_message(f"❌ Error: {str(e)}", ephemeral=True)
