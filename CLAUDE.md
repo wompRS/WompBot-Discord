@@ -336,6 +336,15 @@ docker compose restart bot       # Restart bot only
 - Batch upserted via `db.batch_upsert_topic_expertise()` using `psycopg2.extras.execute_values`
 - Migration: `sql/16_new_features.sql`
 
+### Server Health Dashboard (/dashboard)
+- `/dashboard [days]` — Server-wide analytics with Plotly charts (default 7 days, max 90)
+- `features/dashboard.py` — `ServerDashboard(db, chat_stats)` class
+- Generates 3 Plotly charts: activity trend (line), top messagers (bar), topics (pie)
+- Summary embed with: total messages, unique users, avg length, peak hour/day, claims/debates/fact-checks
+- Uses `chat_stats` methods: `calculate_primetime()`, `calculate_engagement()`, `extract_topics_tfidf()`
+- Results cached via `stats_cache` table for 2 hours
+- Queries claims, hot_takes, debates, fact_checks tables for community activity counts
+
 ### Personal Analytics (/mystats)
 - `/mystats [@user] [days]` — Unified personal analytics PIL card (teal/emerald theme)
 - Aggregates data from: messages, message_interactions, claims, hot_takes, debates, trivia_stats, user_topic_expertise

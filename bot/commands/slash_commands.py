@@ -18,7 +18,7 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                             debate_scorekeeper, yearly_wrapped, qotd, iracing,
                             iracing_viz, iracing_team_manager, help_system,
                             wompie_user_id, series_autocomplete_cache, trivia,
-                            rag=None):
+                            rag=None, dashboard=None):
     """
     Register all slash commands with the bot.
 
@@ -4967,6 +4967,128 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                 await interaction.response.send_message(f"❌ Error: {str(e)}", ephemeral=True)
 
         print("✅ Memory/facts commands registered")
+
+    # ===== Server Dashboard =====
+    if dashboard:
+        @bot.tree.command(name="dashboard", description="View server health dashboard with charts")
+        @app_commands.describe(days="Time period in days (default: 7, max: 90)")
+        async def dashboard_slash(interaction: discord.Interaction, days: int = 7):
+            """Generate server-wide analytics dashboard"""
+            await interaction.response.defer()
+
+            try:
+                days = min(max(days, 1), 90)
+                data = await dashboard.generate_dashboard(interaction.guild_id, days)
+
+                if not data:
+                    await interaction.followup.send(
+                        "📊 Not enough data to generate a dashboard. "
+                        "The bot needs some message history first!"
+                    )
+                    return
+
+                from plotly_charts import PlotlyCharts
+                charts = PlotlyCharts()
+                files = []
+
+                # Chart 1: Activity trend (line chart)
+                trend = data.get('activity_trend', {})
+                if trend.get('values') and sum(trend['values']) > 0:
+                    line_buf = charts.create_line_chart(
+                        data={'Messages': trend['values']},
+                        title=f"Message Activity (Last {days} Days)",
+                        xlabel="Date",
+                        ylabel="Messages",
+                        x_labels=trend.get('labels')
+                    )
+                    files.append(discord.File(fp=line_buf, filename="activity_trend.png"))
+
+                # Chart 2: Top users (horizontal bar)
+                top_users = data.get('top_users', {})
+                if top_users:
+                    # Take top 10 and reverse for horizontal bar readability
+                    bar_buf = charts.create_bar_chart(
+                        data=dict(list(top_users.items())[:10]),
+                        title=f"Top Messagers (Last {days} Days)",
+                        xlabel="Messages",
+                        horizontal=True
+                    )
+                    files.append(discord.File(fp=bar_buf, filename="top_users.png"))
+
+                # Chart 3: Top topics (pie chart)
+                topics = data.get('topics', {})
+                if topics and len(topics) >= 2:
+                    pie_buf = charts.create_pie_chart(
+                        data=dict(list(topics.items())[:8]),
+                        title=f"Discussion Topics (Last {days} Days)"
+                    )
+                    files.append(discord.File(fp=pie_buf, filename="topics.png"))
+
+                # Summary embed
+                engagement = data.get('engagement', {})
+                primetime = data.get('primetime', {})
+                cd_stats = data.get('claim_debate_stats', {})
+
+                embed = discord.Embed(
+                    title=f"📊 Server Dashboard — Last {days} Days",
+                    color=discord.Color.teal()
+                )
+
+                # Activity summary
+                total_msgs = data.get('total_messages', 0)
+                unique_users = engagement.get('unique_users', 0)
+                avg_len = engagement.get('avg_message_length', 0)
+                embed.add_field(
+                    name="📈 Activity",
+                    value=(
+                        f"**{total_msgs:,}** messages\n"
+                        f"**{unique_users}** active users\n"
+                        f"Avg length: **{avg_len:.0f}** chars"
+                    ),
+                    inline=True
+                )
+
+                # Peak times
+                peak_hour = primetime.get('peak_hour', '?')
+                peak_day_num = primetime.get('peak_day')
+                day_names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+                peak_day = day_names[peak_day_num] if peak_day_num is not None and 0 <= peak_day_num <= 6 else '?'
+                embed.add_field(
+                    name="⏰ Peak Times",
+                    value=(
+                        f"Hour: **{peak_hour}:00**\n"
+                        f"Day: **{peak_day}**"
+                    ),
+                    inline=True
+                )
+
+                # Community activity
+                claims = cd_stats.get('claims', 0)
+                debates = cd_stats.get('debates', 0)
+                fact_checks = cd_stats.get('fact_checks', 0)
+                if claims > 0 or debates > 0 or fact_checks > 0:
+                    embed.add_field(
+                        name="🎯 Community",
+                        value=(
+                            f"Claims: **{claims}**\n"
+                            f"Debates: **{debates}**\n"
+                            f"Fact checks: **{fact_checks}**"
+                        ),
+                        inline=True
+                    )
+
+                if files:
+                    await interaction.followup.send(embed=embed, files=files)
+                else:
+                    await interaction.followup.send(embed=embed)
+
+            except Exception as e:
+                await interaction.followup.send(f"❌ Error generating dashboard: {str(e)}")
+                print(f"❌ Dashboard error: {e}")
+                import traceback
+                traceback.print_exc()
+
+        print("✅ Dashboard commands registered")
 
     # ===== Personal Analytics =====
     @bot.tree.command(name="mystats", description="View your personal analytics profile card")

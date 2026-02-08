@@ -106,6 +106,10 @@ debate_scorekeeper = DebateScorekeeper(db, llm, search)
 trivia = TriviaSystem(db, llm)
 logger.info("Trivia system loaded")
 
+from features.dashboard import ServerDashboard
+dashboard = ServerDashboard(db, chat_stats)
+logger.info("Server dashboard loaded")
+
 # GDPR Privacy Compliance (mandatory per EU regulations)
 from features.gdpr_privacy import GDPRPrivacyManager
 privacy_manager = GDPRPrivacyManager(db)
@@ -243,7 +247,8 @@ register_slash_commands(
     wompie_user_id=WOMPIE_USER_ID,
     series_autocomplete_cache=series_autocomplete_cache,
     trivia=trivia,
-    rag=rag
+    rag=rag,
+    dashboard=dashboard
 )
 
 logger.info("All modules registered successfully!")
