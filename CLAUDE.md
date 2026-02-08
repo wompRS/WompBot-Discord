@@ -74,13 +74,13 @@ Discord message → on_message (events.py) → handle_bot_mention (conversations
 - `team_menu.py` — Team menu with pagination for lists > 25 items
 
 ### Commands
-- `bot/commands/slash_commands.py` — Slash commands: stats, wrapped, debate_start, trivia_start, dashboard, flow, poll, mystats, iRacing, GDPR, set_timezone, help (~3700 lines, ~24 commands)
-- `bot/commands/prefix_commands.py` — Prefix command router, imports sub-modules (~55 prefix commands total)
-- `bot/commands/prefix_utils.py` — Utility prefix commands: !whoami, !personality, !myfacts, !forget, !bug, !bugs, !bugfix, !remind, !reminders, !cancelremind, !event, !events, !cancelevent, !qotd, !schedule, !scheduled, !cancelschedule, !weatherset, !weatherclear
-- `bot/commands/prefix_admin.py` — Admin prefix commands: !setadmin, !removeadmin, !admins, !feedadd, !feedremove, !feeds, !ghwatch, !ghunwatch, !ghwatches, !wladd, !wlremove, !watchlist
-- `bot/commands/prefix_features.py` — Feature prefix commands: !receipts, !quotes, !verify, !hottakes, !myht, !vindicate, !pollresults, !pollclose, debate commands (!debate_end, !debate_stats, !debate_lb, !debate_review, !debate_profile)
-- `bot/commands/prefix_games.py` — Game prefix commands: !triviastop, !triviastats, !trivialeaderboard, !whosaidit, !wsisskip, !wsisend, !da, !daend, !jeopardy, !jpick, !jpass, !jend
-- `bot/commands/prefix_monitoring.py` — Monitoring prefix commands (shared with prefix_admin.py)
+- `bot/commands/slash_commands.py` — Slash commands: help, stats (4), wrapped, debate_start, trivia_start, dashboard, flow, poll, mystats, iRacing (13 incl. history) (~3700 lines, 24 commands)
+- `bot/commands/prefix_commands.py` — Prefix command router + built-in commands (search, stock, weather, convert, define, etc.), imports sub-modules for migrated commands
+- `bot/commands/prefix_utils.py` — Shared helpers: `is_bot_admin_ctx()`, `parse_choice()` — used by all prefix sub-modules
+- `bot/commands/prefix_admin.py` — Admin prefix commands: !whoami, !setadmin, !removeadmin, !admins, !personality, !bug, !bugs, !bugfix (8 commands)
+- `bot/commands/prefix_features.py` — Feature prefix commands: !receipts/!claims, !quotes, !verify, !hottakes/!ht, !myht, !vindicate, !remind, !reminders, !cancelremind, !event, !events, !cancelevent, !myfacts, !forget, !qotd, !weatherset, !weatherclear, !schedule, !scheduled, !cancelschedule (20 commands)
+- `bot/commands/prefix_games.py` — Game/debate prefix commands: !debate_end/!de, !debate_stats/!ds, !debate_lb/!dlb, !debate_review/!dr, !debate_profile/!dp, !triviastop, !triviastats, !trivialeaderboard/!tlb, !pollresults, !pollclose, !whosaidit, !wsisskip, !wsisend, !da, !daend, !jeopardy, !jpick, !jpass, !jend (19 commands)
+- `bot/commands/prefix_monitoring.py` — Monitoring prefix commands: !feedadd, !feedremove, !feeds, !ghwatch, !ghunwatch, !ghwatches, !wladd, !wlremove, !watchlist/!wl (9 commands)
 
 ### Prompts (gitignored - live config only)
 - `bot/prompts/system_prompt.txt` — Default personality (has chart guardrails)
@@ -182,7 +182,7 @@ Migrations:
 15. **SQL injection prevention** — DataRetriever INTERVAL queries use parameterized `INTERVAL '1 day' * %s` pattern.
 16. **Prompt injection defense** — Debate transcripts wrapped in XML tags to prevent prompt injection.
 17. **Session persistence** — Trivia and debate sessions persist to database tables, surviving bot restarts.
-18. **Guild timezone support** — `/set_timezone` slash command stores timezone per guild; reminders and events use guild timezone via `zoneinfo`.
+18. **Guild timezone support** — Guild timezone stored in `guild_config` table; reminders and events use guild timezone via `zoneinfo`.
 19. **Dual chart engine** — Primary: Plotly + Kaleido (premium charts, requires chromium). Fallback: matplotlib (if Plotly fails). Weather card stays PIL-based. Configured in `conversations.py` `get_visualizer()`.
 20. **Shared card primitives** — `card_base.py` provides composable PIL drawing utilities (rounded rects, progress bars, glow effects, gradients, fonts). Feature-specific cards import from here rather than duplicating code.
 
@@ -248,7 +248,7 @@ docker compose restart bot       # Restart bot only
 - Simplified `gdpr_privacy.py` (removed breach logging, policy versioning methods)
 
 ### New Features
-- Guild-level timezone support: `/set_timezone` slash command, `guild_config` table, reminders/events use guild timezone via `zoneinfo`
+- Guild-level timezone support: `guild_config` table, reminders/events use guild timezone via `zoneinfo`
 - Trivia and debate sessions persist to database (survive bot restarts) via `active_trivia_sessions` and `active_debates` tables
 - Better error messages for reminders (past time, unparseable) and events (invalid dates like "Feb 30")
 - Colorblind-friendly viz palette (Okabe-Ito, enabled via `VIZ_COLORBLIND_MODE=true` env var)
@@ -462,18 +462,18 @@ docker compose restart bot       # Restart bot only
 
 ## Slash-to-Prefix Command Migration
 
-Migrated ~55 commands from Discord slash commands (/) to prefix commands (!) to stay under Discord's 100 slash command limit and improve response times. Commands that benefit from Discord's built-in UI (modals, autocomplete, buttons) remain as slash commands (~24 total).
+Migrated ~55 commands from Discord slash commands (/) to prefix commands (!) to stay under Discord's 100 slash command limit and improve response times. Commands that benefit from Discord's built-in UI (modals, autocomplete, buttons) remain as slash commands (43 total: 24 in slash_commands.py + 12 team + 4 event + 3 GDPR).
 
 ### What Stayed as Slash Commands
-`/help`, `/stats_server`, `/stats_topics`, `/stats_primetime`, `/stats_engagement`, `/wrapped`, `/debate_start`, `/trivia_start`, `/dashboard`, `/flow`, `/poll`, `/mystats`, all `/iracing_*` commands, `/wompbot_optout`, `/download_my_data`, `/delete_my_data`, `/set_timezone`
+`/help`, `/stats_server`, `/stats_topics`, `/stats_primetime`, `/stats_engagement`, `/wrapped`, `/debate_start`, `/trivia_start`, `/dashboard`, `/flow`, `/poll`, `/mystats`, all `/iracing_*` commands (13 incl. history + 12 team + 4 event), `/wompbot_optout`, `/download_my_data`, `/delete_my_data`
 
 ### Prefix Command Structure
-- `prefix_commands.py` — Router that imports and dispatches to sub-modules
-- `prefix_utils.py` — Utility commands (reminders, events, scheduling, weather, bugs, personality, facts)
-- `prefix_admin.py` — Admin-only commands (server admins, RSS feeds, GitHub watches, watchlists)
-- `prefix_features.py` — Feature commands (claims, quotes, hot takes, polls, debates)
-- `prefix_games.py` — Game commands (trivia, who said it, devil's advocate, jeopardy)
-- `prefix_monitoring.py` — Monitoring commands (shared with prefix_admin.py)
+- `prefix_commands.py` — Router + built-in commands (search, stock, weather, convert, define, etc.), imports and calls sub-module registration functions
+- `prefix_utils.py` — Shared helpers (`is_bot_admin_ctx`, `parse_choice`) used by all sub-modules
+- `prefix_admin.py` — Admin/config commands: whoami, setadmin, removeadmin, admins, personality, bug, bugs, bugfix
+- `prefix_features.py` — Feature commands: receipts, quotes, verify, hottakes, myht, vindicate, remind, reminders, cancelremind, event, events, cancelevent, myfacts, forget, qotd, weatherset, weatherclear, schedule, scheduled, cancelschedule
+- `prefix_games.py` — Game/debate commands: debate_end, debate_stats, debate_lb, debate_review, debate_profile, triviastop, triviastats, trivialeaderboard, pollresults, pollclose, whosaidit, wsisskip, wsisend, da, daend, jeopardy, jpick, jpass, jend
+- `prefix_monitoring.py` — Monitoring commands: feedadd, feedremove, feeds, ghwatch, ghunwatch, ghwatches, wladd, wlremove, watchlist
 
 ### Key Command Mappings
 | Old Slash | New Prefix | Aliases |
