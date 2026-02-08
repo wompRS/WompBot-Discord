@@ -13,7 +13,7 @@ import discord
 
 def register_tasks(bot, db, llm, rag, chat_stats, iracing, iracing_popularity_cache,
                    reminder_system, event_system, privacy_manager, iracing_team_manager=None,
-                   poll_system=None):
+                   poll_system=None, devils_advocate=None):
     """
     Register all background tasks with the bot.
 
@@ -821,6 +821,32 @@ def register_tasks(bot, db, llm, rag, chat_stats, iracing, iracing_popularity_ca
         if poll_system:
             print("📊 Poll deadline checker started (runs every 1 min)")
 
+    # ── Devil's Advocate timeout checker ──
+    @tasks.loop(minutes=5)
+    async def check_devils_advocate_timeouts():
+        """End devil's advocate sessions inactive for 30+ minutes"""
+        if not devils_advocate:
+            return
+
+        try:
+            timed_out = await devils_advocate.check_timeouts()
+            for channel_id in timed_out:
+                try:
+                    channel = bot.get_channel(channel_id)
+                    if channel:
+                        await channel.send("😈 Devil's advocate session ended due to inactivity (30 minutes).")
+                except Exception as e:
+                    print(f"  ❌ Error notifying DA timeout for channel {channel_id}: {e}")
+
+        except Exception as e:
+            print(f"❌ Devil's advocate timeout check error: {e}")
+
+    @check_devils_advocate_timeouts.before_loop
+    async def before_check_devils_advocate_timeouts():
+        await bot.wait_until_ready()
+        if devils_advocate:
+            print("😈 Devil's Advocate timeout checker started (runs every 5 min)")
+
     print("✅ Background tasks registered (will start in on_ready)")
 
     # Return task references - they will be started in on_ready event handler
@@ -838,5 +864,8 @@ def register_tasks(bot, db, llm, rag, chat_stats, iracing, iracing_popularity_ca
 
     if poll_system:
         tasks_dict['check_poll_deadlines'] = check_poll_deadlines
+
+    if devils_advocate:
+        tasks_dict['check_devils_advocate_timeouts'] = check_devils_advocate_timeouts
 
     return tasks_dict

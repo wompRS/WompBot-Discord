@@ -118,6 +118,10 @@ from features.who_said_it import WhoSaidItGame
 who_said_it = WhoSaidItGame(db)
 logger.info("Who Said It? game loaded")
 
+from features.devils_advocate import DevilsAdvocate
+devils_advocate = DevilsAdvocate(db, llm)
+logger.info("Devil's Advocate loaded")
+
 # GDPR Privacy Compliance (mandatory per EU regulations)
 from features.gdpr_privacy import GDPRPrivacyManager
 privacy_manager = GDPRPrivacyManager(db)
@@ -191,7 +195,8 @@ tasks_dict = register_tasks(
     event_system=event_system,
     privacy_manager=privacy_manager,
     iracing_team_manager=iracing_team_manager,
-    poll_system=poll_system
+    poll_system=poll_system,
+    devils_advocate=devils_advocate
 )
 
 # Register event handlers
@@ -219,7 +224,8 @@ register_events(
     series_cache=series_autocomplete_cache,
     trivia=trivia,
     reminder_system=reminder_system,
-    who_said_it=who_said_it
+    who_said_it=who_said_it,
+    devils_advocate=devils_advocate
 )
 
 # Register prefix commands
@@ -260,7 +266,8 @@ register_slash_commands(
     rag=rag,
     dashboard=dashboard,
     poll_system=poll_system,
-    who_said_it=who_said_it
+    who_said_it=who_said_it,
+    devils_advocate=devils_advocate
 )
 
 logger.info("All modules registered successfully!")

@@ -58,6 +58,8 @@ Discord message → on_message (events.py) → handle_bot_mention (conversations
 - `trivia.py` — LLM-powered trivia games, sessions persist to DB (survive restarts)
 - `dashboard.py` — Server health dashboard with Plotly charts
 - `polls.py` — Poll system with button voting, single/multi-choice, auto-close
+- `who_said_it.py` — "Who Said It?" game using real server quotes, GDPR-safe
+- `devils_advocate.py` — Devil's advocate debate mode with LLM counter-arguments
 - `yearly_wrapped.py` — Spotify-style yearly summaries
 - `quote_of_the_day.py` — Featured quote selection
 - `admin_utils.py` — Admin permission utilities
@@ -374,6 +376,16 @@ docker compose restart bot       # Restart bot only
 - Fuzzy username matching for guesses (case-insensitive, substring match)
 - On_message hook in events.py for guess processing (same pattern as trivia)
 - Table: `active_who_said_it` with `session_state` JSONB
+
+### Devil's Advocate Mode
+- `/devils_advocate [topic]` — Bot argues the opposing side of any topic using LLM counter-arguments
+- `/devils_advocate_end` — End the session and show exchange count + duration
+- `features/devils_advocate.py` — `DevilsAdvocate(db, llm)` with in-memory sessions + DB persistence
+- Only responds to the session starter (other users' messages ignored)
+- 30-minute inactivity timeout checked by background task (every 5 min)
+- On_message hook in events.py for counter-argument generation
+- Table: `active_devils_advocate` with `session_state` JSONB
+- System prompt forces LLM to always argue the opposing position
 
 ### Personal Analytics (/mystats)
 - `/mystats [@user] [days]` — Unified personal analytics PIL card (teal/emerald theme)

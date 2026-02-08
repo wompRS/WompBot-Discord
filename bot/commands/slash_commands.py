@@ -19,7 +19,7 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                             iracing_viz, iracing_team_manager, help_system,
                             wompie_user_id, series_autocomplete_cache, trivia,
                             rag=None, dashboard=None, poll_system=None,
-                            who_said_it=None):
+                            who_said_it=None, devils_advocate=None):
     """
     Register all slash commands with the bot.
 
@@ -5450,6 +5450,71 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                 await interaction.response.send_message(f"❌ Error: {str(e)}", ephemeral=True)
 
         print("✅ Who Said It? commands registered")
+
+    # ===== Devil's Advocate =====
+    if devils_advocate:
+        @bot.tree.command(name="devils_advocate", description="Start a devil's advocate debate on any topic")
+        @app_commands.describe(topic="The topic to debate — bot will argue the opposing side")
+        async def devils_advocate_start(interaction: discord.Interaction, topic: str):
+            """Start a Devil's Advocate session"""
+            try:
+                if devils_advocate.is_session_active(interaction.channel_id):
+                    await interaction.response.send_message(
+                        "😈 A devil's advocate session is already active in this channel!\n"
+                        "Use `/devils_advocate_end` to end it first.",
+                        ephemeral=True
+                    )
+                    return
+
+                await interaction.response.defer()
+
+                result = await devils_advocate.start_session(
+                    channel_id=interaction.channel_id,
+                    guild_id=interaction.guild_id,
+                    topic=topic,
+                    user_id=interaction.user.id
+                )
+
+                if result.get('error'):
+                    await interaction.followup.send(f"❌ {result['error']}")
+                    return
+
+                embed = discord.Embed(
+                    title=f"😈 Devil's Advocate — {topic}",
+                    description=result['response'],
+                    color=discord.Color.red()
+                )
+                embed.set_footer(text=f"Started by {interaction.user.display_name} • Reply to debate • /devils_advocate_end to stop")
+                await interaction.followup.send(embed=embed)
+
+            except Exception as e:
+                await interaction.followup.send(f"❌ Error: {str(e)}")
+
+        @bot.tree.command(name="devils_advocate_end", description="End the current devil's advocate session")
+        async def devils_advocate_end(interaction: discord.Interaction):
+            """End the Devil's Advocate session"""
+            try:
+                result = await devils_advocate.end_session(interaction.channel_id)
+                if not result:
+                    await interaction.response.send_message(
+                        "No active devil's advocate session in this channel!",
+                        ephemeral=True
+                    )
+                    return
+
+                embed = discord.Embed(
+                    title="😈 Devil's Advocate — Session Ended",
+                    color=discord.Color.red()
+                )
+                embed.add_field(name="Topic", value=result['topic'], inline=False)
+                embed.add_field(name="Exchanges", value=str(result['exchange_count']), inline=True)
+                embed.add_field(name="Duration", value=f"{result['duration_minutes']} minutes", inline=True)
+                await interaction.response.send_message(embed=embed)
+
+            except Exception as e:
+                await interaction.response.send_message(f"❌ Error: {str(e)}", ephemeral=True)
+
+        print("✅ Devil's Advocate commands registered")
 
     # ===== Personal Analytics =====
     @bot.tree.command(name="mystats", description="View your personal analytics profile card")

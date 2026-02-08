@@ -22,7 +22,7 @@ def register_events(bot, db, privacy_manager, claims_tracker, debate_scorekeeper
                     hot_takes_tracker, fact_checker, wompie_user_id, wompie_username,
                     tasks_dict, search, self_knowledge, wolfram=None, weather=None,
                     series_cache=None, trivia=None, reminder_system=None,
-                    who_said_it=None):
+                    who_said_it=None, devils_advocate=None):
     """
     Register all Discord event handlers with the bot.
 
@@ -358,6 +358,26 @@ def register_events(bot, db, privacy_manager, claims_tracker, debate_scorekeeper
                         await message.add_reaction("❌")
 
                     return
+
+        # Check for Devil's Advocate response
+        if devils_advocate and devils_advocate.is_session_active(message.channel.id):
+            session = devils_advocate.get_active_session(message.channel.id)
+            if session and session['status'] == 'active' and session['started_by'] == message.author.id:
+                async with message.channel.typing():
+                    result = await devils_advocate.respond(
+                        message.channel.id,
+                        message.content
+                    )
+
+                if result and not result.get('error'):
+                    response = result['response']
+                    # Truncate if too long for Discord
+                    if len(response) > 2000:
+                        response = response[:1997] + "..."
+                    await message.channel.send(f"😈 {response}")
+                elif result and result.get('error'):
+                    await message.channel.send(f"❌ Error: {result['error']}")
+                return
 
         # Handle DM commands for team management
         if isinstance(message.channel, discord.DMChannel):
