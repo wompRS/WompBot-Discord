@@ -44,3 +44,103 @@ CREATE TABLE IF NOT EXISTS poll_votes (
 );
 CREATE INDEX IF NOT EXISTS idx_poll_votes_poll ON poll_votes (poll_id);
 CREATE INDEX IF NOT EXISTS idx_polls_guild ON polls (guild_id, is_closed);
+
+-- ===== Feature 9: Who Said It? =====
+CREATE TABLE IF NOT EXISTS active_who_said_it (
+    id SERIAL PRIMARY KEY,
+    channel_id BIGINT NOT NULL,
+    guild_id BIGINT NOT NULL,
+    started_by BIGINT NOT NULL,
+    started_at TIMESTAMP DEFAULT NOW(),
+    session_state JSONB NOT NULL,
+    is_active BOOLEAN DEFAULT TRUE,
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_wsi_active ON active_who_said_it (channel_id, is_active) WHERE is_active = TRUE;
+
+-- ===== Feature 10: Devil's Advocate =====
+CREATE TABLE IF NOT EXISTS active_devils_advocate (
+    id SERIAL PRIMARY KEY,
+    channel_id BIGINT NOT NULL,
+    guild_id BIGINT NOT NULL,
+    topic TEXT NOT NULL,
+    started_by BIGINT NOT NULL,
+    started_at TIMESTAMP DEFAULT NOW(),
+    session_state JSONB NOT NULL,
+    is_active BOOLEAN DEFAULT TRUE,
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_da_active ON active_devils_advocate (channel_id, is_active) WHERE is_active = TRUE;
+
+-- ===== Feature 11: Channel Jeopardy =====
+CREATE TABLE IF NOT EXISTS active_jeopardy (
+    id SERIAL PRIMARY KEY,
+    channel_id BIGINT NOT NULL,
+    guild_id BIGINT NOT NULL,
+    started_by BIGINT NOT NULL,
+    started_at TIMESTAMP DEFAULT NOW(),
+    session_state JSONB NOT NULL,
+    is_active BOOLEAN DEFAULT TRUE,
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_jeopardy_active ON active_jeopardy (channel_id, is_active) WHERE is_active = TRUE;
+
+-- ===== Feature 12: Message Scheduling =====
+CREATE TABLE IF NOT EXISTS scheduled_messages (
+    id SERIAL PRIMARY KEY,
+    guild_id BIGINT NOT NULL,
+    channel_id BIGINT NOT NULL,
+    user_id BIGINT NOT NULL,
+    content TEXT NOT NULL,
+    send_at TIMESTAMP NOT NULL,
+    sent BOOLEAN DEFAULT FALSE,
+    cancelled BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_scheduled_pending ON scheduled_messages (send_at, sent, cancelled) WHERE sent = FALSE AND cancelled = FALSE;
+
+-- ===== Feature 13: RSS Feeds =====
+CREATE TABLE IF NOT EXISTS rss_feeds (
+    id SERIAL PRIMARY KEY,
+    guild_id BIGINT NOT NULL,
+    channel_id BIGINT NOT NULL,
+    feed_url TEXT NOT NULL,
+    feed_title VARCHAR(255),
+    added_by BIGINT NOT NULL,
+    last_checked TIMESTAMP,
+    last_entry_id TEXT,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT NOW(),
+    UNIQUE(guild_id, feed_url)
+);
+
+-- ===== Feature 14: GitHub Watches =====
+CREATE TABLE IF NOT EXISTS github_watches (
+    id SERIAL PRIMARY KEY,
+    guild_id BIGINT NOT NULL,
+    channel_id BIGINT NOT NULL,
+    repo_full_name VARCHAR(255) NOT NULL,
+    watch_type VARCHAR(50) DEFAULT 'releases',
+    added_by BIGINT NOT NULL,
+    last_checked TIMESTAMP,
+    last_event_id TEXT,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT NOW(),
+    UNIQUE(guild_id, repo_full_name, watch_type)
+);
+
+-- ===== Feature 15: Watchlists =====
+CREATE TABLE IF NOT EXISTS watchlists (
+    id SERIAL PRIMARY KEY,
+    guild_id BIGINT NOT NULL,
+    channel_id BIGINT NOT NULL,
+    symbol VARCHAR(20) NOT NULL,
+    symbol_type VARCHAR(10) NOT NULL,
+    added_by BIGINT NOT NULL,
+    alert_threshold FLOAT DEFAULT 5.0,
+    last_price FLOAT,
+    last_alert_at TIMESTAMP,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT NOW(),
+    UNIQUE(guild_id, symbol)
+);

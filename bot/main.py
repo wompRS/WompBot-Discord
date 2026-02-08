@@ -114,6 +114,10 @@ from features.polls import PollSystem
 poll_system = PollSystem(db)
 logger.info("Poll system loaded")
 
+from features.who_said_it import WhoSaidItGame
+who_said_it = WhoSaidItGame(db)
+logger.info("Who Said It? game loaded")
+
 # GDPR Privacy Compliance (mandatory per EU regulations)
 from features.gdpr_privacy import GDPRPrivacyManager
 privacy_manager = GDPRPrivacyManager(db)
@@ -214,7 +218,8 @@ register_events(
     weather=weather,
     series_cache=series_autocomplete_cache,
     trivia=trivia,
-    reminder_system=reminder_system
+    reminder_system=reminder_system,
+    who_said_it=who_said_it
 )
 
 # Register prefix commands
@@ -254,7 +259,8 @@ register_slash_commands(
     trivia=trivia,
     rag=rag,
     dashboard=dashboard,
-    poll_system=poll_system
+    poll_system=poll_system,
+    who_said_it=who_said_it
 )
 
 logger.info("All modules registered successfully!")

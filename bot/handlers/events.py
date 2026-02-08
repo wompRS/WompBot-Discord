@@ -21,7 +21,8 @@ def register_events(bot, db, privacy_manager, claims_tracker, debate_scorekeeper
                     llm, cost_tracker, iracing, iracing_team_manager, rag,
                     hot_takes_tracker, fact_checker, wompie_user_id, wompie_username,
                     tasks_dict, search, self_knowledge, wolfram=None, weather=None,
-                    series_cache=None, trivia=None, reminder_system=None):
+                    series_cache=None, trivia=None, reminder_system=None,
+                    who_said_it=None):
     """
     Register all Discord event handlers with the bot.
 
@@ -312,6 +313,51 @@ def register_events(bot, db, privacy_manager, claims_tracker, debate_scorekeeper
 
                 # Don't process command or bot mention if this was a trivia answer
                 return
+
+        # Check for Who Said It? guess submission
+        if who_said_it and who_said_it.is_session_active(message.channel.id):
+            session = who_said_it.get_active_session(message.channel.id)
+            if session and session['status'] == 'active':
+                result = await who_said_it.submit_guess(
+                    message.channel.id,
+                    message.author.id,
+                    message.author.display_name,
+                    message.content
+                )
+
+                if result:
+                    if result['is_correct']:
+                        feedback = f"✅ **{result['guesser']}** got it! It was **{result['correct_answer']}**"
+                        await message.channel.send(feedback)
+
+                        if result.get('game_over'):
+                            # Show final scores
+                            embed = discord.Embed(
+                                title="🏁 Who Said It? — Game Over!",
+                                color=discord.Color.gold()
+                            )
+                            scores = result.get('final_scores', [])
+                            if scores:
+                                board = "\n".join(
+                                    f"{'🥇🥈🥉'[i] if i < 3 else f'{i+1}.'} **{s['username']}** — {s['correct']}/{result['total_rounds']} correct"
+                                    for i, s in enumerate(scores)
+                                )
+                                embed.description = board
+                            await message.channel.send(embed=embed)
+                        elif result.get('next_quote'):
+                            # Show next question
+                            await asyncio.sleep(2)
+                            embed = discord.Embed(
+                                title=f"❓ Round {result['next_round']}/{result['total_rounds']}",
+                                description=f">>> {result['next_quote']}",
+                                color=discord.Color.blue()
+                            )
+                            embed.set_footer(text="Who said this? Type your guess!")
+                            await message.channel.send(embed=embed)
+                    else:
+                        await message.add_reaction("❌")
+
+                    return
 
         # Handle DM commands for team management
         if isinstance(message.channel, discord.DMChannel):

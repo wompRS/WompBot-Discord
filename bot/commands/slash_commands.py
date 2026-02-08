@@ -18,7 +18,8 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                             debate_scorekeeper, yearly_wrapped, qotd, iracing,
                             iracing_viz, iracing_team_manager, help_system,
                             wompie_user_id, series_autocomplete_cache, trivia,
-                            rag=None, dashboard=None, poll_system=None):
+                            rag=None, dashboard=None, poll_system=None,
+                            who_said_it=None):
     """
     Register all slash commands with the bot.
 
@@ -5341,6 +5342,114 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                 print(f"❌ Poll close error: {e}")
 
         print("✅ Poll commands registered")
+
+    # ===== Who Said It? =====
+    if who_said_it:
+        @bot.tree.command(name="whosaidit_start", description="Start a 'Who Said It?' guessing game")
+        @app_commands.describe(rounds="Number of rounds (3-10, default 5)")
+        async def whosaidit_start(interaction: discord.Interaction, rounds: int = 5):
+            """Start Who Said It? game with server quotes"""
+            await interaction.response.defer()
+
+            try:
+                result = await who_said_it.start_game(
+                    interaction.channel_id,
+                    interaction.guild_id,
+                    interaction.user.id,
+                    rounds
+                )
+
+                if result.get('error'):
+                    await interaction.followup.send(f"❌ {result['error']}")
+                    return
+
+                embed = discord.Embed(
+                    title="🎭 Who Said It?",
+                    description="Guess which server member said each quote!\nType your guess in chat.",
+                    color=discord.Color.blue()
+                )
+                embed.add_field(
+                    name=f"Round {result['round']}/{result['total_rounds']}",
+                    value=f">>> {result['quote']}",
+                    inline=False
+                )
+                embed.set_footer(text="Type a username to guess! Use /whosaidit_skip to skip. /whosaidit_end to stop.")
+                await interaction.followup.send(embed=embed)
+
+            except Exception as e:
+                await interaction.followup.send(f"❌ Error: {str(e)}")
+                print(f"❌ Who Said It start error: {e}")
+
+        @bot.tree.command(name="whosaidit_skip", description="Skip the current round")
+        async def whosaidit_skip(interaction: discord.Interaction):
+            """Skip current round and reveal answer"""
+            try:
+                result = await who_said_it.skip_round(interaction.channel_id)
+                if not result:
+                    await interaction.response.send_message("No active game in this channel!", ephemeral=True)
+                    return
+
+                msg = f"⏭️ Skipped! The answer was **{result['correct_answer']}**"
+                await interaction.response.send_message(msg)
+
+                if result.get('game_over'):
+                    embed = discord.Embed(
+                        title="🏁 Who Said It? — Game Over!",
+                        color=discord.Color.gold()
+                    )
+                    scores = result.get('final_scores', [])
+                    if scores:
+                        board = "\n".join(
+                            f"{'🥇🥈🥉'[i] if i < 3 else f'{i+1}.'} **{s['username']}** — {s['correct']} correct"
+                            for i, s in enumerate(scores)
+                        )
+                        embed.description = board
+                    else:
+                        embed.description = "No one scored any points!"
+                    await interaction.followup.send(embed=embed)
+                elif result.get('next_quote'):
+                    import asyncio
+                    await asyncio.sleep(1)
+                    embed = discord.Embed(
+                        title=f"❓ Round {result['next_round']}/{result['total_rounds']}",
+                        description=f">>> {result['next_quote']}",
+                        color=discord.Color.blue()
+                    )
+                    embed.set_footer(text="Who said this? Type your guess!")
+                    await interaction.followup.send(embed=embed)
+
+            except Exception as e:
+                await interaction.response.send_message(f"❌ Error: {str(e)}", ephemeral=True)
+
+        @bot.tree.command(name="whosaidit_end", description="End the current game early")
+        async def whosaidit_end(interaction: discord.Interaction):
+            """End the Who Said It? game"""
+            try:
+                result = await who_said_it.end_game(interaction.channel_id)
+                if not result:
+                    await interaction.response.send_message("No active game in this channel!", ephemeral=True)
+                    return
+
+                embed = discord.Embed(
+                    title="🏁 Who Said It? — Game Ended!",
+                    color=discord.Color.gold()
+                )
+                scores = result.get('final_scores', [])
+                if scores:
+                    board = "\n".join(
+                        f"{'🥇🥈🥉'[i] if i < 3 else f'{i+1}.'} **{s['username']}** — {s['correct']}/{result['total_rounds']} correct"
+                        for i, s in enumerate(scores)
+                    )
+                    embed.description = board
+                else:
+                    embed.description = "No one scored any points!"
+
+                await interaction.response.send_message(embed=embed)
+
+            except Exception as e:
+                await interaction.response.send_message(f"❌ Error: {str(e)}", ephemeral=True)
+
+        print("✅ Who Said It? commands registered")
 
     # ===== Personal Analytics =====
     @bot.tree.command(name="mystats", description="View your personal analytics profile card")

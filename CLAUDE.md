@@ -365,6 +365,16 @@ docker compose restart bot       # Restart bot only
 - Background job: `check_poll_deadlines` (every 1min) auto-closes expired polls and posts results
 - Supports: anonymous voting, multi-choice, timed polls (auto-close)
 
+### Who Said It? Game
+- `/whosaidit_start [rounds]` — Pulls random anonymous quotes from server history, users guess the author
+- `/whosaidit_skip` — Skip current round and reveal answer
+- `/whosaidit_end` — End game early and show scores
+- `features/who_said_it.py` — `WhoSaidItGame(db)` with in-memory sessions + DB persistence
+- Respects GDPR opt-outs, strips @mentions from quotes, min 30 / max 500 chars
+- Fuzzy username matching for guesses (case-insensitive, substring match)
+- On_message hook in events.py for guess processing (same pattern as trivia)
+- Table: `active_who_said_it` with `session_state` JSONB
+
 ### Personal Analytics (/mystats)
 - `/mystats [@user] [days]` — Unified personal analytics PIL card (teal/emerald theme)
 - Aggregates data from: messages, message_interactions, claims, hot_takes, debates, trivia_stats, user_topic_expertise
