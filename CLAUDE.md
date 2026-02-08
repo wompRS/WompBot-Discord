@@ -64,6 +64,7 @@ Discord message → on_message (events.py) → handle_bot_mention (conversations
 - `message_scheduler.py` — Message scheduling with abuse prevention limits
 - `rss_monitor.py` — RSS feed monitoring with feedparser, admin only
 - `github_monitor.py` — GitHub repo monitoring for releases/issues/PRs, admin only
+- `watchlists.py` — Shared price watchlists with alerts, admin only
 - `yearly_wrapped.py` — Spotify-style yearly summaries
 - `quote_of_the_day.py` — Featured quote selection
 - `admin_utils.py` — Admin permission utilities
@@ -415,6 +416,16 @@ docker compose restart bot       # Restart bot only
 - Optional `GITHUB_TOKEN` env var for higher API rate limits
 - Color-coded embeds: green (open/release), red (closed), purple (merged PR)
 - Table: `github_watches` with `last_event_id` tracking
+
+### Shared Watchlists (Admin Only)
+- `/watchlist_add [symbols] [threshold] [channel]` — Add stock/crypto symbols (admin only)
+- `/watchlist_remove [symbol]` — Remove a symbol (admin only)
+- `/watchlist` — View the server's watchlist (public)
+- `features/watchlists.py` — `WatchlistManager(db, cache)` with Finnhub + CoinGecko
+- Auto-detects stock vs crypto using `STOCK_TICKERS` and `CRYPTO_TICKERS` from constants.py
+- 1-minute alert checking for ±threshold% moves (default 5%, 30-min cooldown between alerts)
+- 24-hour daily summary with all symbols and changes
+- Table: `watchlists` with `last_price` and `last_alert_at` tracking
 
 ### RSS Feed Monitoring (Admin Only)
 - `/feed_add [url] [channel]` — Add an RSS feed to monitor (admin only)

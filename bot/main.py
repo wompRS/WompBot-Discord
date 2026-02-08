@@ -138,6 +138,10 @@ from features.github_monitor import GitHubMonitor
 github_monitor = GitHubMonitor(db, cache)
 logger.info("GitHub monitor loaded")
 
+from features.watchlists import WatchlistManager
+watchlist_manager = WatchlistManager(db, cache)
+logger.info("Watchlist manager loaded")
+
 # GDPR Privacy Compliance (mandatory per EU regulations)
 from features.gdpr_privacy import GDPRPrivacyManager
 privacy_manager = GDPRPrivacyManager(db)
@@ -216,7 +220,8 @@ tasks_dict = register_tasks(
     jeopardy=jeopardy,
     message_scheduler=message_scheduler,
     rss_monitor=rss_monitor,
-    github_monitor=github_monitor
+    github_monitor=github_monitor,
+    watchlist_manager=watchlist_manager
 )
 
 # Register event handlers
@@ -292,7 +297,8 @@ register_slash_commands(
     jeopardy=jeopardy,
     message_scheduler=message_scheduler,
     rss_monitor=rss_monitor,
-    github_monitor=github_monitor
+    github_monitor=github_monitor,
+    watchlist_manager=watchlist_manager
 )
 
 logger.info("All modules registered successfully!")

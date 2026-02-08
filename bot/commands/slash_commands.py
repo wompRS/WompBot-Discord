@@ -21,7 +21,7 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                             rag=None, dashboard=None, poll_system=None,
                             who_said_it=None, devils_advocate=None, jeopardy=None,
                             message_scheduler=None, rss_monitor=None,
-                            github_monitor=None):
+                            github_monitor=None, watchlist_manager=None):
     """
     Register all slash commands with the bot.
 
@@ -6059,6 +6059,124 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                 await interaction.response.send_message(f"❌ Error: {str(e)}", ephemeral=True)
 
         print("✅ GitHub monitoring commands registered")
+
+    # ===== Shared Watchlists (Admin Only) =====
+    if watchlist_manager:
+        @bot.tree.command(name="watchlist_add", description="[Admin] Add symbols to the price watchlist")
+        @app_commands.describe(
+            symbols="Space-separated symbols (e.g. AAPL TSLA BTC ETH)",
+            threshold="Alert threshold percentage (default: 5%)",
+            channel="Channel for alerts (defaults to current)"
+        )
+        async def watchlist_add(interaction: discord.Interaction,
+                                symbols: str,
+                                threshold: float = 5.0,
+                                channel: discord.TextChannel = None):
+            """Add symbols to watchlist"""
+            if not is_bot_admin_interaction(db, interaction):
+                await interaction.response.send_message("❌ Admin only.", ephemeral=True)
+                return
+
+            await interaction.response.defer(ephemeral=True)
+
+            try:
+                symbol_list = symbols.upper().split()
+                if not symbol_list:
+                    await interaction.followup.send("❌ No symbols provided!")
+                    return
+
+                if len(symbol_list) > 10:
+                    await interaction.followup.send("❌ Max 10 symbols at a time!")
+                    return
+
+                target_channel = channel or interaction.channel
+                result = await watchlist_manager.add_symbols(
+                    guild_id=interaction.guild_id,
+                    channel_id=target_channel.id,
+                    symbols=symbol_list,
+                    added_by=interaction.user.id,
+                    alert_threshold=threshold
+                )
+
+                msg_parts = []
+                if result['added']:
+                    added_str = ", ".join(
+                        f"**{s['symbol']}** (${s['price']:,.2f})"
+                        for s in result['added']
+                    )
+                    msg_parts.append(f"✅ Added: {added_str}")
+
+                if result['errors']:
+                    error_str = "\n".join(f"❌ {e}" for e in result['errors'])
+                    msg_parts.append(error_str)
+
+                msg_parts.append(f"\n📢 Alerts (±{threshold}%) will post to <#{target_channel.id}>")
+                await interaction.followup.send("\n".join(msg_parts))
+
+            except Exception as e:
+                await interaction.followup.send(f"❌ Error: {str(e)}")
+
+        @bot.tree.command(name="watchlist_remove", description="[Admin] Remove a symbol from the watchlist")
+        @app_commands.describe(symbol="Symbol to remove (e.g. AAPL)")
+        async def watchlist_remove(interaction: discord.Interaction, symbol: str):
+            """Remove a symbol"""
+            if not is_bot_admin_interaction(db, interaction):
+                await interaction.response.send_message("❌ Admin only.", ephemeral=True)
+                return
+
+            try:
+                result = await watchlist_manager.remove_symbol(
+                    interaction.guild_id, symbol
+                )
+
+                if result.get('error'):
+                    await interaction.response.send_message(
+                        f"❌ {result['error']}", ephemeral=True
+                    )
+                    return
+
+                await interaction.response.send_message(
+                    f"✅ Removed **{result['symbol']}** from watchlist.",
+                    ephemeral=True
+                )
+
+            except Exception as e:
+                await interaction.response.send_message(f"❌ Error: {str(e)}", ephemeral=True)
+
+        @bot.tree.command(name="watchlist", description="View the server's price watchlist")
+        async def watchlist_view(interaction: discord.Interaction):
+            """View watchlist"""
+            try:
+                items = await watchlist_manager.get_watchlist(interaction.guild_id)
+
+                if not items:
+                    await interaction.response.send_message(
+                        "💹 No symbols on watchlist. Use `/watchlist_add` to add some!",
+                        ephemeral=True
+                    )
+                    return
+
+                embed = discord.Embed(
+                    title="💹 Price Watchlist",
+                    color=discord.Color.blue()
+                )
+
+                lines = []
+                for item in items:
+                    price_str = f"${item['last_price']:,.2f}" if item['last_price'] and item['last_price'] >= 1 else (f"${item['last_price']:.6f}" if item['last_price'] else "N/A")
+                    type_emoji = "🪙" if item['symbol_type'] == 'crypto' else "📊"
+                    lines.append(
+                        f"{type_emoji} **{item['symbol']}** — {price_str} (±{item['alert_threshold']}% alert)"
+                    )
+
+                embed.description = "\n".join(lines)
+                embed.set_footer(text=f"{len(items)} symbols • Checked every minute for alerts")
+                await interaction.response.send_message(embed=embed)
+
+            except Exception as e:
+                await interaction.response.send_message(f"❌ Error: {str(e)}", ephemeral=True)
+
+        print("✅ Watchlist commands registered")
 
     # ===== Personal Analytics =====
     @bot.tree.command(name="mystats", description="View your personal analytics profile card")

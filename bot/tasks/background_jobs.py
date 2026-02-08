@@ -15,7 +15,7 @@ def register_tasks(bot, db, llm, rag, chat_stats, iracing, iracing_popularity_ca
                    reminder_system, event_system, privacy_manager, iracing_team_manager=None,
                    poll_system=None, devils_advocate=None, jeopardy=None,
                    message_scheduler=None, rss_monitor=None,
-                   github_monitor=None):
+                   github_monitor=None, watchlist_manager=None):
     """
     Register all background tasks with the bot.
 
@@ -993,6 +993,101 @@ def register_tasks(bot, db, llm, rag, chat_stats, iracing, iracing_popularity_ca
         if github_monitor:
             print("🐙 GitHub repo checker started (runs every 5 min)")
 
+    # ── Watchlist price alert checker ──
+    @tasks.loop(minutes=1)
+    async def check_watchlist_alerts():
+        """Check watchlist symbols for significant price moves"""
+        if not watchlist_manager:
+            return
+
+        try:
+            alerts = await watchlist_manager.check_price_alerts()
+            for alert in alerts:
+                try:
+                    channel = bot.get_channel(alert['channel_id'])
+                    if not channel:
+                        continue
+
+                    import discord
+                    direction = "📈" if alert['change_pct'] > 0 else "📉"
+                    color = discord.Color.green() if alert['change_pct'] > 0 else discord.Color.red()
+
+                    embed = discord.Embed(
+                        title=f"{direction} {alert['symbol']} Price Alert!",
+                        description=(
+                            f"**{alert['change_pct']:+.2f}%** move detected!\n"
+                            f"Previous: ${alert['old_price']:,.2f}\n"
+                            f"Current: ${alert['new_price']:,.2f}"
+                        ),
+                        color=color
+                    )
+                    embed.set_footer(text=f"Alert threshold: ±{alert['threshold']}%")
+                    await channel.send(embed=embed)
+
+                except Exception as e:
+                    print(f"  ❌ Error posting watchlist alert for {alert.get('symbol', '?')}: {e}")
+
+        except Exception as e:
+            print(f"❌ Watchlist alert check error: {e}")
+
+    @check_watchlist_alerts.before_loop
+    async def before_check_watchlist_alerts():
+        await bot.wait_until_ready()
+        if watchlist_manager:
+            print("💹 Watchlist alert checker started (runs every 1 min)")
+
+    # ── Watchlist daily summary ──
+    @tasks.loop(hours=24)
+    async def daily_watchlist_summary():
+        """Post daily watchlist summary"""
+        if not watchlist_manager:
+            return
+
+        try:
+            # Get all unique guild IDs
+            symbols = await asyncio.to_thread(watchlist_manager._get_all_active_symbols)
+            guild_ids = set(s['guild_id'] for s in symbols)
+
+            for guild_id in guild_ids:
+                try:
+                    summary = await watchlist_manager.generate_daily_summary(guild_id)
+                    if not summary or not summary['items']:
+                        continue
+
+                    channel = bot.get_channel(summary['channel_id'])
+                    if not channel:
+                        continue
+
+                    import discord
+                    embed = discord.Embed(
+                        title="💹 Daily Watchlist Summary",
+                        color=discord.Color.blue()
+                    )
+
+                    lines = []
+                    for item in summary['items']:
+                        emoji = "🟢" if item['change_pct'] >= 0 else "🔴"
+                        price_str = f"${item['price']:,.2f}" if item['price'] >= 1 else f"${item['price']:.6f}"
+                        lines.append(
+                            f"{emoji} **{item['symbol']}** — {price_str} ({item['change_pct']:+.2f}%)"
+                        )
+
+                    embed.description = "\n".join(lines)
+                    embed.set_footer(text=f"{len(summary['items'])} symbols tracked")
+                    await channel.send(embed=embed)
+
+                except Exception as e:
+                    print(f"  ❌ Error posting daily summary for guild {guild_id}: {e}")
+
+        except Exception as e:
+            print(f"❌ Daily watchlist summary error: {e}")
+
+    @daily_watchlist_summary.before_loop
+    async def before_daily_watchlist_summary():
+        await bot.wait_until_ready()
+        if watchlist_manager:
+            print("💹 Daily watchlist summary started (runs every 24 hours)")
+
     print("✅ Background tasks registered (will start in on_ready)")
 
     # Return task references - they will be started in on_ready event handler
@@ -1025,5 +1120,9 @@ def register_tasks(bot, db, llm, rag, chat_stats, iracing, iracing_popularity_ca
 
     if github_monitor:
         tasks_dict['check_github_repos'] = check_github_repos
+
+    if watchlist_manager:
+        tasks_dict['check_watchlist_alerts'] = check_watchlist_alerts
+        tasks_dict['daily_watchlist_summary'] = daily_watchlist_summary
 
     return tasks_dict
