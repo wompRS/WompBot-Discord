@@ -558,10 +558,10 @@ def register_tasks(bot, db, llm, rag, chat_stats, iracing, iracing_popularity_ca
         print("🔒 GDPR cleanup task started (runs daily)")
 
     # Background task for automatic user behavior analysis
-    @tasks.loop(hours=1)  # Run every 60 minutes
+    @tasks.loop(hours=6)  # Run every 6 hours (behavior doesn't change fast, saves ~$80/mo in LLM costs)
     async def analyze_user_behavior():
         """Automatically analyze user behavior patterns for users with sufficient activity"""
-        if not await _job_guard("analyze_user_behavior", timedelta(hours=1), jitter_seconds=120):
+        if not await _job_guard("analyze_user_behavior", timedelta(hours=6), jitter_seconds=120):
             return
 
         try:
@@ -624,7 +624,7 @@ def register_tasks(bot, db, llm, rag, chat_stats, iracing, iracing_popularity_ca
     async def before_analyze_user_behavior():
         """Wait for bot to be ready before starting behavior analysis"""
         await bot.wait_until_ready()
-        print("🧠 User behavior analysis task started (runs hourly)")
+        print("🧠 User behavior analysis task started (runs every 6 hours)")
 
     @tasks.loop(minutes=5)  # Process embeddings every 5 minutes
     async def process_embeddings():

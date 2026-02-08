@@ -21,6 +21,7 @@ from viz_tools import GeneralVisualizer
 from llm_tools import VISUALIZATION_TOOLS, COMPUTATIONAL_TOOLS, ALL_TOOLS, DataRetriever
 from tool_executor import ToolExecutor
 from media_processor import get_media_processor
+from redis_cache import get_cache
 
 # Rotating search status messages
 SEARCH_STATUS_MESSAGES = [
@@ -703,8 +704,16 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                 if msg.get('content'):
                     msg['content'] = clean_discord_mentions(msg['content'], message)
 
-            # Get user context (if not opted out)
-            user_context = None if opted_out else db.get_user_context(message.author.id)
+            # Get user context (if not opted out) — cached 1 hour in Redis
+            user_context = None
+            if not opted_out:
+                _cache = get_cache()
+                ctx_cache_key = f"user_ctx:{message.author.id}"
+                user_context = _cache.get(ctx_cache_key)
+                if user_context is None:
+                    user_context = db.get_user_context(message.author.id)
+                    if user_context:
+                        _cache.set(ctx_cache_key, user_context, ttl=3600)  # 1 hour
 
             # Check if question is about WompBot itself - load documentation
             bot_docs = None

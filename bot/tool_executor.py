@@ -3,7 +3,9 @@ Tool Execution Handler
 Executes tools requested by the LLM and returns results
 """
 
+import hashlib
 import json
+import logging
 import random
 import re
 from typing import Dict, Any, Optional
@@ -13,6 +15,9 @@ import discord
 import pytz
 import requests
 from bs4 import BeautifulSoup
+from redis_cache import get_cache
+
+logger = logging.getLogger(__name__)
 
 class ToolExecutor:
     """Execute tools requested by LLM"""
@@ -40,6 +45,7 @@ class ToolExecutor:
         self.iracing_manager = iracing_manager
         self.reminder_manager = reminder_manager
         self.bot = bot
+        self.cache = get_cache()
 
         # Reusable HTTP session for connection pooling (avoids redundant TCP+TLS handshakes)
         self.session = requests.Session()
@@ -77,6 +83,14 @@ class ToolExecutor:
             'india': 'Asia/Kolkata', 'mumbai': 'Asia/Kolkata', 'delhi': 'Asia/Kolkata',
             'seoul': 'Asia/Seoul', 'korea': 'Asia/Seoul',
         }
+
+    def _cache_key(self, prefix: str, *args) -> str:
+        """Generate a deterministic cache key from a prefix and arguments."""
+        raw = f"{prefix}:{':'.join(str(a).lower().strip() for a in args)}"
+        # Use hash for long keys to stay within Redis key limits
+        if len(raw) > 100:
+            return f"{prefix}:{hashlib.md5(raw.encode()).hexdigest()}"
+        return raw
 
     async def execute_tool(
         self,
@@ -351,11 +365,18 @@ class ToolExecutor:
     # ========== Computational Tools ==========
 
     async def _wolfram_query(self, args: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute Wolfram Alpha query with both metric and imperial units"""
+        """Execute Wolfram Alpha query with both metric and imperial units (cached 1 hour)"""
         if not self.wolfram:
             return {"success": False, "error": "Wolfram Alpha not configured"}
 
         query = args["query"]
+
+        # Check cache first (1-hour TTL)
+        cache_key = self._cache_key("wolfram", query)
+        cached = self.cache.get(cache_key)
+        if cached:
+            logger.debug("Wolfram cache hit: %s", query)
+            return cached
 
         # Query with both metric and imperial units
         metric_result = self.wolfram.query(query, units="metric")
@@ -369,13 +390,16 @@ class ToolExecutor:
         if imperial_result["success"] and metric_result["answer"] != imperial_result["answer"]:
             # Answers differ, likely unit-dependent - show both
             combined_answer = f"**Metric:** {metric_result['answer']}\n**Imperial:** {imperial_result['answer']}"
-            return {"success": True, "type": "text", "text": combined_answer, "description": f"Wolfram Alpha: {query}"}
+            result = {"success": True, "type": "text", "text": combined_answer, "description": f"Wolfram Alpha: {query}"}
         else:
             # Answers are the same or imperial failed - just show metric
-            return {"success": True, "type": "text", "text": metric_result["answer"], "description": f"Wolfram Alpha: {query}"}
+            result = {"success": True, "type": "text", "text": metric_result["answer"], "description": f"Wolfram Alpha: {query}"}
+
+        self.cache.set(cache_key, result, ttl=3600)  # 1 hour
+        return result
 
     async def _get_weather(self, args: Dict[str, Any], user_id: Optional[int] = None) -> Dict[str, Any]:
-        """Get current weather as a visual card"""
+        """Get current weather as a visual card (weather data cached 30 min)"""
         if not self.weather:
             return {"success": False, "error": "Weather API not configured"}
 
@@ -400,7 +424,16 @@ class ToolExecutor:
                 "error": "No location provided. Please specify a location (e.g., 'weather in Tokyo')."
             }
 
-        result = self.weather.get_current_weather(location, units=units)
+        # Cache the raw weather API data (30-min TTL) to avoid repeated API calls
+        cache_key = self._cache_key("weather", location, units)
+        cached_data = self.cache.get(cache_key)
+        if cached_data:
+            logger.debug("Weather cache hit: %s", location)
+            result = cached_data
+        else:
+            result = self.weather.get_current_weather(location, units=units)
+            if result.get("success"):
+                self.cache.set(cache_key, result, ttl=1800)  # 30 minutes
 
         if result["success"]:
             # Extract temperatures and convert for dual unit display
@@ -482,21 +515,37 @@ class ToolExecutor:
                 "error": "No location provided. Please specify a location (e.g., 'weather in Tokyo')."
             }
 
+        # Cache forecast data (30-min TTL)
+        cache_key = self._cache_key("forecast", location, units, days)
+        cached = self.cache.get(cache_key)
+        if cached:
+            logger.debug("Forecast cache hit: %s", location)
+            return cached
+
         result = self.weather.get_forecast(location, units=units, days=days)
 
         if result["success"]:
-            return {"success": True, "type": "text", "text": result["summary"], "description": f"{days}-day forecast for {location}"}
+            response = {"success": True, "type": "text", "text": result["summary"], "description": f"{days}-day forecast for {location}"}
+            self.cache.set(cache_key, response, ttl=1800)  # 30 minutes
+            return response
         else:
             return {"success": False, "error": result.get("error", "Forecast query failed")}
 
     async def _web_search(self, args: Dict[str, Any]) -> Dict[str, Any]:
-        """Perform web search and return formatted results"""
+        """Perform web search and return formatted results (cached 2 hours)"""
         import asyncio
 
         if not self.search:
             return {"success": False, "error": "Web search not configured"}
 
         query = args["query"]
+
+        # Check cache first (2-hour TTL)
+        cache_key = self._cache_key("search", query)
+        cached = self.cache.get(cache_key)
+        if cached:
+            logger.debug("Search cache hit: %s", query)
+            return cached
 
         try:
             # Run search in thread pool (search.search() is blocking)
@@ -508,12 +557,14 @@ class ToolExecutor:
             # Format results for display
             search_results = self.search.format_results_for_llm(search_results_raw)
 
-            return {
+            result = {
                 "success": True,
                 "type": "text",
                 "text": search_results,
                 "description": f"Web search: {query}"
             }
+            self.cache.set(cache_key, result, ttl=7200)  # 2 hours
+            return result
         except Exception as e:
             return {"success": False, "error": f"Search failed: {str(e)}"}
 
@@ -664,10 +715,17 @@ class ToolExecutor:
         return {"success": False, "error": "Translation service unavailable. Try again later."}
 
     async def _wikipedia(self, args: Dict[str, Any]) -> Dict[str, Any]:
-        """Look up information on Wikipedia"""
+        """Look up information on Wikipedia (cached 1 hour)"""
         import asyncio
 
         query = args["query"]
+
+        # Check cache first (1-hour TTL — Wikipedia content is stable)
+        cache_key = self._cache_key("wiki", query)
+        cached = self.cache.get(cache_key)
+        if cached:
+            logger.debug("Wikipedia cache hit: %s", query)
+            return cached
 
         try:
             headers = {'User-Agent': 'WompBot/1.0 (Discord Bot; educational project)'}
@@ -709,16 +767,18 @@ class ToolExecutor:
             if len(extract) > 1000:
                 extract = extract[:997] + "..."
 
-            result = f"**{title}**\n\n{extract}"
+            text = f"**{title}**\n\n{extract}"
             if page_url:
-                result += f"\n\n[Read more on Wikipedia]({page_url})"
+                text += f"\n\n[Read more on Wikipedia]({page_url})"
 
-            return {
+            result = {
                 "success": True,
                 "type": "text",
-                "text": result,
+                "text": text,
                 "description": f"Wikipedia: {title}"
             }
+            self.cache.set(cache_key, result, ttl=3600)  # 1 hour
+            return result
 
         except Exception as e:
             return {"success": False, "error": f"Wikipedia lookup failed: {str(e)}"}
@@ -1172,11 +1232,18 @@ class ToolExecutor:
             return {"success": False, "error": f"Failed to create reminder: {str(e)}"}
 
     async def _stock_price(self, args: Dict[str, Any]) -> Dict[str, Any]:
-        """Get stock or crypto price using Finnhub (stocks) and CoinGecko (crypto)"""
+        """Get stock or crypto price using Finnhub (stocks) and CoinGecko (crypto) (cached 5 min)"""
         import asyncio
         import os
 
         query = args["symbol"].upper()
+
+        # Check cache first (5-min TTL — prices change but not second-by-second for Discord)
+        cache_key = self._cache_key("stock", query)
+        cached = self.cache.get(cache_key)
+        if cached:
+            logger.debug("Stock cache hit: %s", query)
+            return cached
 
         # Common company name to ticker mappings
         name_to_ticker = {
@@ -1253,15 +1320,17 @@ class ToolExecutor:
 
             change_str = f"+${change:.2f} (+{change_pct:.2f}%)" if change >= 0 else f"${change:.2f} ({change_pct:.2f}%)"
 
-            result = f"**{name}** ({symbol})\n"
-            result += f"Price: **${price:,.2f}** ({change_str})"
+            text = f"**{name}** ({symbol})\n"
+            text += f"Price: **${price:,.2f}** ({change_str})"
 
-            return {
+            result = {
                 "success": True,
                 "type": "text",
-                "text": result,
+                "text": text,
                 "description": f"Stock price: {symbol}"
             }
+            self.cache.set(cache_key, result, ttl=300)  # 5 minutes
+            return result
 
         except Exception as e:
             return {"success": False, "error": f"Stock lookup failed: {str(e)}"}
@@ -1379,8 +1448,15 @@ class ToolExecutor:
             return {"success": False, "error": f"Stock history lookup failed: {str(e)}"}
 
     async def _fetch_crypto_price_tool(self, coingecko_id: str, display_symbol: str) -> Dict[str, Any]:
-        """Fetch crypto price from CoinGecko for tool executor"""
+        """Fetch crypto price from CoinGecko for tool executor (cached 5 min)"""
         import asyncio
+
+        # Check cache (shares the stock cache namespace with 5-min TTL)
+        cache_key = self._cache_key("stock", display_symbol)
+        cached = self.cache.get(cache_key)
+        if cached:
+            logger.debug("Crypto cache hit: %s", display_symbol)
+            return cached
 
         try:
             def fetch():
@@ -1405,26 +1481,35 @@ class ToolExecutor:
             else:
                 price_str = f"${price:.6f}"
 
-            result = f"**{name}** ({display_symbol})\n"
-            result += f"Price: **{price_str}** (24h: {change_str})"
+            text = f"**{name}** ({display_symbol})\n"
+            text += f"Price: **{price_str}** (24h: {change_str})"
 
-            return {
+            result = {
                 "success": True,
                 "type": "text",
-                "text": result,
+                "text": text,
                 "description": f"Crypto price: {display_symbol}"
             }
+            self.cache.set(cache_key, result, ttl=300)  # 5 minutes
+            return result
 
         except Exception as e:
             return {"success": False, "error": f"Crypto lookup failed: {str(e)}"}
 
     async def _movie_info(self, args: Dict[str, Any]) -> Dict[str, Any]:
-        """Get movie/TV show info from OMDB"""
+        """Get movie/TV show info from OMDB (cached 24 hours)"""
         import asyncio
         import os
 
         title = args["title"]
         year = args.get("year")
+
+        # Check cache (24-hour TTL — movie data is very stable)
+        cache_key = self._cache_key("movie", title, year or "")
+        cached = self.cache.get(cache_key)
+        if cached:
+            logger.debug("Movie cache hit: %s", title)
+            return cached
 
         omdb_key = os.getenv("OMDB_API_KEY")
         if not omdb_key:
@@ -1444,29 +1529,38 @@ class ToolExecutor:
             if data.get("Response") == "False":
                 return {"success": False, "error": data.get("Error", "Movie not found")}
 
-            result = f"**{data.get('Title', 'Unknown')}** ({data.get('Year', 'N/A')})\n\n"
-            result += f"Rating: **{data.get('imdbRating', 'N/A')}/10** ({data.get('imdbVotes', 'N/A')} votes)\n"
-            result += f"Runtime: {data.get('Runtime', 'N/A')}\n"
-            result += f"Genre: {data.get('Genre', 'N/A')}\n"
-            result += f"Director: {data.get('Director', 'N/A')}\n"
-            result += f"Cast: {data.get('Actors', 'N/A')}\n\n"
-            result += f"{data.get('Plot', '')}"
+            text = f"**{data.get('Title', 'Unknown')}** ({data.get('Year', 'N/A')})\n\n"
+            text += f"Rating: **{data.get('imdbRating', 'N/A')}/10** ({data.get('imdbVotes', 'N/A')} votes)\n"
+            text += f"Runtime: {data.get('Runtime', 'N/A')}\n"
+            text += f"Genre: {data.get('Genre', 'N/A')}\n"
+            text += f"Director: {data.get('Director', 'N/A')}\n"
+            text += f"Cast: {data.get('Actors', 'N/A')}\n\n"
+            text += f"{data.get('Plot', '')}"
 
-            return {
+            result = {
                 "success": True,
                 "type": "text",
-                "text": result,
+                "text": text,
                 "description": f"Movie info: {title}"
             }
+            self.cache.set(cache_key, result, ttl=86400)  # 24 hours
+            return result
 
         except Exception as e:
             return {"success": False, "error": f"Movie lookup failed: {str(e)}"}
 
     async def _define_word(self, args: Dict[str, Any]) -> Dict[str, Any]:
-        """Get dictionary definition"""
+        """Get dictionary definition (cached 24 hours)"""
         import asyncio
 
         word = args["word"].lower().strip()
+
+        # Check cache (24-hour TTL — definitions don't change)
+        cache_key = self._cache_key("define", word)
+        cached = self.cache.get(cache_key)
+        if cached:
+            logger.debug("Definition cache hit: %s", word)
+            return cached
 
         try:
             def do_fetch():
@@ -1512,12 +1606,14 @@ class ToolExecutor:
 
                 result += "\n"
 
-            return {
+            response = {
                 "success": True,
                 "type": "text",
                 "text": result.strip(),
                 "description": f"Definition: {word}"
             }
+            self.cache.set(cache_key, response, ttl=86400)  # 24 hours
+            return response
 
         except Exception as e:
             return {"success": False, "error": f"Definition lookup failed: {str(e)}"}
@@ -1590,26 +1686,35 @@ class ToolExecutor:
             else:
                 converted_str = f"{converted:.4f}"
 
-            result = f"**{amount:,.2f} {from_curr}** = **{converted_str} {to_curr}**\n"
-            result += f"Rate: 1 {from_curr} = {rate:.4f} {to_curr}"
+            text = f"**{amount:,.2f} {from_curr}** = **{converted_str} {to_curr}**\n"
+            text += f"Rate: 1 {from_curr} = {rate:.4f} {to_curr}"
 
-            return {
+            result = {
                 "success": True,
                 "type": "text",
-                "text": result,
+                "text": text,
                 "description": f"Currency: {from_curr} to {to_curr}"
             }
+            self.cache.set(cache_key, result, ttl=1800)  # 30 minutes
+            return result
 
         except Exception as e:
             return {"success": False, "error": f"Currency conversion failed: {str(e)}"}
 
     async def _sports_scores(self, args: Dict[str, Any]) -> Dict[str, Any]:
-        """Get sports scores from ESPN API (no key needed)"""
+        """Get sports scores from ESPN API (no key needed, cached 5 min)"""
         import asyncio
 
         sport = args["sport"].lower()
         league = args.get("league", "")
         team_filter = args.get("team", "").lower()
+
+        # Check cache (5-min TTL — scores change but not second-by-second)
+        cache_key = self._cache_key("sports", sport, league, team_filter)
+        cached = self.cache.get(cache_key)
+        if cached:
+            logger.debug("Sports cache hit: %s %s", sport, team_filter)
+            return cached
 
         # Map sport to ESPN API endpoint
         sport_endpoints = {
@@ -1719,12 +1824,14 @@ class ToolExecutor:
             result_text = f"**{league_name} Scores**\n\n"
             result_text += "\n".join(results)
 
-            return {
+            result = {
                 "success": True,
                 "type": "text",
                 "text": result_text,
                 "description": f"{sport.upper()} scores"
             }
+            self.cache.set(cache_key, result, ttl=300)  # 5 minutes
+            return result
 
         except Exception as e:
             return {"success": False, "error": f"Sports scores lookup failed: {str(e)}"}
