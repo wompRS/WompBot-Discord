@@ -174,19 +174,24 @@ def search(self, query: str, max_results: int = 7):
 
 ### LLM Settings
 
-**File:** `bot/features/fact_check.py:69-80`
+**File:** `bot/features/fact_check.py`
+
+Fact checking now uses `LLMClient.simple_completion()` instead of making direct `requests.post()` calls to the OpenRouter API. This centralizes all LLM communication through the `LLMClient` class, providing:
+
+- Consistent error handling and retry logic
+- Centralized model configuration and cost tracking
+- Easier model switching without modifying feature code
 
 **Adjust analysis quality:**
 ```python
-# Use dedicated high-accuracy model for fact-checking
+# Uses LLMClient.simple_completion() with the configured fact-check model
 fact_check_model = os.getenv('FACT_CHECK_MODEL', self.llm.model)
-
-payload = {
-    "model": fact_check_model,  # deepseek/deepseek-chat by default
-    "messages": [...],
-    "max_tokens": 700,      # Increased for source cross-referencing
-    "temperature": 0.1      # Very low to prevent hallucination
-}
+result = await self.llm.simple_completion(
+    prompt,
+    model=fact_check_model,
+    max_tokens=700,
+    temperature=0.1
+)
 ```
 
 **Temperature effects:**
@@ -198,19 +203,9 @@ payload = {
 
 ### Timeout Settings
 
-**File:** `bot/features/fact_check.py:88`
+Timeout is now managed by `LLMClient.simple_completion()` internally. The LLMClient handles request timeouts and retries centrally, so there is no longer a need to configure timeouts per-feature.
 
-**Adjust timeout for slow searches:**
-```python
-response = requests.post(
-    "https://openrouter.ai/api/v1/chat/completions",
-    headers=headers,
-    json=payload,
-    timeout=60  # Default: 60 seconds
-)
-```
-
-**Increase if fact-checks fail with timeout errors**
+**If fact-checks fail with timeout errors**, check the LLMClient timeout configuration in `bot/llm.py`.
 
 ---
 

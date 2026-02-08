@@ -149,8 +149,8 @@ CONTEXT_WINDOW_MESSAGES=20
 - Compression reduces token usage by 50-80% on conversation history
 - Allows 3-4x more messages than without compression
 - Default 50 messages = ~10-15 message equivalent in token cost
-- Older messages compressed, last 3 kept verbatim
-- Activates automatically when 8+ messages in history
+- Older messages compressed, last 8 kept verbatim (keep_recent default changed from 3 to 8)
+- Activates automatically when 10+ messages in history (min_messages default changed from 8 to 10)
 - Recommended: 50-100 messages (with compression enabled)
 
 ---
@@ -166,8 +166,11 @@ ENABLE_COMPRESSION=true
 # Target compression rate (0.5 = 50% token reduction)
 COMPRESSION_RATE=0.5
 
-# Minimum messages before compression activates
-MIN_MESSAGES_TO_COMPRESS=8
+# Minimum messages before compression activates (default: 10, was 8)
+MIN_MESSAGES_TO_COMPRESS=10
+
+# Number of recent messages to keep verbatim (default: 8, was 3)
+COMPRESSION_KEEP_RECENT=8
 
 # Compression model (default: llmlingua-2-bert-base-multilingual-cased)
 COMPRESSION_MODEL=microsoft/llmlingua-2-bert-base-multilingual-cased
@@ -175,7 +178,7 @@ COMPRESSION_MODEL=microsoft/llmlingua-2-bert-base-multilingual-cased
 
 **How compression works:**
 - Uses LLMLingua to remove less important tokens while preserving meaning
-- Compresses older messages, keeps last 3 verbatim for context freshness
+- Compresses older messages, keeps last 8 verbatim for context freshness (was 3)
 - 50-80% token reduction on compressed messages
 - Model downloads once (~500MB) then caches locally
 - CPU-only operation (no GPU required)
@@ -384,7 +387,7 @@ FACT_CHECK_DAILY_LIMIT=10
 ```
 
 **Why limit fact-checks:**
-- Web search costs (7 sources per check)
+- Web search costs (5 sources per check, reduced from 7)
 - Without limits: costs can add up quickly
 
 **User feedback:**
@@ -516,17 +519,26 @@ IRACING_LEADERBOARD_COOLDOWN=60
 
 **Automatic spending monitoring:**
 
-Cost tracking is **always enabled** and requires no configuration.
+Cost tracking is **always enabled** and requires minimal configuration.
+
+**New Environment Variables:**
+```bash
+# Cost alert threshold (default: $1.00)
+COST_ALERT_THRESHOLD=1.00
+
+# Colorblind-friendly visualization mode (default: false)
+VIZ_COLORBLIND_MODE=false
+```
 
 **What gets tracked:**
 - Real-time token usage from API responses
-- Model-specific pricing
+- Model-specific pricing (MODEL_PRICING in cost_tracker.py updated; obsolete models removed, current models added)
 - Input tokens vs. output tokens
 - Request type (chat, fact-check, etc.)
 - Per-user attribution
 
 **Alert system:**
-- DMs bot owner (user: `wompie__`) when spending crosses each $1 threshold
+- DMs bot owner when spending crosses each threshold (configurable via `COST_ALERT_THRESHOLD`, default `$1.00`)
 - Beautiful embed with cost breakdown by model
 - Prevents duplicate alerts (tracks in `cost_alerts` table)
 
@@ -927,6 +939,25 @@ docker-compose exec -T postgres psql -U botuser discord_bot < backup.sql
 # Start bot
 docker-compose up -d
 ```
+
+---
+
+## New Dependencies (February 2026)
+
+The following dependencies were added during the comprehensive refactoring:
+
+| Package | Purpose | Required |
+|---------|---------|----------|
+| `cachetools` | In-memory TTL caching (GDPR consent checks, user context) | Yes |
+| `tenacity` | Retry logic with exponential backoff for API calls | Yes |
+| `tiktoken` | Accurate token counting for cost estimation | Optional (falls back to character-based estimation) |
+
+Install via:
+```bash
+pip install cachetools tenacity tiktoken
+```
+
+These are included in the Docker image automatically via `requirements.txt`.
 
 ---
 

@@ -133,7 +133,26 @@ git diff --cached
 - ✅ Review changes before committing
 - ✅ Keep `.gitignore` up to date
 
-## 🔧 Code Quality Fixes (Resolved)
+## Security Fixes (February 2026 Refactoring)
+
+### HTTPS Enforcement
+- [x] **Fixed**: Weather and Wolfram API calls migrated from HTTP to HTTPS to prevent MITM attacks
+
+### SQL Injection in DataRetriever
+- [x] **Fixed**: Dynamic query construction in `data_retriever.py` converted to parameterized statements
+
+### Prompt Injection Defense
+- [x] **Fixed**: Debate transcript content sanitized before being sent to LLM context in `debate_scorekeeper.py`
+
+### Event Cancellation Authorization
+- [x] **Fixed**: Event cancellation now requires creator or admin permissions in `iracing_event_commands.py`
+
+### SHA-256 Cache Keys
+- [x] **Fixed**: Cache key generation upgraded from MD5 to SHA-256 in `tool_executor.py` via `_cache_key()` helper
+
+---
+
+## Code Quality Fixes (Resolved)
 
 ### Bare Exception Handling
 - [x] **Fixed**: All bare `except:` clauses have been replaced with explicit exception types (e.g., `except Exception as e:`) to prevent silently swallowing errors and improve debuggability.

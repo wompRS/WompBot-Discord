@@ -110,12 +110,33 @@ Questions are generated via LLM with the following prompt structure:
 - Multiple alternative answers accepted
 - Number format flexibility (e.g., "1969" or "nineteen sixty-nine")
 
+### Session Persistence
+
+Active trivia sessions now **persist to the database**, surviving bot restarts and crashes. Session state is stored in the `active_trivia_sessions` table using JSONB for flexible state storage.
+
+**Key methods:**
+- `_save_session_to_db()` -- Serializes the current session state (scores, current question, participants, settings) to the `active_trivia_sessions` table as JSONB
+- `_load_sessions_from_db()` -- Called on bot startup to restore any active sessions that were interrupted by a restart
+- `_deactivate_session_in_db()` -- Marks a session as inactive when it completes or is stopped
+
+**How it works:**
+1. When a trivia session starts, its state is saved to the database
+2. After each question/answer cycle, the session state is updated in the database
+3. On bot restart, `_load_sessions_from_db()` restores all active sessions
+4. When a session ends (naturally or via `/trivia_stop`), `_deactivate_session_in_db()` cleans it up
+
+**Benefits:**
+- No more lost trivia sessions when the bot restarts or crashes
+- Sessions resume seamlessly from where they left off
+- Session state is stored as JSONB, allowing flexible schema evolution
+
 ### Database Tables
 
 - `trivia_sessions`: Active and completed sessions
 - `trivia_questions`: Generated questions per session
 - `trivia_answers`: Individual answer attempts
 - `trivia_stats`: Aggregated user statistics per server
+- `active_trivia_sessions`: **New** -- Persists active session state as JSONB for restart recovery
 
 ### Rate Limiting
 

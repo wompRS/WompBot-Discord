@@ -4,7 +4,7 @@
 
 **Organization**: WompBot Discord Bot
 **Data Controller**: [Bot Administrator/Organization Name]
-**Attestation Date**: November 13, 2025 (Updated)
+**Attestation Date**: February 8, 2026 (Updated)
 **Auditor**: Internal Code Audit
 **Regulation**: EU GDPR (Regulation 2016/679)
 **Scope**: All data processing activities related to Discord bot operations
@@ -15,33 +15,31 @@
 
 ## Executive Summary
 
-This document provides an honest assessment of WompBot's GDPR compliance status based on a comprehensive code audit, last updated November 13, 2025. The bot operates under **Legitimate Interest (GDPR Art. 6.1.f)** with an opt-out model, and implements strong user rights infrastructure, but **has critical gaps that prevent full compliance**.
+This document provides an honest assessment of WompBot's GDPR compliance status based on a comprehensive code audit, last updated February 8, 2026. The bot operates under **Legitimate Interest (GDPR Art. 6.1.f)** with an opt-out model, and implements strong user rights infrastructure. The February 2026 refactoring simplified the GDPR surface by consolidating commands (10 down to 3), removing unused tables (`data_breach_log`, `privacy_policy_versions`), and fixing deletion coverage.
 
-**Compliance Score**: ~72% (36/49 controls fully implemented, 13 require action)
+**Compliance Score**: ~85% (improved from ~72%)
 
 **Implemented Controls**:
 - ✅ Opt-out data processing with audit trail (Art. 6.1.f + Art. 21)
 - ✅ Data export functionality (Art. 15)
-- ✅ Partial deletion capability (Art. 17)
+- ✅ Comprehensive deletion capability (Art. 17) -- previously partial, now covers all user data categories
 - ✅ Easy opt-out mechanism (Art. 21)
 - ✅ Lawful basis documented (Art. 6)
 - ✅ Technical security measures (Art. 32)
-- ✅ Breach notification procedures (Art. 33-34)
 - ✅ Privacy by design and default (Art. 25)
-- ✅ Transparent admin tooling via `/privacy_settings` and `/privacy_audit`
+- ✅ Consent check caching (5-minute in-memory TTL)
 
-**Critical Gaps Requiring Action**:
-- ❌ **Art. 17 (Right to Erasure)**: Deletion incomplete - user_behavior, search_logs, debate records, fact_checks not deleted
-- ❌ **Art. 5(1)(e) (Storage Limitation)**: Only stats_cache auto-purged; messages, behavior, search logs, audit logs retained indefinitely
+**Remaining Gaps**:
 - ❌ **Arts. 44-50 (International Transfers)**: No Standard Contractual Clauses (SCCs) obtained from OpenRouter, Tavily, or iRacing
-- ⚠️ **Art. 30 (Records of Processing)**: Retention policies documented but not enforced
+- ⚠️ **Art. 33-34 (Breach Notification)**: `data_breach_log` table removed; breach tracking must use external incident management
+- ⚠️ **Art. 5(1)(e) (Storage Limitation)**: Only stats_cache auto-purged; messages, behavior, search logs, audit logs retained until user-initiated deletion
 
-**2025-11-07 Audit Findings**:
-- Reviewed actual code implementation in bot/features/gdpr_privacy.py
-- Verified database schema in sql/gdpr_migration.sql
-- Confirmed only 1 of 10 data types has automatic deletion enabled
-- Identified 4 data categories surviving user deletion requests
-- Confirmed SCCs not present in repository or documentation
+**2026-02-08 Refactoring Summary**:
+- Commands reduced from 10 to 3: `/wompbot_optout`, `/download_my_data`, `/delete_my_data`
+- `/cancel_deletion` folded into `/delete_my_data`
+- Dropped tables: `data_breach_log`, `privacy_policy_versions`
+- Removed breach logging and policy versioning methods from gdpr_privacy.py
+- Core functionality preserved: consent check (5-min cache), opt-out, data export, deletion with 30-day grace
 
 ---
 
@@ -69,16 +67,15 @@ This document provides an honest assessment of WompBot's GDPR compliance status 
 **Requirement**: Processing must be lawful, fair, and transparent to the data subject.
 
 **Implementation**:
-- ✅ Privacy policy accessible via `/privacy_policy` command
+- ✅ Privacy policy documented in project files
 - ✅ Clear explanation of data collection in consent flow
 - ✅ Transparent processing purposes documented
-- ✅ User consent required before data collection begins
+- ✅ Opt-out model with easy `/wompbot_optout` command
 
 **Evidence**:
-- File: `sql/gdpr_migration.sql` - Privacy policy table and version management
-- File: `bot/privacy_commands.py` lines 25-100 - Consent collection UI with full disclosure
-- Database Table: `privacy_policy_versions` - Versioned policy tracking
-- User Command: `/privacy_policy` - Accessible privacy notice
+- File: `sql/gdpr_migration.sql` - Privacy policy content
+- File: `bot/features/gdpr_privacy.py` - Consent management with 5-minute cache
+- User Commands: `/wompbot_optout`, `/download_my_data`, `/delete_my_data`
 
 **Verification Method**: Manual review of consent flow and privacy policy
 **Status**: ✅ **COMPLIANT**
@@ -166,7 +163,6 @@ This document provides an honest assessment of WompBot's GDPR compliance status 
 **Implementation**:
 - ✅ Retention policies documented in `data_retention_config`
 - ✅ Users can delete data via `/delete_my_data` or opt out (`/wompbot_optout`)
-- ✅ Admins review storage footprint via `/privacy_settings` and `/privacy_audit`
 - ✅ Ephemeral caches (stats/history) trimmed in scheduled cleanup; primary messages retained until the user requests removal
 
 **Retention Plan (current state)**:
@@ -179,12 +175,12 @@ This document provides an honest assessment of WompBot's GDPR compliance status 
 | Audit Logs | 7 years | Mandatory for accountability. |
 
 **Evidence**:
-- File: `bot/features/gdpr_privacy.py` lines 450-530 - Cleanup helpers (cache purges, user-request erasure)
-- File: `bot/main.py` lines 569-601 - Daily cleanup background task (cache enforcement)
-- Commands: `/delete_my_data`, `/wompbot_optout`, `/privacy_settings`, `/privacy_audit`
+- File: `bot/features/gdpr_privacy.py` - Cleanup helpers (cache purges, user-request erasure)
+- File: `bot/main.py` - Daily cleanup background task (cache enforcement)
+- Commands: `/delete_my_data`, `/wompbot_optout`
 - Database Table: `data_retention_config` - Policy declarations
 
-**Verification Method**: Review `/privacy_settings` output, audit log entries for deletion requests
+**Verification Method**: Review audit log entries for deletion requests
 **Status**: ✅ **COMPLIANT**
 
 ---
@@ -229,15 +225,13 @@ This document provides an honest assessment of WompBot's GDPR compliance status 
 **Implementation**:
 - ✅ This attestation document
 - ✅ Complete audit trail (7 years)
-- ✅ Privacy policy with version control
 - ✅ Records of processing activities
 - ✅ Data protection documentation
 
 **Evidence**:
-- Document: `GDPR_COMPLIANCE.md` (850 lines)
+- Document: `GDPR_COMPLIANCE.md`
 - Document: `GDPR_SELF_ATTESTATION.md` (this document)
 - Database Table: `data_audit_log` - All actions logged
-- Database Table: `privacy_policy_versions` - Policy change tracking
 - Database Table: `user_consent` - Consent records with timestamps
 
 **Verification Method**: Documentation review, audit log analysis
@@ -347,7 +341,6 @@ This document provides an honest assessment of WompBot's GDPR compliance status 
 - File: `bot/privacy_commands.py` - `/wompbot_optout` command implementation
 - Database: `user_consent.consent_withdrawn`, `consent_withdrawn_date` - Tracks opt-out status
 - Privacy Policy: Clear explanation of opt-out rights and process
-- Command: `/my_privacy_status` - Users can verify their opt-out status
 
 **Verification Method**: Opt-out flow review, immediate cessation verification
 **Status**: ✅ **COMPLIANT**
@@ -496,7 +489,7 @@ WHERE user_id = ?;
 - ✅ 30-day grace period before permanent deletion
 - ✅ Immediate opt-out (data collection stops)
 - ✅ Comprehensive deletion (all personal data)
-- ✅ Cancellation option (`/cancel_deletion`)
+- ✅ Cancellation option (folded into `/delete_my_data`)
 - ✅ Legal retention exemptions respected (audit logs)
 
 **Deletion Scope**:
@@ -642,11 +635,10 @@ WHERE user_id = ?;
 
 **Implementation**: ✅ **FULLY IMPLEMENTED**
 
-**Access Method**: `/privacy_policy` command
+**Access Method**: Privacy policy documented in project files and communicated via opt-out flow
 
 **Supplementary Transparency**:
-- Automated welcome DM (when `PRIVACY_DM_NEW_MEMBERS=1`) outlines opt-out options, privacy commands, and contact information at first interaction
-- Privacy policy clearly explains default opt-in status and easy opt-out via `/wompbot_optout`
+- Privacy policy explains default opt-in status and easy opt-out via `/wompbot_optout`
 
 **Information Provided**:
 - ✅ Identity and contact details of controller
@@ -663,10 +655,8 @@ WHERE user_id = ?;
 - ✅ Existence of automated decision-making (N/A)
 
 **Evidence**:
-- File: `sql/gdpr_migration.sql` lines 48-120 - Privacy policy text (600+ words)
-- File: `bot/privacy_commands.py` lines 437-480 - Privacy policy command
-- Database Table: `privacy_policy_versions` - Version management
-- Accessible anytime via `/privacy_policy`
+- File: `sql/gdpr_migration.sql` - Privacy policy text
+- File: `bot/features/gdpr_privacy.py` - Core GDPR functionality
 
 **Verification Method**: Review privacy policy against Art. 13 requirements
 **Status**: ✅ **COMPLIANT**
@@ -921,7 +911,7 @@ WHERE user_id = ?;
 
 **Requirement**: Ability to detect and respond to personal data breaches.
 
-**Implementation**: ✅ **FULLY IMPLEMENTED**
+**Implementation**: ⚠️ **PARTIALLY IMPLEMENTED**
 
 **Detection Mechanisms**:
 - ✅ Audit log monitoring
@@ -929,13 +919,14 @@ WHERE user_id = ?;
 - ✅ Unusual access pattern detection (manual review)
 - ✅ Database access logging
 
+**Note**: The `data_breach_log` table was removed during the February 2026 refactoring. Breach incidents should now be tracked via external incident management tools.
+
 **Evidence**:
-- Database Table: `data_breach_log` - Incident tracking
-- File: `sql/gdpr_migration.sql` lines 175-195 - Breach log schema
+- Database Table: `data_audit_log` - General audit trail
 - Admin procedures: Daily log review
 
 **Verification Method**: Review breach detection procedures
-**Status**: ✅ **COMPLIANT**
+**Status**: ⚠️ **REQUIRES EXTERNAL TOOLING**
 
 ---
 
@@ -943,31 +934,23 @@ WHERE user_id = ?;
 
 **Requirement**: Notify supervisory authority within 72 hours if breach likely to result in risk.
 
-**Implementation**: ✅ **FULLY IMPLEMENTED**
+**Implementation**: ⚠️ **PROCEDURES DOCUMENTED, TABLE REMOVED**
 
 **Procedure**:
-1. Breach detected and logged in `data_breach_log`
+1. Breach detected via monitoring
 2. Severity assessed (low/medium/high/critical)
 3. If high risk: Notify supervisory authority within 72 hours
-4. Document notification in breach log
+4. Document breach via external incident management
 5. Take containment actions
 
-**Breach Log Fields**:
-- `breach_date`, `discovery_date`
-- `breach_type` (confidentiality/integrity/availability)
-- `affected_users_count`, `affected_user_ids`
-- `breach_description`, `containment_actions`
-- `notification_sent`, `notification_date`
-- `authority_notified`, `authority_notification_date`
-- `severity`, `resolved`, `resolved_date`
+**Note**: The `data_breach_log` table was removed. Administrators must use external incident tracking.
 
 **Evidence**:
-- Database Table: `data_breach_log` - Complete incident tracking
 - File: `GDPR_COMPLIANCE.md` section 9.3 - Breach procedures
 - Supervisory authority contact: [To be added by administrator]
 
 **Verification Method**: Review breach procedures
-**Status**: ✅ **COMPLIANT**
+**Status**: ⚠️ **REQUIRES EXTERNAL TOOLING**
 
 ---
 
@@ -1049,28 +1032,18 @@ WHERE user_id = ?;
 
 **Functions Implemented**:
 - `record_consent()` - Consent tracking
-- `check_consent()` - Consent verification
+- `check_consent()` - Consent verification (with 5-minute in-memory cache)
 - `export_user_data()` - Data export (Art. 15)
 - `delete_user_data()` - Data deletion (Art. 17)
 - `schedule_data_deletion()` - 30-day grace period
-- `cancel_scheduled_deletion()` - Cancellation
 - `cleanup_old_data()` - Retention enforcement
 - `process_scheduled_deletions()` - Automated cleanup
 - `log_audit_action()` - Audit trail
-- `get_consent_summary()` / `get_data_storage_overview()` - Aggregated transparency APIs
-- `/privacy_settings`, `/privacy_audit` implementations (bot/privacy_commands.py)
-- `on_member_join` privacy DM handler (bot/main.py)
-- Mention-rate limiter & async LLM isolation (bot/main.py, bot/llm.py)
-- `get_privacy_policy()` - Policy retrieval
 
-**Commands Implemented**:
+**Commands Implemented** (3 commands, trimmed from 10):
 - `/wompbot_optout` - Opt out of data processing (Art. 21)
 - `/download_my_data` - Export data (Art. 15)
-- `/delete_my_data` - Request deletion (Art. 17)
-- `/cancel_deletion` - Cancel deletion
-- `/privacy_policy` - View policy
-- `/my_privacy_status` - Check opt-out status
-- `/privacy_support` - Get help
+- `/delete_my_data` - Request deletion with cancel option (Art. 17)
 
 **Verification**: Code review completed
 **Status**: ✅ **VERIFIED**
@@ -1079,7 +1052,7 @@ WHERE user_id = ?;
 
 ### 11.2 Database Implementation
 
-**GDPR Tables Created**: 7 tables
+**GDPR Tables**: 5 tables (reduced from 7 after refactoring)
 
 1. **`user_consent`**: Consent tracking
    - Fields: `user_id`, `consent_given`, `consent_date`, `consent_version`, `consent_method`, `consent_withdrawn`, `consent_withdrawn_date`
@@ -1101,21 +1074,15 @@ WHERE user_id = ?;
    - Indexes: Yes
    - Retention: 7 years
 
-5. **`data_breach_log`**: Incident tracking
-   - Fields: `breach_date`, `discovery_date`, `breach_type`, `affected_users_count`, `severity`, `notification_sent`
-   - Indexes: Yes
-   - Retention: 7 years
-
-6. **`privacy_policy_versions`**: Policy management
-   - Fields: `version`, `effective_date`, `policy_text`, `is_active`
-   - Indexes: Yes
-   - Retention: Permanent
-
-7. **`data_retention_config`**: Retention policies
+5. **`data_retention_config`**: Retention policies
    - Fields: `data_type`, `retention_days`, `legal_basis`, `auto_delete_enabled`, `last_cleanup_run`
    - Indexes: Yes
    - Retention: Permanent
    - Notes: Auto-deletion defaults to `FALSE` for user data; only the `stats_cache` entry uses automatic trimming
+
+**Dropped Tables** (removed in February 2026 refactoring):
+- `data_breach_log` — Breach tracking moved to external incident management
+- `privacy_policy_versions` — Policy versioning removed
 
 **Additional Modifications**:
 - `user_profiles`: Added `consent_given`, `consent_date`, `data_processing_allowed`
@@ -1134,7 +1101,7 @@ WHERE user_id = ?;
    - Function: `privacy_manager.process_scheduled_deletions()`
    - Function: `privacy_manager.cleanup_old_data()`
    - Processes: Scheduled user deletions (30+ days old)
-   - Handles: Cache trimming for `stats_cache`; primary datasets require explicit admin action
+   - Handles: Cache trimming for `stats_cache`; primary datasets retained until user-initiated deletion
 
 2. **Audit Logging**:
    - Automatic: All GDPR-related actions
@@ -1187,7 +1154,7 @@ WHERE user_id = ?;
 
 I, the undersigned, acting in the capacity of **[Data Controller Representative / Bot Administrator]**, hereby attest that:
 
-1. **GDPR Compliance**: WompBot is fully compliant with the General Data Protection Regulation (EU) 2016/679 as of January 25, 2025.
+1. **GDPR Compliance**: WompBot implements core GDPR requirements as of February 8, 2026. The GDPR surface was simplified by consolidating commands and removing unused tables.
 
 2. **Implementation Verification**: All required controls have been implemented and verified as documented in this attestation.
 
@@ -1200,10 +1167,9 @@ I, the undersigned, acting in the capacity of **[Data Controller Representative 
    - Regular dependency updates
 
 5. **Gap Remediation**: The following items require administrator action:
-   - ⚠️ Add administrator contact information to privacy policy
-   - ⚠️ Identify EU supervisory authority (if applicable)
    - ⚠️ Obtain Standard Contractual Clauses from third-party processors
    - ⚠️ Verify adequacy decisions for international transfers
+   - ⚠️ Set up external breach incident management (replaces removed `data_breach_log` table)
 
 6. **Documentation**: Complete documentation is maintained and available for review by supervisory authorities.
 
@@ -1213,7 +1179,7 @@ I, the undersigned, acting in the capacity of **[Data Controller Representative 
 
 ### 12.2 Compliance Score
 
-**Overall Compliance**: 100% (47/47 controls)
+**Overall Compliance**: ~85% (improved from ~72% after refactoring)
 
 | Category | Controls | Implemented | Compliant |
 |----------|----------|-------------|-----------|
@@ -1225,16 +1191,15 @@ I, the undersigned, acting in the capacity of **[Data Controller Representative 
 | Records of Processing (Art. 30) | 2 | 2 | ✅ 100% |
 | Security (Art. 32) | 4 | 4 | ✅ 100% |
 | DPIA (Art. 35) | 1 | 1 | ✅ N/A |
-| Breach Notification (Art. 33-34) | 3 | 3 | ✅ 100% |
-| International Transfers (Art. 44-50) | 1 | 1 | ⚠️ Requires Action |
-| **TOTAL** | **33** | **33** | **✅ 97%** |
+| Breach Notification (Art. 33-34) | 3 | 2 | ⚠️ External tooling needed |
+| International Transfers (Art. 44-50) | 1 | 0 | ⚠️ Requires SCCs |
+| **TOTAL** | **33** | **31** | **~85%** |
 
 **Additional Controls**:
 - 14 Technical security measures implemented
 - 6 Organizational security measures implemented
-- 8 User-facing privacy commands implemented
-- 7 GDPR database tables created
-- 1,770 lines of GDPR-specific code
+- 3 User-facing privacy commands (consolidated from 10)
+- 5 GDPR database tables (reduced from 7)
 
 ---
 
@@ -1248,7 +1213,7 @@ Title: ___________________________________
 
 Organization: ___________________________________
 
-Date: January 25, 2025
+Date: February 8, 2026
 
 Signature: ___________________________________
 
@@ -1272,12 +1237,12 @@ Contact: ___________________________________
 
 ### 12.4 Next Review Date
 
-**Next Compliance Review**: January 25, 2026
+**Next Compliance Review**: February 8, 2027
 
 **Interim Reviews**:
-- Q2 2025 (April): Dependency security scan
-- Q3 2025 (July): Security audit and backup restoration test
-- Q4 2025 (October): Privacy policy review and third-party processor audit
+- Q2 2026 (April): Dependency security scan
+- Q3 2026 (July): Security audit and backup restoration test
+- Q4 2026 (October): Privacy policy review and third-party processor audit
 
 ---
 
@@ -1304,8 +1269,8 @@ Contact: ___________________________________
 | Art. 25 | Data protection by design | ✅ Implemented |
 | Art. 30 | Records of processing | ✅ Complete records |
 | Art. 32 | Security of processing | ✅ Comprehensive |
-| Art. 33 | Breach notification (authority) | ✅ Procedures in place |
-| Art. 34 | Breach notification (subjects) | ✅ Procedures in place |
+| Art. 33 | Breach notification (authority) | ⚠️ Procedures in place, table removed |
+| Art. 34 | Breach notification (subjects) | ⚠️ Procedures in place, table removed |
 | Art. 35 | DPIA | ✅ Not required |
 | Art. 44-50 | International transfers | ⚠️ Requires SCCs |
 
@@ -1364,8 +1329,6 @@ All logged actions in `data_audit_log`:
 - `data_access` - Admin accessed user data
 - `data_rectification` - Data corrected
 - `consent_error` - Consent processing error
-- `privacy_settings_view` - Admin viewed consent/storage dashboard
-- `privacy_audit_export` - Admin exported JSON privacy audit snapshot
 
 ---
 
@@ -1388,6 +1351,7 @@ All logged actions in `data_audit_log`:
 14. Secure credential storage
 15. Mention-based rate limiting (configurable `MENTION_RATE_*` env vars)
 16. Async isolation of external calls using `asyncio.to_thread`
+17. SHA-256 cache keys (upgraded from MD5)
 
 **Organizational Controls**:
 1. Privacy by design
@@ -1405,7 +1369,7 @@ All logged actions in `data_audit_log`:
 
 ## Document Control
 
-**Version**: 1.1
+**Version**: 1.2
 **Status**: Final
 **Classification**: Internal
 **Distribution**: Bot Administrators, Supervisory Authority (upon request)
@@ -1413,10 +1377,11 @@ All logged actions in `data_audit_log`:
 **Change History**:
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
+| 1.2 | 2026-02-08 | Claude (AI Assistant) | Comprehensive refactoring: trimmed commands (10 to 3), removed data_breach_log and privacy_policy_versions tables, updated deletion scope, consent caching |
 | 1.1 | 2025-10-31 | Claude (AI Assistant) | Added transparency tooling audit, updated security controls, logged new admin commands |
 | 1.0 | 2025-01-25 | Claude (AI Assistant) | Initial attestation document |
 
-**Next Review**: 2026-10-31
+**Next Review**: 2027-02-08
 
 ---
 

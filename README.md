@@ -40,7 +40,7 @@ A Discord bot powered by DeepSeek through OpenRouter, featuring intelligent conv
 - Message frequency controls: 3-second cooldown, max 10 per minute
 - Feature-specific limits for fact-checks, searches, and expensive commands
 - Concurrent request limiting: 3 simultaneous requests maximum
-- Cost tracking with $1 spending alerts sent via DM
+- Cost tracking with configurable spending alerts (COST_ALERT_THRESHOLD, default $1) sent via DM
 
 ### RAG - Intelligent Memory System
 
@@ -139,6 +139,7 @@ The bot can invoke tools through LLM function calling to create visualizations a
 **Data Visualizations:**
 - Bar charts, line charts, pie charts, tables, comparison charts
 - Natural language requests: "show me a chart of who talks the most"
+- Colorblind-friendly Okabe-Ito palette (enable with VIZ_COLORBLIND_MODE=true)
 - Zero LLM cost - tool outputs speak for themselves
 
 ### Claims and Accountability
@@ -168,7 +169,7 @@ React with a warning emoji to trigger an automated fact-check.
 
 **How it works:**
 - Uses DeepSeek for high accuracy
-- Automatically searches 7 web sources using Tavily
+- Automatically searches 5 web sources using Tavily
 - Requires at least 2 sources to corroborate claims
 - Strict anti-hallucination prompts
 - Provides numbered source references with links
@@ -217,7 +218,9 @@ Natural language reminders that link back to the original conversation.
 - Natural language parsing: "in 5 minutes", "tomorrow at 3pm", "next Monday"
 - Context links jump back to the original message
 - Delivery options: DM or channel mention
-- Recurring support: daily, weekly, or custom intervals
+- Recurring support: daily, weekly, or custom intervals (fixed: calculates from last_trigger + interval)
+- Guild-level timezone support via /set_timezone
+- Better error messages for past times and unparseable inputs
 - Zero LLM cost - pure time parsing
 - Background checker runs every minute
 
@@ -229,7 +232,9 @@ Schedule events with automatic periodic reminders.
 - Natural language time input: "Friday at 8pm", "in 3 days", "October 20"
 - Configurable reminder intervals (default: 1 week, 1 day, 1 hour before)
 - Public channel announcements with Discord timestamps
-- Event management: list upcoming events, cancel by ID
+- Event management: list upcoming events, cancel by ID (creator permission required)
+- Guild-level timezone support via /set_timezone
+- Better error messages for invalid dates (e.g., "Feb 30")
 - Zero LLM cost
 - Background checker runs every 5 minutes
 
@@ -243,6 +248,7 @@ Spotify-style statistics for Discord activity.
 - Achievement badges: Night Owl, Early Bird, Debate Champion, Quote Machine
 - Compare any year from 2020 to present
 - Gold-themed embeds with profile pictures
+- Uses DENSE_RANK() for proper tie handling
 - Zero LLM cost - pure database queries
 
 ### Quote of the Day
@@ -251,7 +257,8 @@ Highlight the best quotes from your server.
 
 **Modes:**
 - Daily, Weekly, Monthly, All-Time Greats, or Random
-- Smart selection based on reaction counts
+- Smart selection based on reaction counts, all-time weighted by freshness
+- Calendar day boundary for daily mode
 - Beautiful purple embeds with context and attribution
 - Zero LLM cost
 
@@ -266,6 +273,8 @@ Track and analyze debates with LLM judging.
 - Winner determination with explanations
 - Debate history and leaderboards
 - Personal stats: wins, losses, average score
+- Sessions persist to database (survive bot restarts)
+- Prompt injection defense on transcripts (XML-wrapped)
 - Cost: $0.01-0.05 per debate (only when ending)
 
 ### iRacing Integration
@@ -298,8 +307,11 @@ Comprehensive iRacing stats and team management.
 
 **Technical Details:**
 - Professional visualizations using matplotlib with dark mode theme
-- Live data with background caching for performance
-- Adaptive rate limiting with gentle retries
+- Live data with background caching (bounded TTLCache: maxsize=50, ttl=7 days)
+- Parallel subsession fetching (semaphore-limited, 10 concurrent) for meta analysis
+- Adaptive rate limiting with tenacity retry/backoff (exponential + jitter)
+- Team query optimization: JOIN + GROUP BY (was COUNT subquery)
+- Team menu pagination for lists > 25 items
 - Optional feature - only enabled if credentials provided
 - Zero LLM cost - pure API calls
 - Encrypted credential storage using Fernet
@@ -337,6 +349,10 @@ nano .env
 - FACT_CHECK_DAILY_LIMIT: Fact-checks per day per user (default: 10)
 - SEARCH_HOURLY_LIMIT: Web searches per hour (default: 5)
 - SEARCH_DAILY_LIMIT: Web searches per day (default: 20)
+
+**Optional Cost & Display:**
+- COST_ALERT_THRESHOLD: Monthly cost alert threshold in dollars (default: 1.00)
+- VIZ_COLORBLIND_MODE: Enable Okabe-Ito colorblind-friendly palette (default: false)
 
 **Optional iRacing Integration:**
 
@@ -470,6 +486,7 @@ Prefix commands (faster, no LLM cost):
 
 - /whoami: Show your Discord information
 - /personality <mode>: Change bot personality (default/concise/bogan) - Admin only
+- /set_timezone <timezone>: Set guild-level timezone for reminders and events
 
 ### iRacing Integration
 
@@ -553,15 +570,8 @@ All users are opted-in by default for:
 
 - /wompbot_optout: Opt out of data collection
 - /download_my_data: Export all your data (GDPR Art. 15)
-- /delete_my_data: Request deletion with 30-day grace period (GDPR Art. 17)
+- /delete_my_data: Request deletion with 30-day grace period (GDPR Art. 17), includes cancel option
   - Warning: Currently deletes messages, claims, quotes, reminders, events - does not delete user_behavior, search_logs, or debate records
-- /my_privacy_status: View current privacy status
-- /privacy_policy: View complete privacy policy
-
-**Admin Privacy Commands:**
-
-- /privacy_settings: Live overview of consent counts and stored data
-- /privacy_audit: Download JSON report of privacy posture
 
 **Compliance Status:**
 
@@ -665,8 +675,13 @@ Comprehensive guides are available in the docs directory.
 - data_export_requests: Data export tracking
 - data_deletion_requests: Deletion with 30-day grace period
 - data_retention_config: Configurable retention policies
-- data_breach_log: Security incident tracking
-- privacy_policy_versions: Policy version history
+
+**Session Persistence Tables:**
+- active_trivia_sessions: Trivia game state (survives bot restarts)
+- active_debates: Debate session state (survives bot restarts)
+
+**Guild Configuration Tables:**
+- guild_config: Guild-level settings (timezone, etc.)
 
 **Rate Limiting and Cost Tables:**
 - rate_limits: Token usage tracking (1-hour rolling window)
@@ -701,8 +716,8 @@ Comprehensive guides are available in the docs directory.
 
 **Automatic Cost Monitoring:**
 - Real-time token usage tracking from API responses
-- Model-specific pricing calculations
-- $1 spending alerts sent via direct message
+- Model-specific pricing calculations (updated for current models)
+- Configurable spending alerts sent via direct message (COST_ALERT_THRESHOLD env var, default $1)
 - Beautiful embeds with cost breakdown by model
 - Database tracking in api_costs and cost_alerts tables
 
@@ -832,6 +847,7 @@ LLM-powered trivia with multiple categories and difficulty levels.
 - Configurable question count (5-20 per session)
 - 30-second timer per question with early answer bonus
 - Server-specific leaderboards
+- Sessions persist to database (survive bot restarts)
 
 ### Bug Tracking
 
@@ -889,7 +905,10 @@ discord-bot/
 │   └── COST_OPTIMIZATION.md # Cost optimization strategies
 │
 ├── sql/
-│   └── init.sql             # Database schema
+│   ├── init.sql             # Database schema
+│   ├── 13_gdpr_trim.sql     # GDPR simplification migration
+│   ├── 14_guild_timezone.sql # Guild timezone support
+│   └── 15_session_persistence.sql # Trivia/debate session persistence
 │
 └── bot/
     ├── main.py                  # Main bot logic and initialization
@@ -907,6 +926,7 @@ discord-bot/
     ├── tool_executor.py         # LLM tool execution handler (with Redis caching)
     ├── llm_tools.py             # LLM tool definitions
     ├── redis_cache.py           # Redis caching utility with graceful fallback
+    ├── constants.py             # Centralized constants (timezones, languages, tickers, self-contained tools)
     ├── data_retriever.py        # Database query engine
     ├── media_processor.py       # Media analysis (images, GIFs, videos, YouTube)
     ├── self_knowledge.py        # Bot self-awareness (reads own docs)
@@ -931,6 +951,7 @@ discord-bot/
     │   ├── iracing.py           # iRacing integration
     │   ├── iracing_teams.py     # iRacing team management
     │   ├── iracing_meta.py      # iRacing meta analysis (best cars/tracks)
+    │   ├── team_menu.py         # Team menu with pagination
     │   ├── yearly_wrapped.py    # Yearly summaries
     │   ├── quote_of_the_day.py  # Featured quotes system
     │   ├── claim_detector.py    # Fast regex pre-filter for claims

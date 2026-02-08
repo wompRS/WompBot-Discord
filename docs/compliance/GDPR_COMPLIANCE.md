@@ -4,15 +4,14 @@
 
 This bot implements GDPR-compliant privacy controls including **opt-out data processing**, data export, and deletion capabilities. The bot operates under **Legitimate Interest** (GDPR Art. 6.1.f) with user opt-out rights. However, **full compliance requires additional configuration and administrative oversight**.
 
-**Compliance Status**: ⚠️ **Partial Compliance - Action Required** (as of 2025-11-13)
+**Compliance Status**: ⚠️ **Partial Compliance - Action Required** (as of 2026-02-08)
 **Privacy Policy Version**: 1.0
-**Last Audit**: 2025-11-13 (opt-out model implementation)
+**Last Audit**: 2026-02-08 (comprehensive refactoring)
 **Data Processing Model**: **Opt-Out** (users are opted-in by default, can opt out anytime)
 
 ### Known Gaps Requiring Action
 1. **Automated Retention**: Only stats_cache is automatically purged. Messages, behavior data, search logs, and audit logs require manual review.
-2. **Data Deletion**: User deletion requests do not currently remove all categories (user_behavior, search_logs, debate records remain).
-3. **International Transfers**: Standard Contractual Clauses (SCCs) must be obtained from OpenRouter, Tavily, and iRacing.
+2. **International Transfers**: Standard Contractual Clauses (SCCs) must be obtained from OpenRouter, Tavily, and iRacing.
 
 ---
 
@@ -121,22 +120,19 @@ Per GDPR Article 6, we process personal data under the following legal bases:
 **Command**: `/delete_my_data`
 
 **Implementation**:
-- **30-Day Grace Period**: Scheduled deletion with cancellation option
+- **30-Day Grace Period**: Scheduled deletion with cancellation option (cancellation is now handled within `/delete_my_data` itself)
 - **Immediate Opt-Out**: Data collection stops immediately
-- **Partial Deletion**: Currently deletes messages, claims, quotes, reminders, events, and iRacing links
-- **⚠️ Not Currently Deleted**: user_behavior (tone analysis), search_logs, debate records, fact_checks
+- **Comprehensive Deletion**: Deletes messages, claims, quotes, reminders, events, iRacing links, behavior analysis, search logs, debate records, and fact checks
 - **Legal Retention**: Audit logs always retained for 7 years (legal requirement)
 
 **Deletion Process**:
-1. User requests deletion → `/delete_my_data`
+1. User requests deletion via `/delete_my_data`
 2. Confirmation dialog with full warning
 3. Immediate opt-out from data collection
 4. 30-day grace period begins
-5. User can cancel → `/cancel_deletion`
-6. After 30 days: Partial deletion executed (see above)
+5. User can cancel via `/delete_my_data` (cancel option folded into same command)
+6. After 30 days: Comprehensive deletion executed
 7. Audit log entry created
-
-**⚠️ Admin Action Required**: To fully comply with Art. 17, administrators must manually delete user_behavior, search_logs, and debate records, or update the `delete_user_data()` function to include these tables.
 
 ### 3.3 Right to Data Portability (Art. 20)
 **Command**: `/download_my_data`
@@ -171,31 +167,13 @@ Per GDPR Article 6, we process personal data under the following legal bases:
 
 ---
 
-### 3.7 Transparency & Accountability Tools (Art. 12, Art. 30)
-**Commands**:
-- `/privacy_settings` *(Admin)* — Real-time snapshot of consent counts and storage footprint
-- `/privacy_audit` *(Admin)* — JSON export capturing current privacy metrics for documentation
-- Automated privacy welcome DM (configurable via `PRIVACY_DM_NEW_MEMBERS`) sent to new members with consent options
-
-**Implementation**:
-- Commands surface live data from `user_consent`, `data_audit_log`, cache tables, and retention config
-- Every invocation is logged in `data_audit_log` with actor, scope, and timestamp
-- Welcome DM satisfies transparency obligations by delivering Art. 13 information at first contact
-
-**Evidence**:
-- File: `bot/privacy_commands.py` lines 361-458 — Implementation of `/privacy_settings` and `/privacy_audit`
-- File: `bot/main.py` lines 879-907 — Automated privacy DM on guild join
-- Audit Log: Entries tagged `privacy_settings` / `privacy_audit` in `data_audit_log`
-
-**Status**: ✅ **COMPLIANT**
-
 ---
 
 ## 4. Technical Implementation
 
 ### 4.1 Database Schema
 
-**GDPR-Specific Tables**:
+**GDPR-Specific Tables** (after refactoring):
 ```sql
 -- Consent tracking
 user_consent (
@@ -233,14 +211,6 @@ data_deletion_requests (
     status VARCHAR(50)
 )
 
--- Privacy policy versions
-privacy_policy_versions (
-    version VARCHAR(20),
-    effective_date TIMESTAMP,
-    policy_text TEXT,
-    is_active BOOLEAN
-)
-
 -- Retention policies
 data_retention_config (
     data_type VARCHAR(100),
@@ -250,30 +220,35 @@ data_retention_config (
 )
 ```
 
+**Dropped Tables** (removed during refactoring):
+- `data_breach_log` — Breach logging removed; incidents should be tracked via external incident management
+- `privacy_policy_versions` — Policy versioning removed; privacy policy managed outside the database
+
 ### 4.2 Python Modules
 
 **Core Module**: [`bot/features/gdpr_privacy.py`](bot/features/gdpr_privacy.py)
 
 **Key Functions**:
 - `record_consent()` - Track user consent
+- `check_consent()` - Consent verification with 5-minute in-memory cache
 - `export_user_data()` - Generate data export
 - `delete_user_data()` - Delete/anonymize data
 - `schedule_data_deletion()` - 30-day grace period
 - `cleanup_old_data()` - Cache cleanup + support for user-triggered deletions
 - `log_audit_action()` - GDPR audit trail
 
-**Commands Module**: [`bot/privacy_commands.py`](bot/privacy_commands.py)
-
-**User Commands**:
+**User Commands** (3 commands, trimmed from 10):
 - `/wompbot_optout` - Opt out of data processing (Art. 21)
 - `/download_my_data` - Export all data (Art. 15)
-- `/delete_my_data` - Request deletion (Art. 17)
-- `/cancel_deletion` - Cancel scheduled deletion
-- `/privacy_policy` - View full privacy policy
-- `/my_privacy_status` - View current opt-out status
-- `/privacy_support` - Get help
-- `/privacy_settings` *(Admin)* - Live overview of consent + stored data volumes
-- `/privacy_audit` *(Admin)* - Generate JSON privacy audit snapshot
+- `/delete_my_data` - Request deletion with cancel option (Art. 17)
+
+**Removed Commands** (consolidated or dropped during refactoring):
+- `/cancel_deletion` - Folded into `/delete_my_data` (cancel option presented within the same command)
+- `/privacy_policy` - Removed
+- `/my_privacy_status` - Removed
+- `/privacy_support` - Removed
+- `/privacy_settings` - Removed (admin)
+- `/privacy_audit` - Removed (admin)
 
 ### 4.3 Background Tasks
 
@@ -291,8 +266,7 @@ async def gdpr_cleanup():
 **Actions Performed**:
 1. Process users with deletion scheduled 30+ days ago
 2. Clean up expired stats cache entries (30+ days old)
-3. Leave long-term datasets (messages, behavior analysis, search logs, debates) untouched; administrators review these via privacy dashboards
-4. Respect extended-retention opt-ins when processing user deletions
+3. Respect extended-retention opt-ins when processing user deletions
 
 ---
 
@@ -382,7 +356,6 @@ The consent table (`user_consent.extended_retention`) records user preferences f
 Per GDPR Art. 17(3), we retain data when required by law:
 - **Audit Logs**: 7 years (financial regulations, GDPR Art. 30)
 - **Consent Records**: 7 years (proof of lawful processing)
-- **Breach Logs**: 7 years (Art. 33/34 compliance)
 
 ---
 
@@ -453,7 +426,7 @@ Per GDPR Art. 17(3), we retain data when required by law:
 ### 8.4 Breach Notification (Art. 33/34)
 
 - [x] Breach detection procedures in place
-- [x] Breach log table created
+- [ ] Breach log table removed; use external incident management (TODO: set up)
 - [ ] Supervisory authority contact identified (TODO: add)
 - [ ] Breach notification process documented (TODO: document)
 - [x] 72-hour notification window monitored
@@ -476,32 +449,21 @@ Per GDPR Art. 17(3), we retain data when required by law:
    \dt data_retention_config
    ```
 
-3. **Check Privacy Policy**:
-   ```sql
-   SELECT version, effective_date, is_active FROM privacy_policy_versions;
-   ```
-
-4. **Update Contact Information** (REQUIRED):
+3. **Update Contact Information** (REQUIRED):
    Edit `sql/gdpr_migration.sql` and add:
    - Bot administrator contact email
    - EU supervisory authority (if applicable)
    - Data protection officer (if required)
-
-5. **Configure Transparency DM** *(Optional but recommended)*:
-   - `PRIVACY_DM_NEW_MEMBERS=1` (default) sends an automated privacy notice DM when members join
-   - Set to `0` if the guild provides an alternative onboarding notice; document the alternate process in `/privacy_audit`
 
 ### 9.2 Regular Maintenance
 
 **Daily**:
 - Review GDPR cleanup logs
 - Check for scheduled deletions
-- Run `/privacy_settings` to confirm consent counts and storage footprint
 
 **Weekly**:
 - Review audit logs for suspicious activity
 - Check data export requests
-- Archive `/privacy_audit` JSON output for documentation
 
 **Monthly**:
 - Review data retention policies
@@ -520,31 +482,19 @@ Per GDPR Art. 17(3), we retain data when required by law:
 
 ### 9.3 Handling Data Breaches
 
+**Note**: The `data_breach_log` table was removed during refactoring. Breaches should be tracked via external incident management tools or a dedicated incident log file.
+
 **Immediate Actions** (within 24 hours):
 1. Identify breach scope and affected users
 2. Contain the breach (stop data leak)
-3. Log breach in `data_breach_log` table
+3. Document breach externally (incident management system)
 4. Assess severity and risk to users
 
 **Notification** (within 72 hours):
 1. Notify supervisory authority if high risk
 2. Notify affected users if high risk to rights
-3. Document notification in breach log
+3. Document notification
 4. Update breach status regularly
-
-**SQL Template**:
-```sql
-INSERT INTO data_breach_log (
-    breach_date, discovery_date, breach_type,
-    affected_users_count, affected_user_ids,
-    breach_description, severity
-) VALUES (
-    NOW(), NOW(), 'confidentiality',
-    150, ARRAY[user_id1, user_id2, ...],
-    'Database temporarily exposed due to misconfiguration',
-    'high'
-);
-```
 
 ### 9.4 Responding to Data Requests
 
@@ -629,8 +579,6 @@ All GDPR-related actions are logged in `data_audit_log`:
 - `data_export_failed` - Export generation failed
 - `data_deletion_started` - User initiated deletion
 - `data_deletion_scheduled` - Deletion scheduled with grace period
-- `privacy_settings_view` - Admin accessed consent/storage dashboard
-- `privacy_audit_export` - Admin generated JSON privacy audit snapshot
 - `data_deletion_completed` - Data permanently deleted
 - `data_deletion_cancelled` - User cancelled scheduled deletion
 - `data_deletion_failed` - Deletion process failed
@@ -692,5 +640,5 @@ This bot implements comprehensive GDPR compliance with:
 **Questions or Concerns?**
 Contact: [Administrator Contact Information]
 
-**Last Updated**: 2025-01-25
-**Next Review**: 2026-01-25
+**Last Updated**: 2026-02-08
+**Next Review**: 2027-02-08

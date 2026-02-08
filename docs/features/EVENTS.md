@@ -9,6 +9,8 @@ The Event Scheduling System allows you to schedule events with automatic periodi
 - Channel announcements with optional role mentions
 - Discord timestamp formatting for automatic timezone conversion
 - Event management (list, cancel)
+- Guild-level timezone support (via `zoneinfo` and `_get_guild_timezone()`)
+- Creator-only event cancellation (enforced permission check)
 
 ## Commands
 
@@ -49,6 +51,8 @@ Cancel a scheduled event.
 
 **Parameters:**
 - `event_id` - ID of the event to cancel (shown in event embed footer)
+
+**Permission:** Only the user who created the event (matching `created_by_user_id`) can cancel it. Attempts by other users will be rejected with an error message.
 
 **Example:**
 ```
@@ -201,7 +205,7 @@ This shows:
 
 ### Cancelling Events
 
-Anyone can cancel an event using its ID:
+Only the event creator can cancel an event using its ID:
 
 ```
 /cancel_event event_id:5
@@ -209,7 +213,7 @@ Anyone can cancel an event using its ID:
 
 The event will be marked as cancelled and no further reminders will be sent.
 
-**Note:** In future versions, only the event creator or admins will be able to cancel events.
+**Permission check:** The system now enforces a `created_by` permission check -- only the user whose `created_by_user_id` matches the requesting user can cancel the event. Other users will receive an error.
 
 ## Tips & Best Practices
 
@@ -281,7 +285,11 @@ The event reminder checker runs every 5 minutes:
 Natural language time parsing is handled by `EventSystem.parse_event_time()`:
 - Regex-based parsing (no external dependencies)
 - Supports relative times, days of week, tomorrow, specific times
-- Returns `datetime` object or `None` if parsing fails
+- Returns `Union[datetime, str, None]`:
+  - `datetime` on success
+  - `str` with a descriptive error message on failure (e.g., "February doesn't have 30 days")
+  - `None` only in unexpected/fallthrough cases
+- Descriptive error messages help users fix invalid inputs instead of receiving a generic parse failure
 
 ## Limitations & Known Issues
 
@@ -289,7 +297,7 @@ Natural language time parsing is handled by `EventSystem.parse_event_time()`:
 
 1. **No Recurring Events** - Each event is one-time only
 2. **No Edit Function** - Events cannot be edited after creation (must cancel and recreate)
-3. **No Permission Checks** - Anyone can cancel any event (will be fixed)
+3. ~~**No Permission Checks**~~ - **Fixed:** Only the event creator can cancel their events
 4. **No Role Mentions** - Role pinging not yet implemented (database field exists)
 5. **Fixed Check Interval** - Reminders checked every 5 minutes (may be up to 5 minutes late)
 
@@ -303,7 +311,7 @@ Natural language time parsing is handled by `EventSystem.parse_event_time()`:
 
 - [ ] Recurring events (weekly, monthly)
 - [ ] Event editing
-- [ ] Permission checks (only creator/admin can cancel)
+- [x] Permission checks (only creator can cancel) -- **Implemented**
 - [ ] Role mentions in reminders
 - [ ] Custom check intervals per event
 - [ ] Event attendance tracking (RSVPs)
@@ -313,6 +321,8 @@ Natural language time parsing is handled by `EventSystem.parse_event_time()`:
 ## Troubleshooting
 
 ### "Could not parse time"
+
+`parse_event_time()` now returns descriptive error strings instead of `None` for invalid inputs. For example, entering "February 30" will return an error like "February doesn't have 30 days" rather than a generic parse failure.
 
 Try one of the supported formats:
 - `tomorrow at 7pm`
@@ -339,9 +349,10 @@ Check:
 ### Wrong Timezone
 
 Discord timestamps automatically convert to user's timezone. If the event time looks wrong:
-- Check the server's system timezone
-- The bot stores times in server local time
+- Check the guild's configured timezone (uses `_get_guild_timezone()` backed by `zoneinfo`)
+- The bot respects per-guild timezone settings for parsing and scheduling
 - Discord will display in each user's local timezone
+- Falls back to UTC if no guild timezone is configured
 
 ## Example Workflow
 

@@ -43,6 +43,24 @@ Fixing these 5 issues alone would reduce response latency by 40-60% and dramatic
 
 **12 of 21 HIGH/CRITICAL issues fixed. 4 OPEN items remain for future work.**
 
+### Additional Improvements (February 2026 Comprehensive Refactoring)
+
+| Improvement | Details |
+|-------------|---------|
+| Tool execution timeout | 30-second timeout per tool call prevents runaway tool execution from blocking the pipeline |
+| `_execute_tool_calls()` helper | Extracted from monolithic `handle_bot_mention()`, improving readability and testability |
+| `_synthesize_tool_response()` helper | Extracted synthesis logic, reducing `handle_bot_mention()` complexity |
+| SELF_CONTAINED_TOOLS in constants.py | Centralized list of tools that skip synthesis, eliminating hardcoded checks |
+| SHA-256 cache keys | Upgraded from MD5 for cache key generation in `_cache_key()` helper |
+| HTTPS enforcement | Weather and Wolfram API calls migrated from HTTP to HTTPS |
+| SQL injection fix in DataRetriever | Parameterized queries replace string interpolation |
+| iRacing parallel fetch | Sequential API calls replaced with concurrent fetches where possible |
+| Claims via `simple_completion()` | Claims and fact-check now use centralized LLM method with cost tracking |
+| Search results reduced to 5 | Was 7 results; reduces both search API cost and LLM input tokens |
+| Token estimation via tiktoken | Optional `tiktoken` dependency provides accurate token counting |
+| Configurable cost alerts | `COST_ALERT_THRESHOLD` env var (default $1.00) replaces hardcoded threshold |
+| Compression tuning | keep_recent=8 (was 3), min_messages=10 (was 8) for better context quality |
+
 ---
 
 ## CRITICAL Issues (Fix First)
@@ -155,10 +173,14 @@ Fixing these 5 issues alone would reduce response latency by 40-60% and dramatic
 - `llm.py:567-594` — Retries lose `images`, `tools`, `personality`, `max_tokens`, `user_id`, `username`.
 
 ### P22. Claims Module Bypasses LLMClient
-- `claims.py` makes direct `requests.post()` to hardcoded OpenRouter URL, bypassing session reuse, cost tracking, and retry logic.
+> **Status:** ✅ FIXED — Claims and fact-check now use `simple_completion()` via LLMClient
+- `claims.py` previously made direct `requests.post()` to hardcoded OpenRouter URL, bypassing session reuse, cost tracking, and retry logic.
+- Now uses centralized `simple_completion()` method which includes session reuse, cost tracking, and retry logic.
 
 ### P23. Sequential API Calls in iRacing
+> **Status:** ⚠️ PARTIAL — iRacing parallel fetch implemented for some paths
 - `get_upcoming_races()` fetches up to 10 series schedules sequentially. `classify_questions()` makes sequential LLM calls per user.
+- Parallel fetch added for some iRacing data retrieval paths, reducing sequential waits.
 
 ### P24. iRacing Profile Cache Disabled
 - `iracing.py:196-199` — Cache check commented out with "TEMP: Disable cache to debug". All profile lookups hit API.

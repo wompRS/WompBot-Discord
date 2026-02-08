@@ -1,8 +1,8 @@
 # Major Security & GDPR Compliance Update
 
-## Release Version: 2.0.0
-**Date**: January 25, 2025
-**Type**: Major Feature + Critical Security Fixes
+## Release Version: 3.0.0
+**Date**: February 8, 2026 (Updated from v2.0.0 January 25, 2025)
+**Type**: Major Refactoring + Security Hardening
 
 ---
 
@@ -57,7 +57,41 @@ params.append(exclude_bot_id)  # SECURE
 
 ---
 
-## 🔐 Additional Security Enhancements
+## Security Fixes (February 2026 Refactoring)
+
+### 5. HTTPS Migration for Weather/Wolfram APIs
+- **Files**: `bot/weather.py`, `bot/wolfram.py`
+- **Issue**: Some API calls used HTTP instead of HTTPS
+- **Fix**: All external API calls now enforce HTTPS/TLS
+- **Impact**: Prevents man-in-the-middle attacks on API traffic
+
+### 6. SQL Injection Fix in DataRetriever
+- **File**: `bot/data_retriever.py`
+- **Issue**: Dynamic query construction in DataRetriever was vulnerable to SQL injection
+- **Fix**: All queries now use parameterized statements
+- **CVSS**: High
+
+### 7. Prompt Injection Defense in Debate Transcripts
+- **File**: `bot/features/debate_scorekeeper.py`
+- **Issue**: User-supplied debate transcripts could inject malicious prompts into LLM context
+- **Fix**: Debate transcript content is now sanitized before being sent to the LLM
+- **Impact**: Prevents prompt injection attacks via debate content
+
+### 8. Event Cancellation Permission Check
+- **File**: `bot/iracing_event_commands.py`
+- **Issue**: Any user could cancel events created by others
+- **Fix**: Event cancellation now checks that the requesting user is the event creator or an admin
+- **Impact**: Prevents unauthorized event manipulation
+
+### 9. SHA-256 Cache Keys (Upgraded from MD5)
+- **File**: `bot/tool_executor.py`
+- **Issue**: Cache keys were generated using MD5, which is cryptographically weak
+- **Fix**: Cache key generation now uses SHA-256 via the `_cache_key()` helper
+- **Impact**: Prevents potential cache poisoning via MD5 collision attacks
+
+---
+
+## Additional Security Enhancements
 
 ### Dependency Security
 **Updated 7 packages with known CVEs**:
@@ -112,20 +146,20 @@ Complete implementation of EU GDPR (Regulation 2016/679) with all mandatory data
 | Right to Rectification | Art. 16 | Contact admin | ✅ Supported |
 | Right to Restriction | Art. 18 | `/wompbot_optout` | ✅ Implemented |
 
-### New User Commands
+### User Commands (Trimmed in February 2026)
 
-**Privacy Management**:
+**Active Privacy Commands** (3, consolidated from 10):
 - `/wompbot_optout` - Opt out of data collection (users opted-in by default)
 - `/download_my_data` - Export all data in JSON format (Art. 15)
-- `/delete_my_data` - Request deletion with a 30-day grace period (Art. 17)
-- `/cancel_deletion` - Cancel a pending deletion request
-- `/privacy_policy` - View the complete privacy policy
-- `/my_privacy_status` - Check current privacy settings
-- `/privacy_support` - Get privacy help and information
+- `/delete_my_data` - Request deletion with a 30-day grace period, includes cancel option (Art. 17)
 
-**Admin & Oversight**:
-- `/privacy_settings` - Review guild-wide consent posture and pending actions
-- `/privacy_audit` - Export an audit snapshot for compliance reviews
+**Removed Commands**:
+- `/cancel_deletion` - Folded into `/delete_my_data`
+- `/privacy_policy` - Removed
+- `/my_privacy_status` - Removed
+- `/privacy_support` - Removed
+- `/privacy_settings` - Removed (admin)
+- `/privacy_audit` - Removed (admin)
 
 ### Data Retention Policies
 
@@ -141,15 +175,17 @@ Complete implementation of EU GDPR (Regulation 2016/679) with all mandatory data
 
 ### Technical Implementation
 
-**New Database Tables** (9 tables):
+**GDPR Database Tables** (5 tables, reduced from 7 in Feb 2026):
 1. `user_consent` - Consent tracking with timestamps and versions
 2. `data_audit_log` - Complete audit trail of all data operations
 3. `data_export_requests` - Track data access requests
 4. `data_deletion_requests` - Track deletion requests with grace period
-5. `data_breach_log` - Security incident tracking (Art. 33/34)
-6. `privacy_policy_versions` - Policy version management
-7. `data_retention_config` - Configurable retention policies
-8. **Updated**: `user_profiles` - Added consent fields
+5. `data_retention_config` - Configurable retention policies
+6. **Updated**: `user_profiles` - Added consent fields
+
+**Dropped Tables** (February 2026):
+- `data_breach_log` - Breach tracking moved to external incident management
+- `privacy_policy_versions` - Policy versioning removed
 
 **New Python Modules** (2 files):
 1. `bot/features/gdpr_privacy.py` (520 lines) - Core GDPR functionality
@@ -378,7 +414,7 @@ docker-compose up -d
 
 ### GDPR Compliance
 - **Data Subject Rights**: 7/7 implemented
-- **User Commands Added**: 8 privacy commands
+- **User Commands**: 3 privacy commands (consolidated from 10)
 - **Audit Coverage**: 100% of data operations
 - **Retention Policies**: 9 data types configured
 - **Auto-Cleanup**: Daily job processes user-requested deletions and cache trimming
@@ -487,6 +523,6 @@ Before deploying this update, verify:
 ---
 
 **Release Prepared By**: Claude (AI Assistant)
-**Release Date**: January 25, 2025
-**Version**: 2.0.0
+**Release Date**: February 8, 2026 (updated from January 25, 2025)
+**Version**: 3.0.0
 **Status**: ✅ Ready for Production

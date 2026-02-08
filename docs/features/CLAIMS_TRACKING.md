@@ -14,7 +14,7 @@ The Claims Tracking feature automatically detects and stores trackable claims fr
 - 📋 **Receipts Command** - View user's claim history
 
 ### Technologies
-- OpenRouter LLM (configurable via MODEL_NAME) - Claim detection & classification
+- OpenRouter LLM via `LLMClient.simple_completion()` - Claim detection & classification
 - PostgreSQL - Claim storage with edit history (JSONB)
 - JSON parsing - Robust response handling
 
@@ -152,16 +152,19 @@ Explanation: Direct contradiction of previous statement
 
 ### Claim Detection Sensitivity
 
-**File:** `bot/features/claims.py:60`
+**File:** `bot/features/claims.py`
+
+Claim detection now uses `LLMClient.simple_completion()` instead of making direct `requests.post()` calls to the OpenRouter API. This centralizes all LLM communication through the `LLMClient` class, providing:
+
+- Consistent error handling and retry logic across all features
+- Centralized model configuration (no need to manage API keys and URLs in each feature)
+- Unified cost tracking via `LLMClient`
+- Easier model switching (change once in `LLMClient`, applies everywhere)
 
 **Adjust LLM temperature:**
 ```python
-payload = {
-    "model": self.llm.model,
-    "messages": [...],
-    "max_tokens": 300,
-    "temperature": 0.2  # Lower = stricter, Higher = more lenient
-}
+# Temperature is passed to LLMClient.simple_completion()
+result = await self.llm.simple_completion(prompt, temperature=0.2)
 ```
 
 **Temperature effects:**

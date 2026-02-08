@@ -23,6 +23,7 @@ A natural language reminder system that preserves message context and supports f
 4. **Recurring support** - Set daily/weekly reminders
 5. **Zero cost** - Pure time parsing, no LLM needed
 6. **Background checker** - Runs every minute
+7. **Guild-level timezone support** - Per-server timezone configuration via `zoneinfo`
 
 **Cost:** $0/month
 
@@ -192,6 +193,9 @@ _Reminder ID: 42_
 ```
 
 **Error Response (unparseable time):**
+
+Since `parse_reminder_time()` now returns descriptive error strings, users receive specific feedback explaining what went wrong instead of a generic failure message:
+
 ```
 ❌ Could not parse time 'yesterday'. Try formats like:
 • `in 5 minutes`
@@ -316,6 +320,10 @@ Click to return to original conversation.
    - Creates new reminder with same interval
 3. Repeats indefinitely until cancelled
 
+### Recurring Drift Fix
+
+Recurring reminders now use `last_trigger + interval` instead of `now() + interval` to schedule the next occurrence. This prevents gradual drift that would occur if the background checker runs a few seconds late on each cycle. Over many iterations, the old approach could shift a "9:00 AM daily" reminder to 9:05 AM or later; the new approach anchors each recurrence to the intended schedule.
+
 ### Examples
 
 **Daily Standup:**
@@ -403,10 +411,17 @@ async def check_reminders():
 
 Edit `bot/features/reminders.py`:
 
+**Return type:** `parse_reminder_time()` returns `Union[datetime, str, None]`:
+- `datetime` on success
+- `str` with a descriptive error message on failure (e.g., explaining why the input could not be parsed)
+- `None` only in unexpected/fallthrough cases
+
+This allows the bot to provide specific, actionable feedback to users instead of a generic "could not parse" error.
+
 **Add custom time patterns:**
 
 ```python
-def parse_reminder_time(self, time_string: str) -> Optional[datetime]:
+def parse_reminder_time(self, time_string: str) -> Union[datetime, str, None]:
     # ... existing code ...
 
     # Add your custom pattern
@@ -422,6 +437,37 @@ def parse_reminder_time(self, time_string: str) -> Optional[datetime]:
 - Different time zones
 - Custom default times
 - Date formats beyond supported ones
+
+### Guild-Level Timezone Support
+
+Reminders now support per-guild timezone configuration using Python's `zoneinfo` module. The helper `_get_guild_timezone()` retrieves the configured timezone for the current server.
+
+**How it works:**
+- Each guild can have a configured timezone (e.g., `America/New_York`, `Europe/London`)
+- `_get_guild_timezone()` looks up the guild's timezone setting and returns a `ZoneInfo` object
+- All time parsing and scheduling uses the guild's timezone instead of assuming UTC or server-local time
+- Falls back to UTC if no guild timezone is configured
+
+**Benefits:**
+- Members in multi-timezone servers see consistent times
+- Recurring reminders fire at the correct local time
+- "tomorrow at 9am" respects the server's configured timezone
+
+### Named Interval Parsing
+
+The new `_parse_interval_to_timedelta()` method supports named intervals for recurring reminders in addition to the standard relative time formats:
+
+**Supported named intervals:**
+- `daily` - Every 24 hours
+- `weekly` - Every 7 days
+- `hourly` - Every 1 hour
+- `biweekly` - Every 14 days
+
+**Example:**
+```
+/remind time:"tomorrow at 9am" message:"Daily standup" recurring:true
+```
+The recurring interval is parsed via `_parse_interval_to_timedelta()` which handles both named intervals and standard "in X units" format.
 
 ### Default Time for Days
 
@@ -491,7 +537,7 @@ docker-compose logs -f bot | grep -i reminder
 from features.reminders import ReminderSystem
 rs = ReminderSystem(None)
 result = rs.parse_reminder_time("your time string")
-print(result)  # Should be datetime or None
+print(result)  # Returns datetime on success, str with error message on failure, or None
 ```
 
 ### Recurring Reminders Not Rescheduling
@@ -596,7 +642,7 @@ Potential improvements (not yet implemented):
 
 - **Snooze functionality** - "Snooze for 10 minutes"
 - **Reminder templates** - Save common reminders
-- **Timezone support** - User-specific timezones
+- ~~**Timezone support** - User-specific timezones~~ (Implemented: guild-level timezone via `zoneinfo`)
 - **Natural date parsing** - "May 15th", "Christmas"
 - **Smart scheduling** - "every weekday at 9am"
 - **Reminder groups** - Batch related reminders

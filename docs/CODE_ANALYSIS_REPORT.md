@@ -7,16 +7,16 @@
 
 ## Summary
 
-| Category | High Priority | Medium Priority | Low Priority |
-|----------|--------------|-----------------|--------------|
-| Performance | 2 | 3 | 1 |
-| Code Quality | 4 | 4 | 2 |
-| Security | 2 | 3 | 1 |
-| Architecture | 2 | 2 | 0 |
-| Best Practices | 2 | 5 | 0 |
-| Rate Limiting | 0 | 2 | 0 |
-| Data Integrity | 0 | 2 | 0 |
-| **TOTAL** | **14** | **21** | **4** |
+| Category | High Priority | Medium Priority | Low Priority | Fixed (Feb 2026) |
+|----------|--------------|-----------------|--------------|------------------|
+| Performance | 2 | 3 | 1 | 1 fixed |
+| Code Quality | 4 | 4 | 2 | 3 fixed |
+| Security | 2 | 3 | 1 | 5 new fixes added |
+| Architecture | 2 | 2 | 0 | 1 partial |
+| Best Practices | 2 | 5 | 0 | 1 partial |
+| Rate Limiting | 0 | 2 | 0 | - |
+| Data Integrity | 0 | 2 | 0 | - |
+| **TOTAL** | **14** | **21** | **4** | **~10 addressed** |
 
 ---
 
@@ -97,9 +97,10 @@
 - **Fix:** Create single MentionHandler class
 
 #### Issue 2.6: Overly Long Functions
+> **Status:** ✅ FIXED — `handle_bot_mention()` refactored with extracted helpers
 - **File:** `bot/handlers/conversations.py`, lines 224-400+
 - **Problem:** `handle_bot_mention()` exceeds 250+ lines
-- **Fix:** Break into smaller functions
+- **Fix:** Extracted `_execute_tool_calls()` and `_synthesize_tool_response()` helper methods to reduce complexity
 
 ### LOW PRIORITY
 
@@ -109,9 +110,10 @@
 - **Fix:** Remove unused import
 
 #### Issue 2.8: Hardcoded Model Names
+> **Status:** ⚠️ PARTIAL — MODEL_PRICING updated (obsolete models removed, current models added) but still in Python dict
 - **File:** `bot/cost_tracker.py`, lines 8-19
 - **Problem:** Model pricing hardcoded in Python
-- **Fix:** Move to configuration or database
+- **Fix:** MODEL_PRICING dict updated to remove obsolete models and add current model pricing. Full externalization to config/database still pending.
 
 ---
 
@@ -123,6 +125,36 @@
 - **File:** `bot/iracing_client.py`, lines 237-239
 - **Problem:** Debug logging prints query parameters which may contain sensitive data
 - **Fix:** Sanitize logs; never print full URLs/params
+
+#### Issue 3.2a: SQL Injection in DataRetriever
+> **Status:** ✅ FIXED — Parameterized queries in data_retriever.py
+- **File:** `bot/data_retriever.py`
+- **Problem:** Dynamic query construction vulnerable to SQL injection
+- **Fix:** All queries now use parameterized statements
+
+#### Issue 3.2b: Prompt Injection in Debate Transcripts
+> **Status:** ✅ FIXED — Content sanitization added
+- **File:** `bot/features/debate_scorekeeper.py`
+- **Problem:** User-supplied debate transcripts could inject prompts into LLM context
+- **Fix:** Debate transcript content sanitized before LLM submission
+
+#### Issue 3.2c: Event Cancellation Authorization
+> **Status:** ✅ FIXED — Permission check added
+- **File:** `bot/iracing_event_commands.py`
+- **Problem:** Any user could cancel events created by others
+- **Fix:** Permission check ensures only creator or admin can cancel
+
+#### Issue 3.2d: SHA-256 Cache Keys
+> **Status:** ✅ FIXED — MD5 replaced with SHA-256
+- **File:** `bot/tool_executor.py`
+- **Problem:** Cache keys generated using MD5
+- **Fix:** `_cache_key()` helper now uses SHA-256
+
+#### Issue 3.2e: HTTPS Enforcement for APIs
+> **Status:** ✅ FIXED — Weather and Wolfram migrated to HTTPS
+- **Files:** `bot/weather.py`, `bot/wolfram.py`
+- **Problem:** Some API calls used HTTP instead of HTTPS
+- **Fix:** All external API calls enforce HTTPS/TLS
 
 ### MEDIUM PRIORITY
 
@@ -184,9 +216,10 @@
 ### MEDIUM PRIORITY
 
 #### Issue 5.3: Scattered Configuration
+> **Status:** ⚠️ PARTIAL — `constants.py` created for SELF_CONTAINED_TOOLS and other shared constants
 - **Files:** Hardcoded values throughout codebase
 - **Problem:** No single source of truth for configuration
-- **Fix:** Create `config.py` module with typed configuration
+- **Fix:** `constants.py` module created for tool-related constants. Full typed config still pending.
 
 #### Issue 5.4: No Test Coverage
 - **Problem:** No `tests/` directory found
@@ -264,6 +297,39 @@
 3. Refactor long functions (Issue 2.6)
 4. Create API client base class (Issue 4.3)
 5. Add architectural documentation (Issue 5.5)
+
+---
+
+---
+
+## February 2026 Comprehensive Refactoring Summary
+
+The following architecture changes were made during the comprehensive refactoring:
+
+**conversations.py Refactoring:**
+- `_execute_tool_calls()` extracted: handles tool call execution with 30-second timeout
+- `_synthesize_tool_response()` extracted: handles synthesis LLM pass for tool results
+- `SELF_CONTAINED_TOOLS` imported from `constants.py` instead of hardcoded
+- Tool execution runs in parallel via `asyncio.gather()`
+
+**Security Hardening:**
+- SQL injection fix in DataRetriever (parameterized queries)
+- Prompt injection defense in debate transcripts (content sanitization)
+- Event cancellation permission check (creator/admin only)
+- HTTPS enforcement for weather/wolfram APIs
+- SHA-256 cache keys (upgraded from MD5)
+
+**Cost Optimization:**
+- Search results reduced from 7 to 5 (with 200-char snippets)
+- Claims and fact-check use centralized `simple_completion()` with cost tracking
+- Token estimation via optional `tiktoken` dependency
+- Configurable cost alert threshold (`COST_ALERT_THRESHOLD` env var)
+- iRacing parallel fetch for faster data retrieval
+
+**New Dependencies:**
+- `cachetools` -- in-memory TTL caching
+- `tenacity` -- retry logic with backoff
+- `tiktoken` -- optional, accurate token counting
 
 ---
 

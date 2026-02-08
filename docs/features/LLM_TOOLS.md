@@ -90,6 +90,46 @@ The LLM decides when to use tools based on your question.
 4. **Result is processed:** Weather data is fetched from API
 5. **Response is generated:** LLM synthesizes the data into a natural response
 
+## Architecture
+
+### Tool Executor: Dict Registry Pattern
+
+The tool executor (`bot/tool_executor.py`) uses a **dictionary registry pattern** instead of a long `if-elif` chain to route tool calls to their implementations. Each tool name maps directly to a handler function in a registry dict:
+
+```python
+self._tool_registry = {
+    "get_weather": self._handle_weather,
+    "web_search": self._handle_web_search,
+    "wolfram_query": self._handle_wolfram,
+    # ... all tools registered here
+}
+```
+
+**Benefits:**
+- O(1) lookup instead of O(n) if-elif traversal
+- Easier to add new tools (just add a dict entry)
+- Cleaner, more maintainable code
+- Tool names can be introspected programmatically
+
+### Cache Key Generation: SHA-256
+
+Cache keys for tool results are generated using **SHA-256** (previously MD5). This applies to the Redis caching layer in `tool_executor.py` that caches external API results (weather, search, stocks, etc.).
+
+**Why the change:**
+- SHA-256 is cryptographically stronger and avoids theoretical collision risks
+- Consistent with modern best practices for hashing
+- No meaningful performance difference for cache key generation
+
+### Token Estimation
+
+Token counting has been improved with a tiered approach:
+
+1. **tiktoken** (optional) -- If the `tiktoken` library is installed, it provides accurate token counts matching the model's actual tokenizer
+2. **Fallback: len/4** -- If `tiktoken` is not available, the estimator uses `len(text) / 4` as a reasonable approximation for English text
+3. **Image tokens** -- Images are estimated at **170 tokens** each for cost tracking and context window management
+
+This tiered approach avoids making `tiktoken` a hard dependency while still providing accurate estimates when available.
+
 ## Currency Conversion
 
 The currency converter supports:

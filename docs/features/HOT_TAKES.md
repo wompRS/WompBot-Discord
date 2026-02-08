@@ -83,9 +83,11 @@ Fast regex/keyword matching for controversial language:
 
 Tracks Discord engagement metrics:
 - **Total reactions** - How many emoji reactions
-- **Reaction diversity** - Mix of different emojis (👍 vs 👎 = high diversity)
+- **Reaction diversity** - Mix of different emojis (thumbs up vs thumbs down = high diversity)
 - **Reply count** - Responses within 1 hour
-- **Community score** - Formula: `min((reactions × diversity) × 2, 10)`
+- **Community score** - Formula: `min((reactions x diversity) x 2, 10)`
+
+**Diversity formula fix:** The reaction diversity calculation was changed from `len(types) / min(total, 10)` to `len(types) / max(total, 1)`. The old formula using `min(total, 10)` could produce values greater than 1.0 when there were few total reactions but multiple types (e.g., 2 types / min(2, 10) = 1.0 was fine, but edge cases with 0 total caused division-by-zero). The new formula using `max(total, 1)` prevents division by zero and produces a correct 0-to-1 ratio representing how diverse the reactions are.
 
 **Threshold for Stage 3:** 5+ reactions OR 3+ replies
 

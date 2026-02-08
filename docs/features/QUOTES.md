@@ -284,11 +284,38 @@ Should see: `☁️ Quote #X saved from username`
 
 ---
 
+## Quote of the Day Selection
+
+### Daily Mode: Calendar Day Boundary
+
+The Quote of the Day feature uses a **calendar day boundary** (midnight) to determine when a new quote should be selected, rather than a rolling 24-hour window. This means:
+- A new quote is selected once per calendar day, at midnight
+- All users in the server see the same quote throughout the day
+- The quote does not change mid-day even if the feature was triggered 23 hours ago
+
+### All-Time Selection: Freshness-Weighted Scoring
+
+When selecting from all-time quotes, the system uses a **freshness-weighted scoring** formula to balance popularity with recency:
+
+```
+score = reaction_count + 30 / (days_old + 30)
+```
+
+**How it works:**
+- `reaction_count` is the total number of cloud emoji reactions the quote received
+- `30 / (days_old + 30)` is the freshness bonus, which gives newer quotes a slight boost
+- A brand new quote (0 days old) gets a freshness bonus of +1.0
+- A 30-day-old quote gets a freshness bonus of +0.5
+- A 90-day-old quote gets a freshness bonus of +0.25
+- Very old quotes still surface if they have high reaction counts
+
+This prevents the same popular old quotes from dominating forever and gives newer well-received quotes a fair chance at being featured.
+
 ## Future Enhancements
 
 1. **Categories** - Auto-classify as funny, wise, savage, etc.
 2. **Quote search** - `/quotes @user keyword` or `/searchquotes keyword`
-3. **Quote of the Day** - Daily random quote feature
+3. ~~**Quote of the Day** - Daily random quote feature~~ (Implemented with calendar day boundary and freshness-weighted scoring)
 4. **Ranking** - Leaderboard of most quoted users
 5. **Export** - Download all quotes as JSON/CSV
 6. **Quote walls** - Special channel for displaying quotes

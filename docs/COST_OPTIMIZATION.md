@@ -356,6 +356,17 @@ Additional cost savings from infrastructure improvements:
 - **Database Indexes**: 11 composite indexes added for the hottest query paths, reducing query time by 50-200ms
 - **Monthly Cost Filtering**: `get_total_cost()` now filters by current month instead of scanning the entire api_costs table
 
+### Comprehensive Refactoring Optimizations (February 2026)
+
+Further cost reductions from the comprehensive refactoring pass:
+
+- **Search Results Reduced**: Now fetches 5 results per search (was 7), with 200-character snippets. Reduces both search API costs and LLM input token costs.
+- **Centralized LLM Calls via `simple_completion()`**: Claims analysis and fact-checking now use the centralized `simple_completion()` method in LLMClient, which includes cost tracking, retry logic, and session reuse. Previously these made direct `requests.post()` calls that bypassed cost tracking entirely.
+- **Token Estimation Improved**: `tiktoken` (optional dependency) provides accurate token counting for cost estimation. Falls back to character-based estimation if not installed.
+- **Cost Alert Threshold Configurable**: Alert threshold now configurable via `COST_ALERT_THRESHOLD` env var (default `$1.00`). Previously hardcoded to $1.
+- **iRacing Parallel Fetch**: iRacing data fetches now run in parallel where possible, reducing sequential wait times for multi-series lookups.
+- **MODEL_PRICING Updated**: `cost_tracker.py` pricing dictionary updated to remove obsolete models and add current model pricing.
+
 ---
 
 ## 🛡️ Comprehensive Rate Limiting System (NEW)
@@ -384,8 +395,8 @@ WompBot now includes comprehensive rate limiting across all expensive operations
 
 **4. Cost Tracking & Alerts:**
 - Real-time token usage tracking from API responses
-- Model-specific pricing calculations
-- **$1 spending alerts**: DMs bot owner when each $1 threshold crossed
+- Model-specific pricing calculations (updated in cost_tracker.py)
+- **Configurable spending alerts**: DMs bot owner when each threshold crossed (configurable via `COST_ALERT_THRESHOLD`, default `$1.00`)
 - Beautiful embed with cost breakdown by model
 
 ### Cost Impact

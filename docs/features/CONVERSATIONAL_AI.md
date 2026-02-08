@@ -140,7 +140,7 @@ When triggered, the bot gathers multiple sources of context:
 **A. Conversation History**
 - Last 50 messages from the channel (configurable)
 - LLMLingua compression reduces token usage by 50-80%
-- Older messages get compressed, last 3 kept verbatim
+- Older messages get compressed, last 8 kept verbatim (keep_recent=8)
 - Excludes bot's own old messages
 - Excludes opted-out users entirely
 - Redacted messages never reach the LLM
@@ -163,7 +163,7 @@ When triggered, the bot gathers multiple sources of context:
 **D. Search Results** (if needed)
 - Automatic web search for factual questions
 - Triggered by LLM assessment or explicit need
-- Tavily API integration (7 sources)
+- Tavily API integration (5 results, 200-character snippets -- reduced from 7 results)
 - Rate limited to prevent abuse
 
 ### 3. Response Generation
@@ -221,8 +221,8 @@ CONTEXT_WINDOW_MESSAGES=50
 **With LLMLingua Compression (enabled by default):**
 - Compresses conversation history by 50-80% tokens
 - Allows 3-4x more messages than without compression
-- Older messages compressed, last 3 kept verbatim
-- Activates automatically when 8+ messages in history
+- Older messages compressed, last 8 kept verbatim (keep_recent=8)
+- Activates automatically when 10+ messages in history (min_messages=10)
 - Model downloads once (about 500MB) then caches locally
 
 **Configuration options:**
@@ -391,6 +391,14 @@ The bot can invoke tools through LLM function calling:
 - Database queries for stats
 
 Tools are defined in llm_tools.py and executed by tool_executor.py.
+
+**Architecture Improvements (February 2026 Refactoring):**
+- `conversations.py` refactored to extract helper methods:
+  - `_execute_tool_calls()` -- Handles tool call execution with 30-second timeout per tool
+  - `_synthesize_tool_response()` -- Handles the synthesis LLM pass for tool results that need accompanying text
+- Tool execution has a 30-second timeout; if a tool call exceeds this, it is cancelled and an error message returned
+- `SELF_CONTAINED_TOOLS` list (tools whose output IS the answer, needing no synthesis pass) now imported from `constants.py` instead of being hardcoded in conversations.py
+- Tool calls run in parallel via `asyncio.gather()` when multiple tools are requested simultaneously
 
 ## Troubleshooting
 

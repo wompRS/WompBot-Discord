@@ -363,12 +363,19 @@ iRacing has 5 distinct license categories:
 - **Profile Data**: Cached per request to minimize duplicate API calls
 - **Race Guide**: Cached for schedule lookups
 - Response caching prevents rate limiting
+- **Bounded TTLCache**: The in-memory cache now uses `TTLCache(maxsize=50, ttl=604800)` (7-day TTL, 50 entry max) from the `cachetools` library instead of an unbounded plain dict. This prevents unbounded memory growth from accumulating race result data over time while still providing fast lookups for recently accessed data.
 
-### Rate Limiting
+### Rate Limiting & Retry
 - Shared asyncio lock serializes outbound requests per process
 - 429 responses respect the API-provided `Retry-After` header before retrying
 - Standard requests fire without delay once the lock releases
 - Existing caching strategy still pre-warms series data and avoids duplicate profile lookups
+- **tenacity** library provides automatic retry with exponential backoff and jitter for transient API failures (timeouts, 5xx errors)
+
+### Parallel Subsession Fetching
+- Subsession data (detailed race results) is fetched in parallel using `asyncio.Semaphore(10)` to limit concurrency
+- This significantly speeds up commands that need multiple subsession results (e.g., meta analysis across a full week/season)
+- The semaphore cap of 10 prevents overwhelming the iRacing API while still achieving substantial speedup over sequential fetching
 
 ## Database Schema
 
@@ -427,6 +434,10 @@ Stores Discord → iRacing account mappings for linked users.
 - Intelligent request batching
 - Minimal redundant API calls
 - Fast matplotlib rendering
+- **Parallel subsession fetching** -- Up to 10 concurrent requests via asyncio.Semaphore for subsession data retrieval
+- **Bounded TTLCache** -- `TTLCache(maxsize=50, ttl=7 days)` replaces the previously unbounded dict cache, preventing memory leaks from accumulating stale entries
+- **Team query optimization** -- Team member queries now use `JOIN + GROUP BY` instead of a `COUNT` subquery, reducing database round-trips
+- **Retry with tenacity** -- External API calls use the `tenacity` library for retry/backoff with exponential backoff and jitter, improving resilience to transient failures
 
 ### Resource Usage
 - **API Calls**: ~2-5 per command (with caching)
