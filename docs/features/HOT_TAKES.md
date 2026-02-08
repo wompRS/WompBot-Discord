@@ -347,7 +347,7 @@ async def check_and_score_high_engagement(self, hot_take_id: int, message):
 
 Uses same model as claims tracking (configured in `.env`):
 ```env
-MODEL_NAME=nousresearch/hermes-3-llama-3.1-70b
+MODEL_NAME=deepseek/deepseek-chat  # Recommended
 ```
 
 **Alternative cheaper models for Stage 3:**

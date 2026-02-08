@@ -242,7 +242,7 @@ if len(likely_claims) >= 10:
 
 ### 2. Use Cheaper Model for Claims
 
-**Current**: Same model as conversation (Hermes 70B)
+**Current**: Same model as conversation (configured via MODEL_NAME)
 
 **Optimization**: Use smaller model for claims only
 ```python

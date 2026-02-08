@@ -14,7 +14,7 @@ The Claims Tracking feature automatically detects and stores trackable claims fr
 - 📋 **Receipts Command** - View user's claim history
 
 ### Technologies
-- OpenRouter LLM (Hermes 70B) - Claim detection & classification
+- OpenRouter LLM (configurable via MODEL_NAME) - Claim detection & classification
 - PostgreSQL - Claim storage with edit history (JSONB)
 - JSON parsing - Robust response handling
 
@@ -265,7 +265,7 @@ CREATE TABLE claims (
 
 ### Per Message Analyzed
 - **Tokens**: ~300 (prompt + response)
-- **Cost**: ~$0.0003 per message (Hermes 70B)
+- **Cost**: ~$0.0003 per message (varies by model)
 - **Time**: ~1-2 seconds
 
 ### Monthly Estimate

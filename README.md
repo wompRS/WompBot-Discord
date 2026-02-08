@@ -904,8 +904,9 @@ discord-bot/
     ├── weather.py               # OpenWeatherMap API client
     ├── wolfram.py               # Wolfram Alpha API client
     ├── viz_tools.py             # Visualization engine
-    ├── tool_executor.py         # LLM tool execution handler
+    ├── tool_executor.py         # LLM tool execution handler (with Redis caching)
     ├── llm_tools.py             # LLM tool definitions
+    ├── redis_cache.py           # Redis caching utility with graceful fallback
     ├── data_retriever.py        # Database query engine
     ├── media_processor.py       # Media analysis (images, GIFs, videos, YouTube)
     ├── self_knowledge.py        # Bot self-awareness (reads own docs)
