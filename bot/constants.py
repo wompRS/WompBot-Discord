@@ -115,10 +115,10 @@ CRYPTO_TICKERS = {
 # Tool name substrings that produce user-ready output and do NOT need an
 # additional LLM synthesis pass.
 # ---------------------------------------------------------------------------
-SELF_CONTAINED_TOOLS = [
+SELF_CONTAINED_TOOLS = frozenset({
     "get_weather", "get_weather_forecast", "wolfram_query",
     "wikipedia", "define_word", "movie_info", "stock_price",
     "sports_scores", "currency_convert", "translate", "get_time",
     "url_preview", "random_choice", "stock_history",
     "fetch_crypto_price", "create_reminder",
-]
+})

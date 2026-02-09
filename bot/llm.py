@@ -73,13 +73,15 @@ class LLMClient:
         Load system prompt from file or use default
 
         Args:
-            personality: 'default', 'bogan', or 'concise'
+            personality: 'default', 'feyd', 'bogan', or 'concise'
 
         Returns:
             System prompt text
         """
         # Determine which file to load
-        if personality == 'bogan':
+        if personality == 'feyd':
+            prompt_file = 'system_prompt_sample.txt'
+        elif personality == 'bogan':
             prompt_file = 'system_prompt_bogan.txt'
         elif personality == 'concise':
             prompt_file = 'system_prompt_concise.txt'

@@ -67,17 +67,6 @@ class Database:
         finally:
             self.pool.putconn(conn)
 
-    @contextmanager
-    def get_autocommit_connection(self):
-        """Get a connection with autocommit for simple single-statement reads"""
-        conn = self.pool.getconn()
-        conn.autocommit = True
-        try:
-            yield conn
-        finally:
-            conn.autocommit = False
-            self.pool.putconn(conn)
-    
     def get_job_last_run(self, job_name: str):
         """Return the last recorded run time for a scheduled job."""
         try:
@@ -323,7 +312,6 @@ class Database:
                             quality_score = EXCLUDED.quality_score,
                             last_updated = NOW()
                     """, (user_id, guild_id, topic, message_count, quality_score))
-                    conn.commit()
         except Exception as e:
             logger.error("Error upserting topic expertise: %s", e)
 
@@ -353,7 +341,6 @@ class Database:
                         entries,
                         template="(%s, %s, %s, %s, %s, NOW())"
                     )
-                    conn.commit()
         except Exception as e:
             logger.error("Error batch upserting topic expertise: %s", e)
 
@@ -587,7 +574,7 @@ class Database:
             logger.error("Error fetching bot message stats: %s", e)
             return None
 
-    def get_question_stats(self, days=7, limit=10):
+    def get_question_stats(self, days=7):
         """Get all messages for question analysis (will be classified by LLM)"""
         try:
             with self.get_connection() as conn:
@@ -616,19 +603,21 @@ class Database:
             with self.get_connection() as conn:
                 with conn.cursor(cursor_factory=RealDictCursor) as cur:
                     cur.execute("""
-                        SELECT DISTINCT ON (ub.user_id)
-                            ub.username,
-                            ub.profanity_score,
-                            ub.message_count,
-                            ub.analyzed_at
-                        FROM user_behavior ub
-                        WHERE ub.analysis_period_end > CURRENT_TIMESTAMP - INTERVAL '1 day' * %s
-                        ORDER BY ub.user_id, ub.analyzed_at DESC
-                    """, (days,))
-                    results = cur.fetchall()
-                    # Sort by profanity score and limit
-                    sorted_results = sorted(results, key=lambda x: x['profanity_score'], reverse=True)
-                    return sorted_results[:limit]
+                        SELECT username, profanity_score, message_count, analyzed_at
+                        FROM (
+                            SELECT DISTINCT ON (ub.user_id)
+                                ub.username,
+                                ub.profanity_score,
+                                ub.message_count,
+                                ub.analyzed_at
+                            FROM user_behavior ub
+                            WHERE ub.analysis_period_end > CURRENT_TIMESTAMP - INTERVAL '1 day' * %s
+                            ORDER BY ub.user_id, ub.analyzed_at DESC
+                        ) latest
+                        ORDER BY profanity_score DESC
+                        LIMIT %s
+                    """, (days, limit))
+                    return cur.fetchall()
         except Exception as e:
             logger.error("Error fetching profanity stats: %s", e)
             return []

@@ -147,10 +147,17 @@ class HotTakesTracker:
                 reaction_types[str(reaction.emoji)] = reaction.count
                 total_reactions += reaction.count
 
-            # Diversity = 1.0 if equal mix, lower if dominated by one reaction
-            if total_reactions > 0:
-                diversity = len(reaction_types) / max(total_reactions, 1)  # Normalize: unique types / total
-                diversity = min(diversity, 1.0)
+            # Diversity via normalized Shannon entropy: 1.0 = perfectly even mix, 0.0 = single type
+            if total_reactions > 0 and len(reaction_types) > 1:
+                import math
+                entropy = -sum(
+                    (count / total_reactions) * math.log(count / total_reactions)
+                    for count in reaction_types.values() if count > 0
+                )
+                max_entropy = math.log(len(reaction_types))
+                diversity = entropy / max_entropy if max_entropy > 0 else 0.0
+            elif total_reactions > 0:
+                diversity = 0.0  # Only one reaction type = no diversity
             else:
                 diversity = 0.0
 

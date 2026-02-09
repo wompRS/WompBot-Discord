@@ -284,7 +284,7 @@ async def _synthesize_tool_response(tool_results, tool_names, original_content,
     # Identify self-contained tools that DON'T need LLM commentary
     # These tools return fully formatted, user-ready output (centralised in constants.py)
     only_self_contained = all(
-        any(st in tn for st in SELF_CONTAINED_TOOLS) for tn in tool_names
+        tn in SELF_CONTAINED_TOOLS for tn in tool_names
     )
 
     # Synthesis decision:
@@ -342,8 +342,7 @@ async def _synthesize_tool_response(tool_results, tool_names, original_content,
         return None
 
 
-# Rate limiting state for mention handling
-MENTION_RATE_STATE = {}
+# Rate limiting state for concurrent request tracking
 USER_CONCURRENT_REQUESTS = {}
 _LAST_CLEANUP_TIME = 0
 
@@ -352,8 +351,7 @@ _LAST_CLEANUP_TIME = 0
 CHANNEL_LOCKS = {}
 _CHANNEL_LOCKS_LOCK = asyncio.Lock()
 
-# Locks for thread-safe access to rate limiting state
-_RATE_STATE_LOCK = asyncio.Lock()
+# Lock for thread-safe access to concurrent request tracking
 _CONCURRENT_REQUESTS_LOCK = asyncio.Lock()
 
 
@@ -374,21 +372,8 @@ async def cleanup_stale_rate_state():
         return
 
     _LAST_CLEANUP_TIME = now_ts
-    stale_window = 3600  # Remove entries older than 1 hour
 
-    # Cleanup MENTION_RATE_STATE with lock
-    async with _RATE_STATE_LOCK:
-        stale_users = [
-            uid for uid, bucket in MENTION_RATE_STATE.items()
-            if now_ts - bucket["window_start"] > stale_window
-        ]
-        for uid in stale_users:
-            del MENTION_RATE_STATE[uid]
-
-    if stale_users:
-        logger.debug("Cleaned up %d stale rate limit entries", len(stale_users))
-
-    # Cleanup CHANNEL_LOCKS - remove semaphores for channels no longer in active rate state
+    # Cleanup CHANNEL_LOCKS - remove semaphores for channels no longer in use
     # and not currently in use (i.e., all 3 slots are free)
     async with _CHANNEL_LOCKS_LOCK:
         active_channels = set()
