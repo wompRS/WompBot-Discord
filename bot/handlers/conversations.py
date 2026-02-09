@@ -53,6 +53,50 @@ THINKING_STATUS_MESSAGES = [
 ]
 
 
+# Tool intent signals - user must use one of these to get computational tools
+# If none of these match, the LLM responds purely from training data (no tool calls)
+_TOOL_INTENT_KEYWORDS = [
+    # Weather
+    'weather', 'forecast', 'temperature', 'rain', 'snow', 'wind',
+    # Search / lookup
+    'search', 'google', 'look up', 'lookup', 'find out', 'find me',
+    'what is', 'what are', 'what was', 'what were', 'what does', 'what do',
+    'who is', 'who are', 'who was', 'who were',
+    'when is', 'when was', 'when did', 'when does',
+    'where is', 'where are', 'where was', 'where were',
+    'how much', 'how many', 'how far', 'how long', 'how old', 'how tall',
+    # Wolfram / math / science
+    'calculate', 'compute', 'solve', 'convert', 'equation',
+    'math', 'formula', 'integral', 'derivative',
+    # Stocks / crypto / finance
+    'stock', 'price', 'market', 'crypto', 'bitcoin', 'ethereum', 'btc', 'eth',
+    'ticker', 'shares', 'invest', 'trading', 'nasdaq', 'dow', 's&p',
+    'currency', 'exchange rate', 'usd', 'eur', 'gbp',
+    # Sports
+    'score', 'scores', 'game', 'match', 'nfl', 'nba', 'mlb', 'nhl',
+    'premier league', 'champions league', 'f1', 'formula 1', 'standings',
+    # Media / lookup
+    'movie', 'film', 'tv show', 'imdb', 'rating', 'rotten tomatoes',
+    'define', 'definition', 'meaning of', 'dictionary',
+    'wikipedia', 'wiki',
+    'youtube', 'video',
+    'translate', 'translation',
+    'image of', 'picture of', 'photo of', 'show me',
+    # Time / reminders
+    'time in', 'what time', 'timezone', 'time zone',
+    'remind me', 'reminder', 'set a reminder', 'set reminder',
+    # iRacing
+    'iracing', 'irating', 'safety rating', 'lap time', 'race result',
+    # Stats
+    'stats', 'statistics', 'how active', 'messages sent',
+    # URLs
+    'http://', 'https://', '.com', '.org', '.net',
+    # Dice / random
+    'roll', 'dice', 'flip a coin', 'coin flip', 'random', 'pick a',
+    # Explicit tool requests
+    'wolfram', 'alpha',
+]
+
 # Visualization intent signals - user must use one of these to get chart tools
 _VIZ_INTENT_KEYWORDS = [
     'chart', 'graph', 'plot', 'visualize', 'visualise', 'visualization',
@@ -66,9 +110,13 @@ _VIZ_INTENT_KEYWORDS = [
 def _select_tools_for_message(message_content: str) -> list:
     """Select which tools to pass to the LLM based on message intent.
 
-    Only includes visualization tools when the user explicitly asks for
-    charts/graphs/data visualization. This prevents the LLM from generating
-    charts for knowledge questions like 'what is a write down'.
+    Three tiers:
+    1. Visualization keywords → ALL_TOOLS (charts + computational)
+    2. Tool-intent keywords → COMPUTATIONAL_TOOLS (search, weather, stocks, etc.)
+    3. No tool signals → NO TOOLS (pure conversation, LLM responds from training data)
+
+    This prevents the LLM from calling wolfram/search/etc on purely conversational
+    messages like "do me and X make a good couple" or "pontificate".
     """
     content_lower = message_content.lower()
 
@@ -78,9 +126,16 @@ def _select_tools_for_message(message_content: str) -> list:
     if wants_viz:
         logger.debug("Visualization intent detected, passing ALL tools")
         return ALL_TOOLS
-    else:
-        logger.debug("No visualization intent, passing COMPUTATIONAL tools only")
+
+    # Check if the message has any tool-intent signals
+    wants_tools = any(keyword in content_lower for keyword in _TOOL_INTENT_KEYWORDS)
+
+    if wants_tools:
+        logger.debug("Tool intent detected, passing COMPUTATIONAL tools")
         return COMPUTATIONAL_TOOLS
+
+    logger.debug("No tool intent detected, passing NO tools (pure conversation)")
+    return []
 
 
 async def _execute_tool_calls(tool_calls, tool_executor, message, channel_id, guild_id):
@@ -497,7 +552,8 @@ async def generate_leaderboard_response(channel, stat_type, days, db, llm):
         await channel.send(embed=embed)
 
     except Exception as e:
-        await channel.send(f"Error generating stats: {str(e)}")
+        logger.error("Error generating stats: %s", e, exc_info=True)
+        await channel.send("Something went wrong generating the stats. Please try again.")
         logger.error("Leaderboard generation error: %s", e)
 
 
@@ -643,53 +699,99 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                 logger.warning("Error checking recent messages for media: %s", e)
 
         # Process media to extract frames/thumbnails
+        # Split into parallelizable (images, GIFs) vs sequential (YouTube, video — need Discord msgs)
         processed_images = []  # base64 encoded images
         direct_image_urls = []  # URLs that can be passed directly
         media_context_notes = []  # Notes about what media is being analyzed
         transcript_text = None  # For YouTube transcripts
 
-        for url, media_type in raw_media:
+        # Separate media by type for parallel processing
+        image_items = [(url, mt) for url, mt in raw_media if mt == 'image']
+        gif_items = [(url, mt) for url, mt in raw_media if mt == 'gif']
+        sequential_items = [(url, mt) for url, mt in raw_media if mt in ('youtube', 'video')]
+
+        # ── Parallel: process all images + GIFs concurrently ──
+        async def _process_image(url):
+            try:
+                b64_img = await media_processor.download_and_resize_image(url, max_size=768)
+                if b64_img:
+                    logger.info("Downloaded and resized image to max 768px: %s", url[:80])
+                    return ('image_b64', b64_img)
+                else:
+                    logger.warning("Image download/resize failed, passing URL directly: %s", url[:80])
+                    return ('image_url', url)
+            except Exception as e:
+                logger.warning("Image resize error, passing URL directly: %s - %s", url[:80], e)
+                return ('image_url', url)
+
+        async def _process_gif(url):
+            gif_result = await media_processor.extract_gif_frames(url, max_frames=6)
+            if gif_result.get('success'):
+                frames = gif_result['frames']
+                if gif_result.get('is_animated'):
+                    total_frames = gif_result.get('total_frames', 0)
+                    note = f"[Animated GIF: showing {len(frames)} frames from {total_frames} total frames to capture the full animation]"
+                    logger.info("Extracted %d frames from animated GIF (%d total)", len(frames), total_frames)
+                    return ('gif', frames, note)
+                else:
+                    logger.debug("GIF is static, extracted single frame")
+                    return ('gif', frames, None)
+            else:
+                logger.warning("GIF extraction failed, passing URL directly: %s", gif_result.get('error'))
+                return ('image_url', url, None)
+
+        # Launch all image + GIF processing in parallel
+        parallel_tasks = []
+        for url, _ in image_items:
+            parallel_tasks.append(_process_image(url))
+        for url, _ in gif_items:
+            parallel_tasks.append(_process_gif(url))
+
+        if parallel_tasks:
+            parallel_results = await asyncio.gather(*parallel_tasks, return_exceptions=True)
+            for result in parallel_results:
+                if isinstance(result, Exception):
+                    logger.warning("Media processing error: %s", result)
+                    continue
+                if result[0] == 'image_b64':
+                    processed_images.append(result[1])
+                elif result[0] == 'image_url':
+                    direct_image_urls.append(result[1])
+                elif result[0] == 'gif':
+                    processed_images.extend(result[1])
+                    if result[2]:  # note
+                        media_context_notes.append(result[2])
+
+        # ── Sequential: YouTube and video (need Discord processing messages) ──
+        for url, media_type in sequential_items:
             if media_type == 'youtube':
-                # Process YouTube video - transcript first (instant), frames only if needed
                 video_id = media_processor.extract_youtube_id(url)
                 logger.info("Processing YouTube video: %s", video_id)
-
-                # Send processing message (usually quick for transcript-only)
                 processing_msg = await message.channel.send("📝 Getting video transcript...")
-
                 yt_result = await media_processor.analyze_youtube_video(video_id, need_visuals=False)
-
-                # Delete processing message
                 try:
                     await processing_msg.delete()
                 except discord.NotFound:
                     pass
 
                 if yt_result.get('success'):
-                    # Get video metadata
                     duration = yt_result.get('duration', 0)
                     duration_str = f"{duration // 60}:{duration % 60:02d}" if duration else "unknown"
                     title = yt_result.get('title', 'Unknown')
                     author = yt_result.get('author', 'Unknown')
-
-                    # Add transcript if available (primary source)
                     if yt_result.get('transcript'):
                         transcript_text = yt_result['transcript']
-                        # Truncate very long transcripts
                         if len(transcript_text) > 4000:
                             transcript_text = transcript_text[:4000] + "\n[...transcript truncated...]"
                         media_context_notes.append(
                             f"[YouTube Video: \"{title}\" by {author} ({duration_str}) - transcript available below]"
                         )
                         logger.info("Got video transcript (%d chars)", len(transcript_text))
-
-                    # Add thumbnail/frames for visual reference
                     if yt_result.get('frames'):
                         processed_images.extend(yt_result['frames'])
                         frame_count = len(yt_result['frames'])
                         timestamps = yt_result.get('frame_timestamps', [])
                         if not yt_result.get('transcript'):
-                            # No transcript - rely on visual frames
                             media_context_notes.append(
                                 f"[YouTube Video: \"{title}\" by {author} ({duration_str}) - "
                                 f"no transcript available, showing {frame_count} frames at: {', '.join(timestamps)}]"
@@ -699,35 +801,10 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                     media_context_notes.append(f"[YouTube video processing failed: {yt_result.get('error', 'unknown error')}]")
                     logger.warning("YouTube processing failed: %s", yt_result.get('error'))
 
-            elif media_type == 'gif':
-                # Process GIF - extract multiple frames
-                logger.debug("Extracting frames from GIF...")
-                gif_result = await media_processor.extract_gif_frames(url, max_frames=6)
-                if gif_result.get('success'):
-                    if gif_result.get('is_animated'):
-                        processed_images.extend(gif_result['frames'])
-                        frame_count = len(gif_result['frames'])
-                        total_frames = gif_result.get('total_frames', 0)
-                        media_context_notes.append(
-                            f"[Animated GIF: showing {frame_count} frames from {total_frames} total frames to capture the full animation]"
-                        )
-                        logger.info("Extracted %d frames from animated GIF (%d total)", frame_count, total_frames)
-                    else:
-                        processed_images.extend(gif_result['frames'])
-                        logger.debug("GIF is static, extracted single frame")
-                else:
-                    # Fallback: pass URL directly
-                    direct_image_urls.append(url)
-                    logger.warning("GIF extraction failed, passing URL directly: %s", gif_result.get('error'))
-
             elif media_type == 'video':
-                # Process Discord/attached videos - transcription first, frames as fallback
                 logger.info("Processing video attachment...")
-
                 processing_msg = await message.channel.send("🎤 Transcribing video audio...")
-
                 video_result = await media_processor.analyze_video_file(url, need_visuals=False)
-
                 try:
                     await processing_msg.delete()
                 except discord.NotFound:
@@ -736,22 +813,17 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                 if video_result.get('success'):
                     duration = video_result.get('duration', 0)
                     duration_str = f"{duration:.1f}s" if duration else "unknown"
-
-                    # Add transcript if available (primary source)
                     if video_result.get('transcript'):
                         transcript_text = video_result['transcript']
                         if len(transcript_text) > 4000:
                             transcript_text = transcript_text[:4000] + "\n[...transcript truncated...]"
                         media_context_notes.append(f"[Video ({duration_str}) - transcript available below]")
                         logger.info("Got video transcription (%d chars)", len(transcript_text))
-
-                    # Add frames for visual reference
                     if video_result.get('frames'):
                         processed_images.extend(video_result['frames'])
                         frame_count = len(video_result['frames'])
                         timestamps = video_result.get('frame_timestamps', [])
                         if not video_result.get('transcript'):
-                            # No transcript - rely on visual frames
                             media_context_notes.append(
                                 f"[Video ({duration_str}): no audio transcript, showing {frame_count} frames at: {', '.join(timestamps)}]"
                             )
@@ -759,10 +831,6 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                 else:
                     media_context_notes.append(f"[Video processing failed: {video_result.get('error', 'unknown')}]")
                     logger.warning("Video processing failed: %s", video_result.get('error'))
-
-            else:
-                # Regular image - pass URL directly
-                direct_image_urls.append(url)
 
         # Build final image_urls list for the LLM
         # Combine direct URLs with base64 images
@@ -813,8 +881,8 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                 f"⚠️ Message truncated to {max_input_length} characters for processing."
             )
 
-        # Record message for analytics
-        db.record_feature_usage(message.author.id, 'bot_message')
+        # Record message for analytics (fire-and-forget)
+        asyncio.create_task(asyncio.to_thread(db.record_feature_usage, message.author.id, 'bot_message'))
 
         content_lower = content.lower()
 
@@ -890,7 +958,8 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
 
         # Repeated message detection (anti-spam) - blocks same question spam - skip for admin
         if not is_admin:
-            repeated_check = db.check_repeated_messages(
+            repeated_check = await asyncio.to_thread(
+                db.check_repeated_messages,
                 message.author.id,
                 content
             )
@@ -936,39 +1005,47 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
             return
 
         # Get conversation context - use CONTEXT_WINDOW_MESSAGES env var
+        # Parallelize DB queries that don't depend on each other
         context_window = int(os.getenv('CONTEXT_WINDOW_MESSAGES', '50'))
-        conversation_history = db.get_recent_messages(
-            message.channel.id,
-            limit=context_window,
-            exclude_opted_out=True,
-            guild_id=message.guild.id if message.guild else None
-            # Include bot messages so it can remember what it said
+        guild_id = message.guild.id if message.guild else None
+        is_thread = isinstance(message.channel, discord.Thread) and message.channel.parent
+
+        # Launch all independent DB queries in parallel
+        history_task = asyncio.to_thread(
+            db.get_recent_messages, message.channel.id,
+            limit=context_window, exclude_opted_out=True, guild_id=guild_id
         )
 
+        thread_task = None
+        if is_thread:
+            parent_channel_id = message.channel.parent.id
+            starter_msg_id = message.channel.id
+            thread_task = asyncio.to_thread(
+                db.get_thread_parent_context, parent_channel_id, starter_msg_id, limit=5
+            )
+
+        # Await all in parallel
+        if thread_task:
+            conversation_history, parent_context = await asyncio.gather(history_task, thread_task)
+        else:
+            conversation_history = await history_task
+            parent_context = None
+
         # ── Thread context continuity ──
-        # If message is in a thread, also fetch parent channel context around the thread's origin
-        if isinstance(message.channel, discord.Thread) and message.channel.parent:
+        if parent_context:
             try:
-                parent_channel_id = message.channel.parent.id
-                # Thread starter message ID is available via message.channel.id (the thread ID is the starter message ID)
-                starter_msg_id = message.channel.id
-                parent_context = db.get_thread_parent_context(
-                    parent_channel_id, starter_msg_id, limit=5
-                )
-                if parent_context:
-                    # Prepend parent context with a marker so the LLM knows it's from the parent channel
-                    parent_channel_name = getattr(message.channel.parent, 'name', 'parent-channel')
-                    context_marker = {
-                        'username': 'System',
-                        'content': f'[Thread context from #{parent_channel_name} — messages around the thread origin:]',
-                        'user_id': 0,
-                        'timestamp': parent_context[0].get('timestamp') if parent_context else None,
-                        'is_bot': False
-                    }
-                    conversation_history = [context_marker] + parent_context + conversation_history
-                    logger.info("Added %d parent channel messages for thread context", len(parent_context))
+                parent_channel_name = getattr(message.channel.parent, 'name', 'parent-channel')
+                context_marker = {
+                    'username': 'System',
+                    'content': f'[Thread context from #{parent_channel_name} — messages around the thread origin:]',
+                    'user_id': 0,
+                    'timestamp': parent_context[0].get('timestamp') if parent_context else None,
+                    'is_bot': False
+                }
+                conversation_history = [context_marker] + parent_context + conversation_history
+                logger.info("Added %d parent channel messages for thread context", len(parent_context))
             except Exception as e:
-                logger.warning("Failed to fetch thread parent context: %s", e)
+                logger.warning("Failed to process thread parent context: %s", e)
 
         # Debug: Log conversation history
         logger.debug("Retrieved %d messages for context (limit=%d)", len(conversation_history), context_window)
@@ -993,52 +1070,72 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                 if msg.get('content'):
                     msg['content'] = clean_discord_mentions(msg['content'], message)
 
-            # Get user context (if not opted out) — cached 1 hour in Redis
-            user_context = None
-            if not opted_out:
+            # ── Parallel context fetching ──
+            # Launch all independent context queries concurrently instead of sequentially
+            # This saves 200-500ms by overlapping DB/Redis/API calls
+
+            # 1. User context (cached 1hr in Redis)
+            async def _get_user_ctx():
+                if opted_out:
+                    return None
                 _cache = get_cache()
                 ctx_cache_key = f"user_ctx:{message.author.id}"
-                user_context = _cache.get(ctx_cache_key)
-                if user_context is None:
-                    user_context = db.get_user_context(message.author.id)
-                    if user_context:
-                        _cache.set(ctx_cache_key, user_context, ttl=3600)  # 1 hour
+                ctx = _cache.get(ctx_cache_key)
+                if ctx is None:
+                    ctx = await asyncio.to_thread(db.get_user_context, message.author.id)
+                    if ctx:
+                        _cache.set(ctx_cache_key, ctx, ttl=3600)
+                return ctx
 
-            # Check if question is about WompBot itself - load documentation
+            # 2. Server personality (cached 1hr in Redis)
+            async def _get_personality():
+                sid = message.guild.id if message.guild else None
+                if not sid:
+                    return 'default'
+                _cache = get_cache()
+                pers_cache_key = f"personality:{sid}"
+                pers = _cache.get(pers_cache_key)
+                if pers is None:
+                    pers = await asyncio.to_thread(db.get_server_personality, sid)
+                    _cache.set(pers_cache_key, pers or 'default', ttl=3600)
+                return pers or 'default'
+
+            # 3. RAG context
+            async def _get_rag():
+                if not rag:
+                    return None
+                return await rag.get_relevant_context(
+                    content, message.channel.id, message.author.id, limit=3
+                )
+
+            # 4. Self-knowledge check (fast, local)
             bot_docs = None
             if self_knowledge:
-                # Reuse already-fetched conversation_history instead of a second DB query (P14 fix)
-                # Take last 3 messages as context for self-knowledge detection
                 recent_context = conversation_history[-3:] if conversation_history else []
                 bot_docs = self_knowledge.format_for_llm(content, recent_context, bot.user.id)
                 if bot_docs:
                     logger.info("Loading WompBot documentation for self-knowledge question")
 
-            # Check if search is needed (skip if we're using docs)
-            search_results = None
-
-            if needs_search and not bot_docs:
-                # Build contextual query that considers recent conversation
+            # 5. Search (only if needed and no bot docs)
+            async def _do_search():
+                if not (needs_search and not bot_docs):
+                    return None
                 search_query = search.build_contextual_query(content, conversation_history)
                 search_results_raw = await asyncio.to_thread(search.search, search_query)
-                search_results = search.format_results_for_llm(search_results_raw)
+                # Fire-and-forget: log search usage in background
+                asyncio.create_task(asyncio.to_thread(
+                    db.store_search_log, search_query, len(search_results_raw),
+                    message.author.id, message.channel.id
+                ))
+                asyncio.create_task(asyncio.to_thread(
+                    db.record_feature_usage, message.author.id, 'search'
+                ))
+                return search.format_results_for_llm(search_results_raw)
 
-                db.store_search_log(search_query, len(search_results_raw), message.author.id, message.channel.id)
-                db.record_feature_usage(message.author.id, 'search')
-
-            # Get server personality setting
-            server_id = message.guild.id if message.guild else None
-            personality = db.get_server_personality(server_id) if server_id else 'default'
-
-            # Get RAG context (semantic search, facts, summaries)
-            rag_context = None
-            if rag:
-                rag_context = await rag.get_relevant_context(
-                    content,
-                    message.channel.id,
-                    message.author.id,
-                    limit=3
-                )
+            # Run all in parallel
+            user_context, personality, rag_context, search_results = await asyncio.gather(
+                _get_user_ctx(), _get_personality(), _get_rag(), _do_search()
+            )
 
             # Generate response
             # Only pass user info for text mentions ("wompbot") to reduce cost logging noise
@@ -1143,8 +1240,8 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                 search_results_raw = await asyncio.to_thread(search.search, search_query)
                 search_results = search.format_results_for_llm(search_results_raw)
 
-                db.store_search_log(search_query, len(search_results_raw), message.author.id, message.channel.id)
-                db.record_feature_usage(message.author.id, 'search')
+                asyncio.create_task(asyncio.to_thread(db.store_search_log, search_query, len(search_results_raw), message.author.id, message.channel.id))
+                asyncio.create_task(asyncio.to_thread(db.record_feature_usage, message.author.id, 'search'))
 
                 # Regenerate response with search results
                 # Update context (bot docs take priority over search)
@@ -1234,12 +1331,12 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
             # Send or edit response
             if response is not None and placeholder_msg:
                 logger.debug("Editing search message with final response")
-                # Edit the search message with the response
                 if len(response) > 2000:
                     await placeholder_msg.edit(content=response[:2000])
-                    # Store the edited response in database (edit doesn't trigger on_message)
-                    db.store_message(placeholder_msg, opted_out=False, content_override=response[:2000])
-                    # Send remaining chunks as new messages
+                    # Fire-and-forget: store in DB without blocking
+                    asyncio.create_task(asyncio.to_thread(
+                        db.store_message, placeholder_msg, False, response[:2000]
+                    ))
                     remaining = response[2000:]
                     chunks = [remaining[i:i+2000] for i in range(0, len(remaining), 2000)]
                     for chunk in chunks:
@@ -1248,12 +1345,12 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                     logger.info("Search message edited, sent %d additional chunks", len(chunks))
                 else:
                     await placeholder_msg.edit(content=response)
-                    # Store the edited response in database (edit doesn't trigger on_message)
-                    db.store_message(placeholder_msg, opted_out=False, content_override=response)
+                    asyncio.create_task(asyncio.to_thread(
+                        db.store_message, placeholder_msg, False, response
+                    ))
                     logger.info("Search message edited")
             elif response is not None:
                 logger.debug("Sending final response as new message")
-                # No search, just send normally
                 if len(response) > 2000:
                     chunks = [response[i:i+2000] for i in range(0, len(response), 2000)]
                     for chunk in chunks:
@@ -1266,12 +1363,12 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
             else:
                 logger.info("No final response to send (tools already sent output)")
 
-            # Record token usage for rate limiting
-            # Estimate: ~4 characters per token (common approximation)
-            # Include both input (content) and output (response) tokens
+            # Fire-and-forget: record token usage for rate limiting in background
             response_length = len(response) if response is not None else 0
             estimated_tokens = (len(content) + response_length) // 4
-            db.record_token_usage(message.author.id, str(message.author), estimated_tokens)
+            asyncio.create_task(asyncio.to_thread(
+                db.record_token_usage, message.author.id, str(message.author), estimated_tokens
+            ))
 
     except Exception as e:
         logger.error("Error handling message: %s", e, exc_info=True)
@@ -1283,7 +1380,7 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
             except Exception:
                 pass  # Ignore deletion errors (message may already be gone)
 
-        await message.channel.send(f"Error processing request: {str(e)}")
+        await message.channel.send("Something went wrong processing your request. Please try again.")
     finally:
         # Release channel semaphore slot to allow next request
         try:

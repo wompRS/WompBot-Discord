@@ -197,19 +197,51 @@ def register_events(bot, db, privacy_manager, claims_tracker, debate_scorekeeper
             # Run in background so it doesn't block bot startup
             bot.loop.create_task(warm_series_cache())
 
+    async def _background_claim_analysis(message, claims_tracker, hot_takes_tracker, wompie_username):
+        """Run claim analysis + hot take detection in background (fire-and-forget).
+        This avoids blocking the message pipeline with LLM calls for every message."""
+        try:
+            claim_data = await claims_tracker.analyze_message_for_claim(message)
+            if claim_data:
+                claim_id = await claims_tracker.store_claim(message, claim_data)
+
+                if claim_id:
+                    # Check for contradictions
+                    contradiction = await claims_tracker.check_contradiction(claim_data, message.author.id)
+                    if contradiction and str(message.author) == wompie_username:
+                        embed = discord.Embed(
+                            title="🚨 Contradiction Detected",
+                            color=discord.Color.red()
+                        )
+                        embed.add_field(name="New Claim", value=claim_data['claim_text'], inline=False)
+                        embed.add_field(name="Contradicts Previous Claim",
+                                        value=contradiction['contradicted_claim']['claim_text'], inline=False)
+                        embed.add_field(name="Explanation", value=contradiction['explanation'], inline=False)
+                        await message.channel.send(embed=embed)
+
+                    # Check if claim is a hot take (controversial)
+                    controversy_data = hot_takes_tracker.detect_controversy_patterns(message.content)
+                    if controversy_data['is_controversial']:
+                        hot_take_id = await hot_takes_tracker.create_hot_take(claim_id, message, controversy_data)
+                        if hot_take_id:
+                            logger.info("Hot take detected! ID: %s, Confidence: %.2f",
+                                        hot_take_id, controversy_data['confidence'])
+        except Exception as e:
+            logger.warning("Background claim analysis failed: %s", e)
+
     @bot.event
     async def on_message(message):
         # Check GDPR opt-out status (users are opted-in by default - legitimate interest basis)
         # Bot's own messages are always stored for conversation context
         if message.author == bot.user:
-            db.store_message(message, opted_out=False)
+            asyncio.create_task(asyncio.to_thread(db.store_message, message, False))
             return  # Don't respond to own messages (prevent infinite loops)
 
-        consent_status = privacy_manager.get_consent_status(message.author.id)
+        consent_status = await asyncio.to_thread(privacy_manager.get_consent_status, message.author.id)
         opted_out = consent_status.get('consent_withdrawn', False) if consent_status else False
 
-        # Store user messages
-        db.store_message(message, opted_out=opted_out)
+        # Store user messages (fire-and-forget to not block message processing)
+        asyncio.create_task(asyncio.to_thread(db.store_message, message, opted_out))
 
         # Track messages for active debates
         if debate_scorekeeper.is_debate_active(message.channel.id):
@@ -452,44 +484,11 @@ def register_events(bot, db, privacy_manager, claims_tracker, debate_scorekeeper
 
         # Analyze for trackable claims ONLY if not directly addressing bot
         # (Skip claim analysis for direct conversations with bot)
+        # Fire-and-forget: don't block the message pipeline for claim/hot take analysis
         if not opted_out and len(message.content) > 20 and not is_addressing_bot:
-            claim_data = await claims_tracker.analyze_message_for_claim(message)
-            if claim_data:
-                claim_id = await claims_tracker.store_claim(message, claim_data)
-
-                # Check for contradictions
-                if claim_id:
-                    contradiction = await claims_tracker.check_contradiction(claim_data, message.author.id)
-                    if contradiction:
-                        # Only Wompie can see contradictions
-                        if str(message.author) == wompie_username:
-                            embed = discord.Embed(
-                                title="🚨 Contradiction Detected",
-                                color=discord.Color.red()
-                            )
-                            embed.add_field(
-                                name="New Claim",
-                                value=claim_data['claim_text'],
-                                inline=False
-                            )
-                            embed.add_field(
-                                name="Contradicts Previous Claim",
-                                value=contradiction['contradicted_claim']['claim_text'],
-                                inline=False
-                            )
-                            embed.add_field(
-                                name="Explanation",
-                                value=contradiction['explanation'],
-                                inline=False
-                            )
-                            await message.channel.send(embed=embed)
-
-                    # Check if claim is a hot take (controversial)
-                    controversy_data = hot_takes_tracker.detect_controversy_patterns(message.content)
-                    if controversy_data['is_controversial']:
-                        hot_take_id = await hot_takes_tracker.create_hot_take(claim_id, message, controversy_data)
-                        if hot_take_id:
-                            logger.info("Hot take detected! ID: %s, Confidence: %.2f", hot_take_id, controversy_data['confidence'])
+            asyncio.create_task(_background_claim_analysis(
+                message, claims_tracker, hot_takes_tracker, wompie_username
+            ))
 
         if should_respond:
             # Import here to avoid circular dependency
@@ -700,23 +699,22 @@ def register_events(bot, db, privacy_manager, claims_tracker, debate_scorekeeper
 
         # Track reactions for hot takes (update community engagement)
         try:
-            with db.get_connection() as conn:
-                with conn.cursor() as cur:
-                    # Check if this message has a hot take
-                    cur.execute("""
-                        SELECT ht.id
-                        FROM hot_takes ht
-                        JOIN claims c ON c.id = ht.claim_id
-                        WHERE c.message_id = %s
-                    """, (reaction.message.id,))
+            def _check_hot_take_reaction():
+                with db.get_connection() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute("""
+                            SELECT ht.id
+                            FROM hot_takes ht
+                            JOIN claims c ON c.id = ht.claim_id
+                            WHERE c.message_id = %s
+                        """, (reaction.message.id,))
+                        result = cur.fetchone()
+                        return result[0] if result else None
 
-                    result = cur.fetchone()
-                    if result:
-                        hot_take_id = result[0]
-                        await hot_takes_tracker.update_reaction_metrics(reaction.message, hot_take_id)
-
-                        # Check if now meets threshold for LLM scoring
-                        await hot_takes_tracker.check_and_score_high_engagement(hot_take_id, reaction.message)
+            hot_take_id = await asyncio.to_thread(_check_hot_take_reaction)
+            if hot_take_id:
+                await hot_takes_tracker.update_reaction_metrics(reaction.message, hot_take_id)
+                await hot_takes_tracker.check_and_score_high_engagement(hot_take_id, reaction.message)
         except Exception as e:
             logger.error("Error tracking hot take reaction: %s", e)
 
