@@ -8,6 +8,18 @@ import requests
 from compression import ConversationCompressor
 
 try:
+    from tenacity import (
+        retry,
+        stop_after_attempt,
+        wait_exponential,
+        retry_if_exception,
+        before_sleep_log,
+    )
+    _HAS_TENACITY = True
+except ImportError:
+    _HAS_TENACITY = False
+
+try:
     import tiktoken
     _tiktoken_encoding = tiktoken.get_encoding("cl100k_base")
     _HAS_TIKTOKEN = True
@@ -16,6 +28,19 @@ except ImportError:
     _HAS_TIKTOKEN = False
 
 logger = logging.getLogger(__name__)
+
+
+class _TransientAPIError(Exception):
+    """Wrapper for transient OpenRouter errors (429, 502, 503) that should be retried."""
+    def __init__(self, status_code: int, body: str = ""):
+        self.status_code = status_code
+        self.body = body
+        super().__init__(f"Transient API error {status_code}")
+
+
+def _is_transient_api_error(exc: BaseException) -> bool:
+    """Check if an exception is a retryable transient API error."""
+    return isinstance(exc, _TransientAPIError)
 
 
 def _get_text_content(content):
@@ -167,6 +192,7 @@ Be useful and real. That's the balance."""
         """
         Simple prompt->response completion for internal use (claims, fact_check, etc.).
         Centralizes the OpenRouter API call pattern so other modules don't duplicate it.
+        Retries on transient errors (429/502/503) with exponential backoff via tenacity.
 
         Args:
             prompt: The prompt text
@@ -199,8 +225,7 @@ Be useful and real. That's the balance."""
         }
 
         try:
-            response = self.session.post(self.base_url, headers=headers, json=payload, timeout=(5, 55))
-            response.raise_for_status()
+            response = self._simple_completion_with_retry(headers, payload)
 
             result = response.json()
             response_text = result["choices"][0]["message"].get("content", "")
@@ -220,9 +245,46 @@ Be useful and real. That's the balance."""
 
             return response_text
 
+        except _TransientAPIError as e:
+            logger.error("simple_completion transient error after retries: %d", e.status_code)
+            return ""
         except Exception as e:
             logger.error("simple_completion error: %s: %s", type(e).__name__, e)
             return ""
+
+    def _simple_completion_request(self, headers, payload):
+        """Make a single simple_completion HTTP request, raising _TransientAPIError for retryable status codes."""
+        response = self.session.post(self.base_url, headers=headers, json=payload, timeout=(5, 55))
+        if response.status_code in (429, 502, 503):
+            logger.warning("simple_completion got %d, will retry", response.status_code)
+            raise _TransientAPIError(response.status_code, response.text[:200] if hasattr(response, 'text') else '')
+        response.raise_for_status()
+        return response
+
+    def _simple_completion_with_retry(self, headers, payload):
+        """Wrap _simple_completion_request with tenacity retry (fallback to manual loop)."""
+        if _HAS_TENACITY:
+            # Build retrying wrapper dynamically (tenacity decorators need to be applied at call time
+            # since `self` is needed for logging)
+            retrying = retry(
+                stop=stop_after_attempt(4),
+                wait=wait_exponential(multiplier=1, min=1, max=10),
+                retry=retry_if_exception(_is_transient_api_error),
+                before_sleep=before_sleep_log(logger, logging.WARNING),
+                reraise=True,
+            )
+            return retrying(self._simple_completion_request)(headers, payload)
+        else:
+            # Fallback: manual retry loop (same logic, no tenacity)
+            for attempt in range(4):
+                try:
+                    return self._simple_completion_request(headers, payload)
+                except _TransientAPIError:
+                    if attempt >= 3:
+                        raise
+                    wait = min(2 ** (attempt + 1), 10)
+                    logger.warning("simple_completion retry %d/%d, waiting %ds", attempt + 1, 3, wait)
+                    time.sleep(wait)
 
     def should_search(self, message_content, conversation_context):
         """Determine if web search is needed - only for genuine factual queries
@@ -609,37 +671,37 @@ Use this history to maintain conversation continuity and remember what was discu
                 payload["tools"] = tools
                 payload["tool_choice"] = "auto"  # Let LLM decide when to use tools
 
-            # Make API request with rate limit handling
-            max_rate_limit_retries = 3
-            rate_limit_retry = 0
+            # Make API request with transient error handling (429, 502, 503)
+            max_transient_retries = 3
+            transient_retry = 0
             response = None
 
-            while rate_limit_retry <= max_rate_limit_retries:
+            while transient_retry <= max_transient_retries:
                 response = self.session.post(self.base_url, headers=headers, json=payload, timeout=(5, 55))
 
-                # Handle 429 rate limiting specifically
-                if response.status_code == 429:
-                    rate_limit_retry += 1
-                    if rate_limit_retry > max_rate_limit_retries:
-                        logger.error("Rate limited by API after %d retries", max_rate_limit_retries)
-                        raise requests.HTTPError(f"Rate limited after {max_rate_limit_retries} retries", response=response)
+                # Handle transient errors (429 rate limit, 502/503 gateway errors)
+                if response.status_code in (429, 502, 503):
+                    transient_retry += 1
+                    if transient_retry > max_transient_retries:
+                        logger.error("API returned %d after %d retries", response.status_code, max_transient_retries)
+                        raise requests.HTTPError(f"API error {response.status_code} after {max_transient_retries} retries", response=response)
 
-                    # Check for Retry-After header
+                    # Check for Retry-After header (primarily for 429)
                     retry_after = response.headers.get('Retry-After')
                     if retry_after:
                         try:
                             wait_time = int(retry_after)
                         except ValueError:
-                            wait_time = 5 * rate_limit_retry  # Exponential backoff
+                            wait_time = 5 * transient_retry  # Exponential backoff
                     else:
                         # Exponential backoff: 2, 4, 8 seconds
-                        wait_time = 2 ** rate_limit_retry
+                        wait_time = 2 ** transient_retry
 
-                    logger.warning("Rate limited by API. Waiting %ds (attempt %d/%d)", wait_time, rate_limit_retry, max_rate_limit_retries)
+                    logger.warning("API returned %d. Waiting %ds (attempt %d/%d)", response.status_code, wait_time, transient_retry, max_transient_retries)
                     time.sleep(wait_time)
                     continue
 
-                # Not rate limited, break out of retry loop
+                # Not a transient error, break out of retry loop
                 break
 
             try:

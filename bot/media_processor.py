@@ -4,6 +4,7 @@ Transcript-first approach: prioritize audio/text content over frame extraction
 """
 
 import io
+import ipaddress
 import logging
 import os
 import re
@@ -12,10 +13,92 @@ import asyncio
 import tempfile
 import subprocess
 from typing import List, Dict, Any, Optional, Tuple
+from urllib.parse import urlparse
+import socket
+
 from PIL import Image
 import requests
 
 logger = logging.getLogger(__name__)
+
+# Maximum download sizes (bytes)
+MAX_IMAGE_SIZE = 10 * 1024 * 1024       # 10 MB
+MAX_GIF_SIZE = 20 * 1024 * 1024         # 20 MB
+MAX_VIDEO_SIZE = 100 * 1024 * 1024      # 100 MB
+MAX_FFMPEG_INPUT_SIZE = 200 * 1024 * 1024  # 200 MB — guard before spawning ffmpeg
+
+# RFC 1918, link-local, loopback, and cloud metadata IP ranges to block (SSRF prevention)
+_BLOCKED_NETWORKS = [
+    ipaddress.ip_network('10.0.0.0/8'),
+    ipaddress.ip_network('172.16.0.0/12'),
+    ipaddress.ip_network('192.168.0.0/16'),
+    ipaddress.ip_network('127.0.0.0/8'),
+    ipaddress.ip_network('169.254.0.0/16'),      # Link-local
+    ipaddress.ip_network('0.0.0.0/8'),
+    ipaddress.ip_network('::1/128'),              # IPv6 loopback
+    ipaddress.ip_network('fc00::/7'),             # IPv6 private
+    ipaddress.ip_network('fe80::/10'),            # IPv6 link-local
+]
+
+
+def _is_safe_url(url: str) -> bool:
+    """Check that a URL does not point to a private/internal IP address (SSRF prevention)."""
+    try:
+        parsed = urlparse(url)
+        hostname = parsed.hostname
+        if not hostname:
+            return False
+
+        # Resolve hostname to IP addresses
+        addr_infos = socket.getaddrinfo(hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
+        for family, _type, _proto, _canonname, sockaddr in addr_infos:
+            ip = ipaddress.ip_address(sockaddr[0])
+            for network in _BLOCKED_NETWORKS:
+                if ip in network:
+                    logger.warning("SSRF blocked: %s resolved to private IP %s", hostname, ip)
+                    return False
+        return True
+    except (socket.gaierror, ValueError, OSError) as e:
+        # DNS failure or invalid URL — fail closed
+        logger.warning("SSRF check failed for %s: %s", url, e)
+        return False
+
+
+def _check_content_length(session: requests.Session, url: str, max_bytes: int) -> Optional[int]:
+    """Send HEAD request to check Content-Length before downloading.
+    Returns content length if available and within limit, or None if HEAD fails.
+    Raises ValueError if content exceeds max_bytes."""
+    try:
+        head = session.head(url, timeout=10, allow_redirects=True)
+        cl = head.headers.get('Content-Length')
+        if cl is not None:
+            size = int(cl)
+            if size > max_bytes:
+                raise ValueError(f"File too large: {size / 1024 / 1024:.1f}MB exceeds {max_bytes / 1024 / 1024:.0f}MB limit")
+            return size
+    except (requests.RequestException, ValueError) as e:
+        if isinstance(e, ValueError) and "File too large" in str(e):
+            raise  # Re-raise size limit errors
+        # HEAD failed or no Content-Length — proceed with streaming download and enforce limit there
+    return None
+
+
+def _streaming_download(session: requests.Session, url: str, max_bytes: int, timeout: int = 60) -> bytes:
+    """Download URL with streaming size enforcement.
+    Raises ValueError if download exceeds max_bytes."""
+    response = session.get(url, timeout=timeout, stream=True)
+    response.raise_for_status()
+
+    chunks = []
+    total = 0
+    for chunk in response.iter_content(chunk_size=8192):
+        total += len(chunk)
+        if total > max_bytes:
+            response.close()
+            raise ValueError(f"Download exceeded {max_bytes / 1024 / 1024:.0f}MB limit (aborted at {total / 1024 / 1024:.1f}MB)")
+        chunks.append(chunk)
+
+    return b''.join(chunks)
 
 
 class MediaProcessor:
@@ -78,24 +161,23 @@ class MediaProcessor:
         }
 
         # Step 1: Get video metadata (fast, no download)
-        print(f"📺 Getting YouTube video info: {video_id}")
+        logger.info("Getting YouTube video info: %s", video_id)
         metadata = await self._get_youtube_metadata(video_id)
         if metadata:
             result["title"] = metadata.get("title", "Unknown")
             result["author"] = metadata.get("author", "Unknown")
             result["duration"] = metadata.get("duration", 0)
-            print(f"   Title: {result['title']}")
-            print(f"   Duration: {result['duration']}s")
+            logger.info("Video title: %s, duration: %ss", result['title'], result['duration'])
 
         # Step 2: Get transcript (instant, no download)
-        print(f"📝 Fetching transcript...")
+        logger.info("Fetching transcript...")
         transcript = await self._get_youtube_transcript(video_id)
         if transcript:
             result["transcript"] = transcript
             result["success"] = True
-            print(f"   ✅ Got transcript ({len(transcript)} chars)")
+            logger.info("Got transcript (%d chars)", len(transcript))
         else:
-            print(f"   ⚠️ No transcript available")
+            logger.info("No transcript available")
 
         # Step 3: Get thumbnail (quick visual reference)
         thumbnail = await self._get_youtube_thumbnail(video_id)
@@ -105,7 +187,7 @@ class MediaProcessor:
 
         # Step 4: Only extract video frames if explicitly needed AND no transcript
         if need_visuals and not transcript:
-            print(f"🎬 Extracting video frames (no transcript available)...")
+            logger.info("Extracting video frames (no transcript available)...")
             frames_result = await self._extract_youtube_frames(video_id)
             if frames_result.get("success"):
                 result["frames"] = frames_result.get("frames", [])
@@ -134,7 +216,7 @@ class MediaProcessor:
                     "author": data.get("author_name"),
                 }
         except Exception as e:
-            print(f"   ⚠️ Metadata fetch error: {e}")
+            logger.warning("Metadata fetch error: %s", e)
 
         # Fallback: try yt-dlp for more info
         try:
@@ -199,7 +281,7 @@ class MediaProcessor:
         except ImportError:
             return None
         except Exception as e:
-            print(f"   Transcript error: {e}")
+            logger.warning("Transcript error: %s", e)
             return None
 
     async def _get_youtube_thumbnail(self, video_id: str) -> Optional[str]:
@@ -226,14 +308,23 @@ class MediaProcessor:
 
         Returns base64-encoded JPEG string, or None on failure.
         Images are resized so the longest dimension is at most max_size pixels.
+        Includes SSRF protection and download size cap.
         """
+        # SSRF check — block private/internal IPs
+        if not _is_safe_url(url):
+            logger.warning("Image download blocked (SSRF): %s", url[:80])
+            return None
+
         try:
+            # HEAD preflight to check size
+            _check_content_length(self.session, url, MAX_IMAGE_SIZE)
+
             def _download_and_process():
-                resp = self.session.get(url, timeout=15)
-                if resp.status_code != 200 or len(resp.content) < 500:
+                data = _streaming_download(self.session, url, MAX_IMAGE_SIZE, timeout=15)
+                if len(data) < 500:
                     return None
 
-                img = Image.open(io.BytesIO(resp.content))
+                img = Image.open(io.BytesIO(data))
                 if img.mode in ('RGBA', 'P', 'LA'):
                     img = img.convert('RGB')
                 elif img.mode != 'RGB':
@@ -250,6 +341,9 @@ class MediaProcessor:
                 return base64.b64encode(buf.getvalue()).decode('utf-8')
 
             return await asyncio.to_thread(_download_and_process)
+        except ValueError as e:
+            logger.warning("Image download rejected: %s — %s", url[:80], e)
+            return None
         except Exception as e:
             logger.warning("Failed to download/resize image %s: %s", url[:80], e)
             return None
@@ -304,6 +398,7 @@ class MediaProcessor:
         Analyze video file (Discord attachment, etc.)
 
         Uses Whisper for audio transcription, frames only if needed.
+        Includes SSRF protection, download size cap, and FFmpeg file size guard.
         """
         result = {
             "success": False,
@@ -313,45 +408,52 @@ class MediaProcessor:
             "duration": 0,
         }
 
+        # SSRF check — block private/internal IPs
+        if not _is_safe_url(url):
+            logger.warning("Video download blocked (SSRF): %s", url[:80])
+            return {"success": False, "error": "URL blocked by security policy"}
+
         temp_dir = None
         try:
-            # Download video
-            print(f"📥 Downloading video...")
+            # HEAD preflight for size check
+            _check_content_length(self.session, url, MAX_VIDEO_SIZE)
 
-            def download():
-                return self.session.get(url, timeout=60, stream=True)
+            # Download video with streaming size enforcement
+            logger.info("Downloading video...")
 
-            response = await asyncio.to_thread(download)
-            if response.status_code != 200:
-                return {"success": False, "error": f"Download failed ({response.status_code})"}
+            def download_and_save(path):
+                data = _streaming_download(self.session, url, MAX_VIDEO_SIZE, timeout=60)
+                with open(path, 'wb') as f:
+                    f.write(data)
+                return len(data)
 
             temp_dir = tempfile.mkdtemp(prefix="video_")
             video_path = os.path.join(temp_dir, "video.mp4")
             audio_path = os.path.join(temp_dir, "audio.mp3")
 
-            def save():
-                with open(video_path, 'wb') as f:
-                    for chunk in response.iter_content(chunk_size=8192):
-                        f.write(chunk)
+            file_size = await asyncio.to_thread(download_and_save, video_path)
 
-            await asyncio.to_thread(save)
+            # FFmpeg file size guard — refuse to process files over limit
+            if file_size > MAX_FFMPEG_INPUT_SIZE:
+                logger.warning("Video too large for FFmpeg processing: %dMB", file_size // (1024 * 1024))
+                return {"success": False, "error": f"Video too large ({file_size // (1024 * 1024)}MB)"}
 
             # Get duration
             duration = await self._get_video_duration(video_path)
             result["duration"] = duration
-            print(f"   Duration: {duration:.1f}s")
+            logger.info("Video duration: %.1fs", duration)
 
             # Extract audio and transcribe with Whisper
-            print(f"🎤 Extracting and transcribing audio...")
+            logger.info("Extracting and transcribing audio...")
             transcript = await self._transcribe_video_audio(video_path, audio_path)
             if transcript:
                 result["transcript"] = transcript
                 result["success"] = True
-                print(f"   ✅ Got transcription ({len(transcript)} chars)")
+                logger.info("Got transcription (%d chars)", len(transcript))
 
             # Extract frames only if needed
             if need_visuals or not transcript:
-                print(f"🎬 Extracting frames...")
+                logger.info("Extracting frames...")
                 frames, timestamps = await self._extract_frames_ffmpeg(video_path, duration, 6)
                 if frames:
                     result["frames"] = frames
@@ -360,10 +462,12 @@ class MediaProcessor:
 
             return result
 
-        except Exception as e:
-            import traceback
-            traceback.print_exc()
+        except ValueError as e:
+            logger.warning("Video download rejected: %s — %s", url[:80], e)
             return {"success": False, "error": str(e)}
+        except Exception as e:
+            logger.error("Video analysis error: %s", e, exc_info=True)
+            return {"success": False, "error": "Video analysis failed"}
         finally:
             if temp_dir:
                 try:
@@ -375,7 +479,7 @@ class MediaProcessor:
     async def _transcribe_video_audio(self, video_path: str, audio_path: str) -> Optional[str]:
         """Extract audio and transcribe with Whisper API"""
         if not self.openai_api_key:
-            print("   ⚠️ No OpenAI API key for Whisper transcription")
+            logger.warning("No OpenAI API key for Whisper transcription")
             return None
 
         try:
@@ -400,7 +504,7 @@ class MediaProcessor:
             # Check file size (Whisper has 25MB limit)
             file_size = os.path.getsize(audio_path)
             if file_size > 25 * 1024 * 1024:
-                print(f"   ⚠️ Audio too large for Whisper ({file_size // 1024 // 1024}MB)")
+                logger.warning("Audio too large for Whisper (%dMB)", file_size // 1024 // 1024)
                 return None
 
             # Transcribe with Whisper API
@@ -438,11 +542,11 @@ class MediaProcessor:
                 else:
                     return data.get("text", "")
             else:
-                print(f"   ⚠️ Whisper API error: {response.status_code}")
+                logger.warning("Whisper API error: %d", response.status_code)
                 return None
 
         except Exception as e:
-            print(f"   ⚠️ Transcription error: {e}")
+            logger.warning("Transcription error: %s", e)
             return None
 
     async def _get_video_duration(self, video_path: str) -> float:
@@ -506,16 +610,21 @@ class MediaProcessor:
         return frames, timestamps
 
     async def extract_gif_frames(self, url: str, max_frames: int = 6) -> Dict[str, Any]:
-        """Extract frames from animated GIF"""
+        """Extract frames from animated GIF. Includes SSRF protection and size cap."""
+        # SSRF check
+        if not _is_safe_url(url):
+            logger.warning("GIF download blocked (SSRF): %s", url[:80])
+            return {"success": False, "error": "URL blocked by security policy"}
+
         try:
+            # HEAD preflight for size check
+            _check_content_length(self.session, url, MAX_GIF_SIZE)
+
             def download():
-                return self.session.get(url, timeout=30)
+                return _streaming_download(self.session, url, MAX_GIF_SIZE, timeout=30)
 
-            response = await asyncio.to_thread(download)
-            if response.status_code != 200:
-                return {"success": False, "error": f"Download failed ({response.status_code})"}
-
-            img = Image.open(io.BytesIO(response.content))
+            data = await asyncio.to_thread(download)
+            img = Image.open(io.BytesIO(data))
 
             total_frames = getattr(img, 'n_frames', 1)
             is_animated = total_frames > 1
@@ -565,6 +674,9 @@ class MediaProcessor:
                 "total_frames": total_frames,
             }
 
+        except ValueError as e:
+            logger.warning("GIF download rejected: %s — %s", url[:80], e)
+            return {"success": False, "error": str(e)}
         except Exception as e:
             return {"success": False, "error": str(e)}
 

@@ -1,9 +1,18 @@
 """
 Local LLM Client for uncensored/alternative models
 Supports any OpenAI-compatible API (Ollama, LM Studio, vLLM, etc.)
+
+SECURITY NOTE: When LOCAL_LLM_URL points to a non-localhost endpoint,
+HTTPS is strongly recommended to protect API keys and conversation data
+in transit. HTTP is only acceptable for localhost/127.0.0.1 connections.
 """
+import logging
 import os
+from urllib.parse import urlparse
+
 import requests
+
+logger = logging.getLogger(__name__)
 
 
 class LocalLLMClient:
@@ -18,9 +27,19 @@ class LocalLLMClient:
         self.api_key = os.getenv('LOCAL_LLM_API_KEY', 'not-needed')
 
         if self.enabled:
-            print(f"✅ Local LLM enabled: {self.base_url} (model: {self.model})")
+            logger.info("Local LLM enabled: %s (model: %s)", self.base_url, self.model)
+            # Warn if using HTTP for non-localhost endpoints
+            parsed = urlparse(self.base_url)
+            is_localhost = parsed.hostname in ('localhost', '127.0.0.1', '::1')
+            if parsed.scheme == 'http' and not is_localhost:
+                logger.warning(
+                    "LOCAL_LLM_URL uses HTTP for non-localhost endpoint (%s). "
+                    "HTTPS is strongly recommended for remote LLM endpoints to protect "
+                    "API keys and conversation data in transit.",
+                    parsed.hostname,
+                )
         else:
-            print("ℹ️  Local LLM disabled (set LOCAL_LLM_ENABLED=true to enable)")
+            logger.info("Local LLM disabled (set LOCAL_LLM_ENABLED=true to enable)")
 
     def generate_response(self, user_message, system_prompt=None, conversation_history=None):
         """
@@ -87,8 +106,7 @@ Respond naturally and authentically."""
                 "stream": False
             }
 
-            print(f"🔄 Sending request to local LLM: {url}")
-            print(f"📝 Model: {self.model}")
+            logger.info("Sending request to local LLM: %s (model: %s)", url, self.model)
 
             response = requests.post(
                 url,
@@ -106,28 +124,27 @@ Respond naturally and authentically."""
                 content = message.get('content', '').strip()
 
                 if content:
-                    print(f"✅ Local LLM response received ({len(content)} chars)")
+                    logger.info("Local LLM response received (%d chars)", len(content))
                     return content
                 else:
-                    return "❌ Local LLM returned empty response."
+                    return "Local LLM returned empty response."
             else:
-                print(f"❌ Unexpected response format: {data}")
-                return "❌ Local LLM returned invalid response format."
+                logger.error("Unexpected local LLM response format")
+                return "Local LLM returned invalid response format."
 
         except requests.exceptions.Timeout:
-            return f"❌ Local LLM request timed out after {self.timeout}s. The model might be slow or unavailable."
+            return f"Local LLM request timed out after {self.timeout}s. The model might be slow or unavailable."
 
-        except requests.exceptions.ConnectionError as e:
-            return f"❌ Cannot connect to local LLM at {self.base_url}. Is the server running?\nError: {str(e)}"
+        except requests.exceptions.ConnectionError:
+            return f"Cannot connect to local LLM at {self.base_url}. Is the server running?"
 
         except requests.exceptions.HTTPError as e:
-            return f"❌ Local LLM HTTP error: {e}\nResponse: {e.response.text if e.response else 'No response'}"
+            logger.error("Local LLM HTTP error: %s", e)
+            return "Local LLM returned an HTTP error."
 
         except Exception as e:
-            print(f"❌ Local LLM error: {e}")
-            import traceback
-            traceback.print_exc()
-            return f"❌ Error calling local LLM: {str(e)}"
+            logger.error("Local LLM error: %s", e, exc_info=True)
+            return "Error calling local LLM."
 
     def test_connection(self):
         """Test if the local LLM is accessible"""

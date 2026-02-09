@@ -614,3 +614,23 @@ Full line-by-line audit of ~60 files (~15,000 lines) covering performance, secur
 - **Redundant imports removed** (database.py) — `from datetime import timedelta` inside methods when already at module level
 - **Unused parameter removed** (database.py) — `get_question_stats()` had `limit` parameter that was never applied
 - **Module-level imports** (llm.py) — `import threading` moved from inside method to module top-level
+
+## Security & Performance Hardening (Session latest+2)
+
+### Security Fixes
+- **SSRF protection in media_processor** — All URL downloads (images, videos, GIFs) now validated against RFC1918, link-local, loopback, and cloud metadata IP ranges via DNS resolution. Fail-closed on DNS errors.
+- **Media download size caps** — HEAD preflight + streaming size enforcement: images 10MB, GIFs 20MB, videos 100MB. Downloads aborted mid-stream if they exceed limits.
+- **FFmpeg file size guard** — Videos checked against 200MB limit before spawning ffmpeg/ffprobe subprocesses
+- **Credential file permissions** — `credential_manager.py` enforces `chmod 600` on encryption key and credentials files at init and before every read (graceful fallback on mounted volumes)
+- **Search query PII stripping** — Discord mentions (`<@123>`, `<@!123>`, `<#123>`, `<@&123>`) and standalone snowflake IDs stripped from queries before sending to Tavily/Google
+- **HTTPS warning for remote LLM** — `local_llm.py` warns at startup if `LOCAL_LLM_URL` uses HTTP for non-localhost endpoints. `.env.example` documents the HTTPS requirement.
+- **Error message sanitization** — `local_llm.py` no longer exposes `str(e)` details (connection errors, HTTP errors) to users
+
+### Performance Fixes
+- **OpenRouter retry/backoff with tenacity** — `simple_completion()` now retries on 429/502/503 with exponential backoff via tenacity (fallback to manual loop if tenacity not installed). `generate_response()` retry loop extended from 429-only to also handle 502/503.
+- **RAG embedding batch operations** — `process_embedding_queue()` refactored from per-message DB round trips to batched: single transaction for all embedding inserts + queue deletes, separate batch for failure updates. Reduces connection churn from 2N to 2 DB operations.
+
+### Code Quality
+- **15 print() → logger** (media_processor.py) — All print statements replaced with structured logging, traceback.print_exc() replaced with exc_info=True
+- **5 print() → logger** (local_llm.py) — All print statements replaced with structured logging
+- **5 print() → logger** (credential_manager.py) — All print statements replaced with structured logging

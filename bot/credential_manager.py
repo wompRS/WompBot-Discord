@@ -3,10 +3,13 @@ Credential Manager
 Handles encrypted credential storage and retrieval
 """
 
+import logging
 from cryptography.fernet import Fernet
 import json
 import os
 from typing import Optional, Tuple
+
+logger = logging.getLogger(__name__)
 
 
 class CredentialManager:
@@ -15,6 +18,18 @@ class CredentialManager:
     def __init__(self, key_file='/app/.encryption_key', credentials_file='/app/.iracing_credentials'):
         self.key_file = key_file
         self.credentials_file = credentials_file
+        # Enforce restrictive permissions on credential files at init
+        self._enforce_permissions()
+
+    def _enforce_permissions(self):
+        """Ensure credential files have restrictive permissions (owner read/write only)."""
+        for path in (self.key_file, self.credentials_file):
+            if os.path.exists(path):
+                try:
+                    os.chmod(path, 0o600)
+                except (OSError, PermissionError):
+                    # May fail on mounted volumes (e.g., Docker) — this is expected
+                    logger.debug("Could not set chmod 600 on %s (mounted volume?)", path)
 
     def credentials_exist(self) -> bool:
         """Check if encrypted credentials exist"""
@@ -32,6 +47,9 @@ class CredentialManager:
             return None
 
         try:
+            # Enforce permissions before reading
+            self._enforce_permissions()
+
             # Read encryption key
             with open(self.key_file, 'rb') as f:
                 key = f.read()
@@ -58,11 +76,11 @@ class CredentialManager:
                     'client_secret': client_secret
                 }
             else:
-                print("❌ Error: Encrypted credentials missing email or password")
+                logger.error("Encrypted credentials missing email or password")
                 return None
 
         except Exception as e:
-            print(f"❌ Error decrypting credentials: {e}")
+            logger.error("Error decrypting credentials: %s", e)
             return None
 
     def remove_credentials(self):
@@ -70,13 +88,13 @@ class CredentialManager:
         try:
             if os.path.exists(self.credentials_file):
                 os.remove(self.credentials_file)
-                print(f"✓ Removed {self.credentials_file}")
+                logger.info("Removed %s", self.credentials_file)
 
             if os.path.exists(self.key_file):
                 os.remove(self.key_file)
-                print(f"✓ Removed {self.key_file}")
+                logger.info("Removed %s", self.key_file)
 
             return True
         except Exception as e:
-            print(f"❌ Error removing credentials: {e}")
+            logger.error("Error removing credentials: %s", e)
             return False

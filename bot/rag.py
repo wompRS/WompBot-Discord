@@ -151,7 +151,8 @@ class RAGSystem:
 
     async def process_embedding_queue(self, limit: int = 50) -> int:
         """
-        Process pending messages in embedding queue
+        Process pending messages in embedding queue.
+        Uses batched DB operations to reduce connection churn.
 
         Args:
             limit: Maximum number of messages to process
@@ -181,32 +182,68 @@ class RAGSystem:
 
             logger.info("Processing %d messages for embedding...", len(queue_items))
 
-            # Generate embeddings
+            # Generate embeddings in batch
             texts = [item['content'] for item in queue_items]
             embeddings = await self.generate_embeddings_batch(texts)
 
-            # Store embeddings and update queue
-            success_count = 0
+            # Separate successes and failures
+            successful = []  # [(message_id, embedding, queue_id)]
+            failed_ids = []  # [queue_id]
+
             for item, embedding in zip(queue_items, embeddings):
                 if embedding:
-                    if await self.store_message_embedding(item['message_id'], embedding):
-                        # Remove from queue
-                        with self.db.get_connection() as conn:
-                            with conn.cursor() as cur:
-                                cur.execute("DELETE FROM embedding_queue WHERE id = %s", (item['id'],))
-                                conn.commit()
-                        success_count += 1
+                    successful.append((item['message_id'], embedding, item['id']))
                 else:
-                    # Increment attempt count
+                    failed_ids.append(item['id'])
+
+            # Batch store embeddings + delete from queue in a single transaction
+            success_count = 0
+            if successful:
+                def _batch_store_and_remove():
+                    count = 0
+                    with self.db.get_connection() as conn:
+                        register_vector(conn)
+                        with conn.cursor() as cur:
+                            # Batch insert/upsert embeddings
+                            for message_id, embedding, queue_id in successful:
+                                try:
+                                    cur.execute("""
+                                        INSERT INTO message_embeddings (message_id, embedding)
+                                        VALUES (%s, %s)
+                                        ON CONFLICT (message_id) DO UPDATE
+                                        SET embedding = EXCLUDED.embedding,
+                                            updated_at = CURRENT_TIMESTAMP
+                                    """, (message_id, embedding))
+                                    count += 1
+                                except Exception as e:
+                                    logger.warning("Failed to store embedding for message %s: %s", message_id, e)
+
+                            # Batch delete successfully processed queue items
+                            success_queue_ids = [qid for _, _, qid in successful[:count]]
+                            if success_queue_ids:
+                                cur.execute(
+                                    "DELETE FROM embedding_queue WHERE id = ANY(%s)",
+                                    (success_queue_ids,)
+                                )
+                        conn.commit()
+                    return count
+
+                success_count = await asyncio.to_thread(_batch_store_and_remove)
+
+            # Batch update failed items in a single transaction
+            if failed_ids:
+                def _batch_update_failures():
                     with self.db.get_connection() as conn:
                         with conn.cursor() as cur:
                             cur.execute("""
                                 UPDATE embedding_queue
                                 SET attempts = attempts + 1,
                                     last_error = 'Failed to generate embedding'
-                                WHERE id = %s
-                            """, (item['id'],))
-                            conn.commit()
+                                WHERE id = ANY(%s)
+                            """, (failed_ids,))
+                        conn.commit()
+
+                await asyncio.to_thread(_batch_update_failures)
 
             logger.info("Generated %d/%d embeddings", success_count, len(queue_items))
             return success_count

@@ -27,8 +27,28 @@ class SearchEngine:
 
         logger.info("Search provider: %s", self.provider.upper())
 
+    @staticmethod
+    def _strip_discord_mentions(query: str) -> str:
+        """Strip Discord mentions and raw user/channel/role IDs from search queries
+        to avoid leaking PII to external search providers.
+
+        Removes patterns like: <@123456>, <@!123456>, <#123456>, <@&123456>,
+        and standalone large numeric IDs (17-20 digits, typical Discord snowflakes).
+        """
+        # Remove Discord mention markup: <@123>, <@!123>, <#123>, <@&123>
+        cleaned = re.sub(r'<[@#][!&]?\d+>', '', query)
+        # Remove standalone Discord snowflake IDs (17-20 digit numbers)
+        cleaned = re.sub(r'\b\d{17,20}\b', '', cleaned)
+        # Collapse multiple spaces
+        cleaned = re.sub(r'\s{2,}', ' ', cleaned).strip()
+        return cleaned
+
     def search(self, query, max_results=5):
-        """Search the web using configured provider"""
+        """Search the web using configured provider.
+        Strips Discord mentions/IDs before sending to external APIs."""
+        query = self._strip_discord_mentions(query)
+        if not query:
+            return []
         if self.provider == 'google':
             return self._search_google(query, max_results)
         else:
@@ -121,8 +141,8 @@ class SearchEngine:
         Returns:
             Enhanced search query string
         """
-        # Start with the user's message, cleaned up
-        query = user_message.strip()
+        # Start with the user's message, cleaned up — strip Discord mentions/IDs
+        query = self._strip_discord_mentions(user_message.strip())
 
         # Remove common filler words/phrases for better search
         filler_patterns = [
