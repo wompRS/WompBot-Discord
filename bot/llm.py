@@ -1,6 +1,7 @@
 import logging
 import os
 import re
+import threading
 import time
 
 import requests
@@ -45,7 +46,8 @@ class LLMClient:
         self.base_url = "https://openrouter.ai/api/v1/chat/completions"
         self.model = os.getenv('MODEL_NAME', 'cognitivecomputations/dolphin-2.9.2-qwen-110b')
         # Vision model for image analysis (text models can't see images)
-        self.vision_model = os.getenv('VISION_MODEL', 'openai/gpt-4o-mini')
+        # Gemini Flash Lite: $0.075/M input vs gpt-4o-mini $0.15/M — half the cost with vision support
+        self.vision_model = os.getenv('VISION_MODEL', 'google/gemini-2.0-flash-lite-001')
         self.cost_tracker = cost_tracker
 
         # Initialize conversation compressor for token reduction
@@ -187,7 +189,7 @@ Be useful and real. That's the balance."""
         }
 
         try:
-            response = self.session.post(self.base_url, headers=headers, json=payload, timeout=60)
+            response = self.session.post(self.base_url, headers=headers, json=payload, timeout=(5, 55))
             response.raise_for_status()
 
             result = response.json()
@@ -477,12 +479,12 @@ Use this history to maintain conversation continuity and remember what was discu
                 # Vision model format: array of content objects
                 content_parts = [{"type": "text", "text": user_message_with_context}]
 
-                # Add image URLs
+                # Add image URLs (detail:low reduces token cost from ~thousands to ~85 tokens per image)
                 if images:
                     for img_url in images:
                         content_parts.append({
                             "type": "image_url",
-                            "image_url": {"url": img_url}
+                            "image_url": {"url": img_url, "detail": "low"}
                         })
 
                 # Add base64-encoded images (GIF frames, YouTube thumbnails, etc.)
@@ -490,7 +492,7 @@ Use this history to maintain conversation continuity and remember what was discu
                     for b64_img in base64_images:
                         content_parts.append({
                             "type": "image_url",
-                            "image_url": {"url": f"data:image/jpeg;base64,{b64_img}"}
+                            "image_url": {"url": f"data:image/jpeg;base64,{b64_img}", "detail": "low"}
                         })
 
                 messages.append({"role": "user", "content": content_parts})
@@ -514,47 +516,49 @@ Use this history to maintain conversation continuity and remember what was discu
 
             # Estimate tokens using tiktoken if available, else ~1 token per 4 chars
             # Add ~170 tokens per image (OpenAI low-detail default)
-            total_chars = sum(get_content_len(entry["content"]) for entry in messages)
             image_token_estimate = (len(images or []) + len(base64_images or [])) * 170
 
             if _HAS_TIKTOKEN:
-                all_text = " ".join(
-                    _get_text_content(entry["content"]) for entry in messages
-                )
-                estimated_tokens = len(_tiktoken_encoding.encode(all_text)) + image_token_estimate
+                # Pre-compute per-message token counts to avoid re-encoding entire array in loop
+                msg_token_counts = []
+                for entry in messages:
+                    text = _get_text_content(entry["content"])
+                    msg_token_counts.append(len(_tiktoken_encoding.encode(text)) if text else 0)
+                estimated_tokens = sum(msg_token_counts) + image_token_estimate
             else:
-                estimated_tokens = int(total_chars / 4) + image_token_estimate
+                msg_token_counts = [get_content_len(entry["content"]) // 4 for entry in messages]
+                estimated_tokens = sum(msg_token_counts) + image_token_estimate
+
+            total_chars = sum(get_content_len(entry["content"]) for entry in messages)
 
             # Truncate old messages if we exceed token limit
+            # Use pre-computed per-message counts — subtract instead of re-encoding
             messages_removed = 0
             while estimated_tokens > max_context_tokens and len(messages) > 3:
-                removed = messages.pop(1)  # Remove oldest message after system prompt
-                total_chars -= get_content_len(removed["content"])
-                if _HAS_TIKTOKEN:
-                    all_text = " ".join(
-                        _get_text_content(entry["content"]) for entry in messages
-                    )
-                    estimated_tokens = len(_tiktoken_encoding.encode(all_text)) + image_token_estimate
-                else:
-                    estimated_tokens = int(total_chars / 4) + image_token_estimate
+                removed_msg = messages.pop(1)  # Remove oldest message after system prompt
+                removed_tokens = msg_token_counts.pop(1)
+                removed_chars = get_content_len(removed_msg["content"])
+                estimated_tokens -= removed_tokens
+                total_chars -= removed_chars
                 messages_removed += 1
 
             if messages_removed > 0:
-                logger.warning("Context truncated: removed %d old messages (was %d tokens, now ~%d)", messages_removed, estimated_tokens + messages_removed * 100, estimated_tokens)
-                # Insert a notice so the LLM knows context was truncated
-                messages.insert(1, {"role": "user", "content": f"[Note: {messages_removed} earlier messages were omitted for brevity. The conversation started before the history shown below.]"})
+                logger.warning("Context truncated: removed %d old messages (now ~%d tokens)", messages_removed, estimated_tokens)
+                # Insert truncation notice and its token count to keep arrays in sync
+                truncation_note = f"[Note: {messages_removed} earlier messages were omitted for brevity. The conversation started before the history shown below.]"
+                messages.insert(1, {"role": "user", "content": truncation_note})
+                truncation_tokens = len(_tiktoken_encoding.encode(truncation_note)) if _HAS_TIKTOKEN else len(truncation_note) // 4
+                msg_token_counts.insert(1, truncation_tokens)
+                estimated_tokens += truncation_tokens
 
-            # Also enforce character limit as fallback
+            # Also enforce character limit as fallback (using same delta approach)
             while total_chars > self.MAX_HISTORY_CHARS and len(messages) > 3:
                 removed = messages.pop(1)
-                total_chars -= get_content_len(removed["content"])
-                if _HAS_TIKTOKEN:
-                    all_text = " ".join(
-                        _get_text_content(entry["content"]) for entry in messages
-                    )
-                    estimated_tokens = len(_tiktoken_encoding.encode(all_text)) + image_token_estimate
-                else:
-                    estimated_tokens = int(total_chars / 4) + image_token_estimate
+                removed_chars = get_content_len(removed["content"])
+                total_chars -= removed_chars
+                if len(msg_token_counts) > 1:
+                    removed_tokens = msg_token_counts.pop(1)
+                    estimated_tokens -= removed_tokens
 
             retry_text = f" (retry {retry_count + 1}/3)" if retry_count > 0 else ""
             logger.info("Sending to %s%s", self.model, retry_text)
@@ -601,7 +605,7 @@ Use this history to maintain conversation continuity and remember what was discu
             response = None
 
             while rate_limit_retry <= max_rate_limit_retries:
-                response = self.session.post(self.base_url, headers=headers, json=payload, timeout=60)
+                response = self.session.post(self.base_url, headers=headers, json=payload, timeout=(5, 55))
 
                 # Handle 429 rate limiting specifically
                 if response.status_code == 429:
@@ -631,8 +635,9 @@ Use this history to maintain conversation continuity and remember what was discu
             try:
                 response.raise_for_status()
             except requests.HTTPError as http_err:
-                body_preview = response.text[:500] if hasattr(response, "text") else "no body"
-                logger.error("LLM HTTP error %d: %s", response.status_code, body_preview)
+                # Log full error server-side only — never expose to users
+                logger.error("LLM HTTP error %d (response logged at debug level)", response.status_code)
+                logger.debug("LLM error body: %s", response.text[:500] if hasattr(response, "text") else "no body")
                 raise http_err
 
             result = response.json()
@@ -657,22 +662,22 @@ Use this history to maintain conversation continuity and remember what was discu
 
             logger.info("LLM response length: %d chars (tokens: %d in / %d out)", len(response_text), input_tokens, output_tokens)
 
-            # Record costs if cost tracker is available
-            # This function is called from asyncio.to_thread(), so we're always in a worker thread
-            # Use the sync version which logs costs but doesn't send Discord DM alerts
+            # Record costs in background thread (don't block response)
             if self.cost_tracker and input_tokens > 0:
                 try:
-                    self.cost_tracker.record_costs_sync(
-                        model_to_use, input_tokens, output_tokens, 'chat', user_id, username
-                    )
+                    threading.Thread(
+                        target=self.cost_tracker.record_costs_sync,
+                        args=(model_to_use, input_tokens, output_tokens, 'chat', user_id, username),
+                        daemon=True
+                    ).start()
                 except Exception as e:
                     logger.warning("Error tracking costs: %s", e)
 
             if not response_text or len(response_text.strip()) == 0:
                 logger.warning("Empty response from LLM. Full result: %s", result)
                 if retry_count < 2:
-                    logger.info("Retrying in 2 seconds...")
-                    time.sleep(2)
+                    logger.info("Retrying in 0.5 seconds...")
+                    time.sleep(0.5)  # Reduced from 2s — just enough to avoid hammering
                     return self.generate_response(
                         user_message,
                         conversation_history,
@@ -753,7 +758,7 @@ Be objective and base your analysis only on observable patterns."""
                 "temperature": 0.3
             }
             
-            response = self.session.post(self.base_url, headers=headers, json=payload, timeout=60)
+            response = self.session.post(self.base_url, headers=headers, json=payload, timeout=(5, 55))
             response.raise_for_status()
             
             result = response.json()
