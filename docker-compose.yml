@@ -70,6 +70,7 @@ services:
       FINNHUB_API_KEY: ${FINNHUB_API_KEY}
       ALPHA_VANTAGE_API_KEY: ${ALPHA_VANTAGE_API_KEY}
       MODEL_NAME: ${MODEL_NAME}
+      VISION_MODEL: ${VISION_MODEL:-google/gemini-2.0-flash-lite-001}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL}
       RAG_SIMILARITY_THRESHOLD: ${RAG_SIMILARITY_THRESHOLD}
       CONTEXT_WINDOW_MESSAGES: ${CONTEXT_WINDOW_MESSAGES}
@@ -102,6 +103,7 @@ services:
       # Redis for caching
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-wompbot_redis_secret}
     depends_on:
       postgres:
         condition: service_healthy
@@ -145,12 +147,12 @@ services:
   redis:
     image: redis:7-alpine
     container_name: discord_bot_redis
-    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru --requirepass ${REDIS_PASSWORD:-wompbot_redis_secret}
     volumes:
       - redis_data:/data
     restart: always
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-wompbot_redis_secret}", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -167,7 +169,7 @@ services:
     image: portainer/portainer-ce:latest
     container_name: portainer
     ports:
-      - "9443:9443"  # HTTPS web UI
+      - "127.0.0.1:9443:9443"  # HTTPS web UI (localhost only for security)
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - portainer_data:/data

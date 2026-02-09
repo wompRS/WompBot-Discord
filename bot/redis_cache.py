@@ -30,9 +30,11 @@ class RedisCache:
 
         try:
             import redis
+            redis_password = os.getenv('REDIS_PASSWORD')
             self._client = redis.Redis(
                 host=redis_host,
                 port=redis_port,
+                password=redis_password,
                 decode_responses=True,
                 socket_connect_timeout=5,
                 socket_timeout=5
