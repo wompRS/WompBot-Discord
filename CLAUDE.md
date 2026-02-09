@@ -94,7 +94,7 @@ Discord message → on_message (events.py) → handle_bot_mention (conversations
 - `bot/tasks/background_jobs.py` — Scheduled jobs (embedding generation, cleanup)
 - `bot/logging_config.py` — Logging setup
 - `docker-compose.yml` — 5 services: bot, postgres, redis, postgres-backup, portainer
-- `sql/` — 16 SQL files (init.sql + 15 migrations including indexes, rate limiting, GDPR, iRacing, GDPR trim, guild timezone, session persistence)
+- `sql/` — 17 SQL files (init.sql + 16 migrations including indexes, rate limiting, GDPR, iRacing, GDPR trim, guild timezone, session persistence, performance indexes)
 - `bot/migrations/` — 3 iRacing-specific migration files
 
 ### iRacing Subsystem (bot/ root level)
@@ -127,7 +127,7 @@ DISCORD_TOKEN, OPENROUTER_API_KEY, POSTGRES_PASSWORD
 
 # LLM (all via OpenRouter)
 MODEL_NAME=deepseek/deepseek-chat          # Primary chat model
-VISION_MODEL=openai/gpt-4o-mini            # Image analysis
+VISION_MODEL=google/gemini-2.0-flash-lite-001  # Image analysis (cheap: $0.075/M input)
 FACT_CHECK_MODEL=deepseek/deepseek-chat    # Fact checking
 
 # Search
@@ -155,13 +155,14 @@ Key tables: `messages`, `user_profiles`, `claims`, `fact_checks`, `hot_takes`, `
 
 Dropped tables (GDPR trim): `data_breach_log`, `privacy_policy_versions`
 
-Indexes: 11 composite indexes added in `sql/12_missing_indexes.sql`
+Indexes: 11 composite indexes in `sql/12_missing_indexes.sql` + 3 performance indexes in `sql/17_performance_indexes.sql`
 
 Migrations:
 - `sql/13_gdpr_trim.sql` — Drops 7 GDPR slash commands, removes `data_breach_log` and `privacy_policy_versions` tables
 - `sql/14_guild_timezone.sql` — Creates `guild_config` table for guild-level timezone support
 - `sql/15_session_persistence.sql` — Creates `active_trivia_sessions` and `active_debates` tables for session persistence across restarts
 - `sql/16_new_features.sql` — Creates tables for new features: `user_topic_expertise`, polls, games, scheduling, monitoring
+- `sql/17_performance_indexes.sql` — Compound indexes for hot-path queries: messages(channel_id, guild_id, timestamp DESC), server_personality(server_id), feature_rate_limits(request_timestamp)
 
 ## Important Design Decisions
 
@@ -185,6 +186,17 @@ Migrations:
 18. **Guild timezone support** — Guild timezone stored in `guild_config` table; reminders and events use guild timezone via `zoneinfo`.
 19. **Dual chart engine** — Primary: Plotly + Kaleido (premium charts, requires chromium). Fallback: matplotlib (if Plotly fails). Weather card stays PIL-based. Configured in `conversations.py` `get_visualizer()`.
 20. **Shared card primitives** — `card_base.py` provides composable PIL drawing utilities (rounded rects, progress bars, glow effects, gradients, fonts). Feature-specific cards import from here rather than duplicating code.
+21. **Vision cost optimization** — Three layers: (1) `detail: "low"` on all image payloads (~85 tokens vs thousands), (2) images downloaded and resized to max 768px before sending, (3) default vision model switched from gpt-4o-mini ($0.15/M) to Gemini 2.0 Flash Lite ($0.075/M).
+22. **3-tier tool selection** — `_select_tools_for_message()` checks `_TOOL_INTENT_KEYWORDS` (~50 keywords). Pure conversation → no tools, viz keywords → all tools, tool keywords → computational only. Prevents Wolfram being called for casual chat.
+23. **Background compression model loading** — LLMLingua BERT model loads in a background thread at startup. Requests skip compression while loading (graceful degradation via `_loading` flag with thread lock).
+24. **Fire-and-forget claim/hot-take analysis** — Claim detection and hot take scoring moved to `asyncio.create_task()` in events.py, no longer blocking the response pipeline.
+25. **Parallel DB context queries** — `get_recent_messages()`, `get_thread_parent_context()`, user context, server personality, RAG, and search all run concurrently via `asyncio.gather()`.
+26. **Redis-cached server personality** — `get_server_personality()` cached in Redis with 1hr TTL, avoiding DB hit on every bot mention.
+27. **Delta-based token estimation** — Token counts pre-computed per message; truncation loop subtracts removed message's count instead of re-encoding entire list.
+28. **Fire-and-forget cost tracking** — `cost_tracker.record_costs_sync()` runs in a daemon thread, not blocking the response.
+29. **Parallel media processing** — Images and GIFs processed concurrently via `asyncio.gather()`. YouTube/video remain sequential (dependency on frame extraction).
+30. **Fire-and-forget DB logging** — `store_message()`, `record_token_usage()`, and `record_search_log()` all run via `asyncio.create_task(asyncio.to_thread(...))`, not blocking response delivery.
+31. **Separated cleanup from insert** — `record_feature_usage()` no longer runs cleanup query on every insert. Cleanup moved to `cleanup_feature_rate_limits()` called once daily in the GDPR cleanup background job.
 
 ## Build & Deploy
 
@@ -544,3 +556,61 @@ Migrated ~55 commands from Discord slash commands (/) to prefix commands (!) to 
 - **Topic expertise leaderboard** — `/experts [topic]` to show who knows most about a topic, using the `user_topic_expertise` table data already being collected
 - **Debate tournament mode** — Multi-round debate brackets with seeding based on argumentation profiles
 - **Achievement system** — Persistent achievements with Discord role rewards (e.g. "1000 messages", "10 debate wins", "Trivia Champion")
+
+## Performance Latency Audit (Session latest)
+
+### Fixes Applied
+1. **Claim/hot-take analysis moved to background** — Was running 2 LLM calls (1-3s each) on EVERY message, blocking response. Now fire-and-forget via `asyncio.create_task()` in events.py
+2. **DB context queries parallelized** — `get_recent_messages()`, thread context, user context, personality, RAG, and search all run concurrently via `asyncio.gather()` (was sequential: 300-700ms)
+3. **Server personality cached in Redis** — 1hr TTL, avoids DB query on every bot mention
+4. **Token estimation uses deltas** — Pre-computes per-message token counts, subtracts on truncation instead of re-encoding entire list in a loop
+5. **Cost tracking fire-and-forget** — Runs in daemon thread via `threading.Thread`, doesn't block response
+6. **Media processing parallelized** — Images and GIFs processed concurrently via `asyncio.gather()` (YouTube/video remain sequential)
+7. **DB logging fire-and-forget** — `store_message()`, `record_token_usage()`, `record_search_log()` all via `asyncio.create_task(asyncio.to_thread(...))`
+8. **Cleanup separated from insert** — `record_feature_usage()` no longer runs DELETE query on every insert; cleanup moved to daily background job
+9. **3 compound indexes added** — `sql/17_performance_indexes.sql` for hot-path queries (messages, server_personality, feature_rate_limits)
+10. **Empty response retry sleep reduced** — 2s → 0.5s
+
+### Other Fixes in Same Session
+- **3-tier tool intent filtering** — Prevents computational tools being called for pure conversation (was calling Wolfram on casual chat)
+- **LLMLingua model background loading** — BERT model loads in background thread at startup, requests skip compression while loading (was blocking first request for 10+ seconds)
+- **Personality prompts rewritten** — Default (more verbose standard LLM), Concise (warm not curt), Bogan (70% English / 30% Aussie, cut from 330 to 75 lines)
+- **Vision cost optimization** — detail:low + image resize to 768px + Gemini Flash Lite ($0.075/M vs $0.15/M), ~98% cost reduction per vision call
+
+## Comprehensive Code Audit (Session latest+1)
+
+Full line-by-line audit of ~60 files (~15,000 lines) covering performance, security, and code quality.
+
+### Critical Fixes
+- **Token truncation array desync** (llm.py) — After `messages.pop(1)`, was computing chars from wrong message. Also, inserting truncation notice without corresponding token count desynchronized `msg_token_counts[]`. Fixed by capturing `removed_msg` before pop and inserting truncation token count.
+- **SQL injection in 8 INTERVAL queries** (database.py) — `INTERVAL '%s days'` → `INTERVAL '1 day' * %s` (parameterized multiplication). Same for `'%s seconds'`.
+- **SSRF fail-open** (tool_executor.py) — DNS resolution failure was allowing requests through (`pass` in `gaierror` handler). Changed to fail-closed (block on DNS error).
+- **Currency convert NameError** (tool_executor.py) — `cache_key` variable used but never defined; every successful conversion raised NameError (swallowed by try/except), results never cached. Fixed by adding cache key construction.
+
+### Security Fixes
+- **Redis authentication** — Added `--requirepass` with `REDIS_PASSWORD` env var to Redis container and `redis_cache.py`
+- **Portainer bound to localhost** — `9443:9443` → `127.0.0.1:9443:9443`
+- **OMDB upgraded to HTTPS** — `http://www.omdbapi.com` → `https://www.omdbapi.com`
+- **Error messages sanitized** — User-facing Discord error messages no longer expose `str(e)` (was leaking internal state)
+- **Debug prints removed** — `print()` that leaked user message content to stdout replaced with `logger.debug()` (user IDs only)
+
+### Performance Fixes
+- **HTTP timeout split** (llm.py) — `timeout=60` → `timeout=(5, 55)` connect/read tuple (3 occurrences)
+- **Wolfram parallel queries** (tool_executor.py) — Sequential metric + imperial → `asyncio.gather(asyncio.to_thread())` (saves ~2s per query)
+- **Weather calls async** (tool_executor.py) — `self.weather.get_current_weather()` → `await asyncio.to_thread()`
+- **Event loop unblocking** (events.py, conversations.py) — `store_message()`, `get_consent_status()`, `check_repeated_messages()`, `record_feature_usage()`, `on_reaction_add` DB queries all moved off event loop via `asyncio.to_thread()` or fire-and-forget `asyncio.create_task()`
+- **Profanity stats SQL optimization** (database.py) — Sort + limit pushed to SQL subquery instead of fetching all rows into Python
+- **Self-contained tool check** (conversations.py) — Substring matching (`any(st in tn)`) → exact set membership (`tn in SELF_CONTAINED_TOOLS`); `SELF_CONTAINED_TOOLS` changed from list to `frozenset` for O(1) lookup
+
+### Bug Fixes
+- **Feyd personality loading** (llm.py) — `_load_system_prompt('feyd')` had no matching branch, always loaded default. Added `'feyd'` → `system_prompt_sample.txt` mapping.
+- **Hot takes diversity formula** (hot_takes.py) — Was `unique_types / total_reactions` (inverted: many diverse reactions scored LOW). Now uses normalized Shannon entropy (0.0 = single type, 1.0 = perfectly diverse).
+- **Double conn.commit()** (database.py) — `upsert_topic_expertise` and `batch_upsert_topic_expertise` called `conn.commit()` manually, but `get_connection()` context manager already commits. Removed redundant commits.
+- **datetime.now() timezone** (database.py) — `datetime.now()` → `datetime.now(timezone.utc)` in 2 iRacing cache methods (was using local time instead of UTC).
+
+### Code Quality
+- **48 print() → logger** (database.py) — All print statements replaced with structured `logger.error()`/`logger.debug()` calls using `%s` formatting
+- **Dead code removed** — `MENTION_RATE_STATE` (never populated), `get_autocommit_connection()` (never called), `_RATE_STATE_LOCK` (only used by removed code)
+- **Redundant imports removed** (database.py) — `from datetime import timedelta` inside methods when already at module level
+- **Unused parameter removed** (database.py) — `get_question_stats()` had `limit` parameter that was never applied
+- **Module-level imports** (llm.py) — `import threading` moved from inside method to module top-level
