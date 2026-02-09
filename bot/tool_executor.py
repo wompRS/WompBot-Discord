@@ -3,6 +3,7 @@ Tool Execution Handler
 Executes tools requested by the LLM and returns results
 """
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -341,9 +342,12 @@ class ToolExecutor:
             logger.debug("Wolfram cache hit: %s", query)
             return cached
 
-        # Query with both metric and imperial units
-        metric_result = self.wolfram.query(query, units="metric")
-        imperial_result = self.wolfram.query(query, units="imperial")
+        # Query with both metric and imperial units (run in threads to not block event loop)
+        import asyncio
+        metric_result, imperial_result = await asyncio.gather(
+            asyncio.to_thread(self.wolfram.query, query, "metric"),
+            asyncio.to_thread(self.wolfram.query, query, "imperial")
+        )
 
         # If metric query failed, just return the error
         if not metric_result["success"]:
@@ -394,7 +398,7 @@ class ToolExecutor:
             logger.debug("Weather cache hit: %s", location)
             result = cached_data
         else:
-            result = self.weather.get_current_weather(location, units=units)
+            result = await asyncio.to_thread(self.weather.get_current_weather, location, units)
             if result.get("success"):
                 self.cache.set(cache_key, result, ttl=1800)  # 30 minutes
 
@@ -485,7 +489,7 @@ class ToolExecutor:
             logger.debug("Forecast cache hit: %s", location)
             return cached
 
-        result = self.weather.get_forecast(location, units=units, days=days)
+        result = await asyncio.to_thread(self.weather.get_forecast, location, units, days)
 
         if result["success"]:
             response = {"success": True, "type": "text", "text": result["summary"], "description": f"{days}-day forecast for {location}"}
@@ -913,7 +917,7 @@ class ToolExecutor:
                     return True
 
             except (socket.gaierror, ValueError):
-                pass  # Can't resolve = probably external, allow it
+                return True  # Can't resolve = block it (fail-closed for safety)
 
             return False
         except Exception:
@@ -1446,7 +1450,7 @@ class ToolExecutor:
                 params = {"apikey": omdb_key, "t": title, "plot": "short"}
                 if year:
                     params["y"] = year
-                resp = self.session.get("http://www.omdbapi.com/", params=params, timeout=10)
+                resp = self.session.get("https://www.omdbapi.com/", params=params, timeout=10)
                 return resp.json()
 
             data = await asyncio.to_thread(do_fetch)
@@ -1579,6 +1583,13 @@ class ToolExecutor:
 
         from_curr = currency_aliases.get(from_curr, from_curr)
         to_curr = currency_aliases.get(to_curr, to_curr)
+
+        # Check cache first (30-min TTL)
+        cache_key = self._cache_key("currency", from_curr, to_curr, str(amount))
+        cached = self.cache.get(cache_key)
+        if cached:
+            logger.debug("Currency cache hit: %s->%s", from_curr, to_curr)
+            return cached
 
         try:
             def do_convert():
