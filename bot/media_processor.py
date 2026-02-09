@@ -221,6 +221,39 @@ class MediaProcessor:
                 continue
         return None
 
+    async def download_and_resize_image(self, url: str, max_size: int = 768) -> Optional[str]:
+        """Download an image URL and resize to reduce vision API token cost.
+
+        Returns base64-encoded JPEG string, or None on failure.
+        Images are resized so the longest dimension is at most max_size pixels.
+        """
+        try:
+            def _download_and_process():
+                resp = self.session.get(url, timeout=15)
+                if resp.status_code != 200 or len(resp.content) < 500:
+                    return None
+
+                img = Image.open(io.BytesIO(resp.content))
+                if img.mode in ('RGBA', 'P', 'LA'):
+                    img = img.convert('RGB')
+                elif img.mode != 'RGB':
+                    img = img.convert('RGB')
+
+                # Resize if larger than max_size
+                if max(img.size) > max_size:
+                    ratio = max_size / max(img.size)
+                    new_size = (int(img.size[0] * ratio), int(img.size[1] * ratio))
+                    img = img.resize(new_size, Image.Resampling.LANCZOS)
+
+                buf = io.BytesIO()
+                img.save(buf, format='JPEG', quality=80)
+                return base64.b64encode(buf.getvalue()).decode('utf-8')
+
+            return await asyncio.to_thread(_download_and_process)
+        except Exception as e:
+            logger.warning("Failed to download/resize image %s: %s", url[:80], e)
+            return None
+
     async def _extract_youtube_frames(self, video_id: str, num_frames: int = 6) -> Dict[str, Any]:
         """Download and extract frames (only used as fallback)"""
         try:

@@ -25,6 +25,7 @@ MODEL_PRICING = {
     # Google
     'google/gemini-2.5-flash': {'input': 0.10, 'output': 0.40},
     'google/gemini-2.0-flash-001': {'input': 0.125, 'output': 0.50},
+    'google/gemini-2.0-flash-lite-001': {'input': 0.075, 'output': 0.30},
     # OpenAI
     'openai/gpt-4o-mini': {'input': 0.15, 'output': 0.60},
     'openai/gpt-4o': {'input': 2.50, 'output': 10.00},

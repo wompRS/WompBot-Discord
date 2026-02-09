@@ -558,6 +558,11 @@ def register_tasks(bot, db, llm, rag, chat_stats, iracing, iracing_popularity_ca
                 if removed_history:
                     print(f"   🧹 Removed {removed_history} expired iRacing history cache entries")
 
+            # Clean up expired rate limit records (moved from per-insert to periodic)
+            if db:
+                db.cleanup_feature_rate_limits()
+                print("   🧹 Cleaned up expired feature rate limit records")
+
             print("✅ GDPR compliance cleanup complete")
             if db:
                 db.update_job_last_run("gdpr_cleanup")

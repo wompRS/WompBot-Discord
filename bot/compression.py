@@ -7,6 +7,7 @@ while preserving semantic meaning.
 
 import logging
 import os
+import threading
 from typing import List, Dict, Optional
 
 logger = logging.getLogger(__name__)
@@ -16,39 +17,55 @@ class ConversationCompressor:
     """Compresses conversation history to reduce token usage"""
 
     def __init__(self):
-        """Initialize the compression model (lazy-loaded)"""
+        """Initialize the compression model (loaded in background thread)"""
         self._compressor = None
         self._enabled = os.getenv('ENABLE_COMPRESSION', 'true').lower() == 'true'
         self._compression_rate = float(os.getenv('COMPRESSION_RATE', '0.5'))  # 50% default
         self._min_messages_to_compress = int(os.getenv('MIN_MESSAGES_TO_COMPRESS', '8'))
+        self._loading = False
+        self._load_lock = threading.Lock()
 
         logger.info("Compression initialized (enabled: %s, rate: %s)", self._enabled, self._compression_rate)
 
-    def _get_compressor(self):
-        """Lazy-load the compression model"""
-        if self._compressor is None and self._enabled:
-            try:
-                from llmlingua import PromptCompressor
+        # Pre-load the model in a background thread so it doesn't block requests
+        if self._enabled:
+            self._loading = True
+            thread = threading.Thread(target=self._background_load, daemon=True)
+            thread.start()
 
-                # Use a smaller model for CPU efficiency
-                # llmlingua-2-bert-base is faster than xlm-roberta-large
-                model_name = os.getenv(
-                    'COMPRESSION_MODEL',
-                    'microsoft/llmlingua-2-bert-base-multilingual-cased-meetingbank'
-                )
+    def _background_load(self):
+        """Load compression model in background thread at startup"""
+        try:
+            from llmlingua import PromptCompressor
 
-                self._compressor = PromptCompressor(
-                    model_name=model_name,
-                    device_map="cpu",  # Use CPU to avoid GPU memory issues
-                    use_llmlingua2=True,  # Enable LLMLingua-2 mode
-                )
-                logger.info("Compression model loaded: %s", model_name)
-            except Exception as e:
-                logger.warning("Failed to load compression model: %s", e)
-                logger.warning("Compression will be disabled")
+            model_name = os.getenv(
+                'COMPRESSION_MODEL',
+                'microsoft/llmlingua-2-bert-base-multilingual-cased-meetingbank'
+            )
+
+            compressor = PromptCompressor(
+                model_name=model_name,
+                device_map="cpu",
+                use_llmlingua2=True,
+            )
+
+            with self._load_lock:
+                self._compressor = compressor
+                self._loading = False
+            logger.info("Compression model loaded in background: %s", model_name)
+        except Exception as e:
+            logger.warning("Failed to load compression model: %s", e)
+            with self._load_lock:
                 self._enabled = False
+                self._loading = False
 
-        return self._compressor
+    def _get_compressor(self):
+        """Get the compression model if ready, or None if still loading"""
+        with self._load_lock:
+            if self._loading:
+                logger.debug("Compression model still loading, skipping compression")
+                return None
+            return self._compressor
 
     def compress_history(
         self,
