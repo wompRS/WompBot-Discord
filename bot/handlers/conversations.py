@@ -61,9 +61,13 @@ _TOOL_INTENT_KEYWORDS = [
     # Search / lookup
     'search', 'google', 'look up', 'lookup', 'find out', 'find me',
     'what is', 'what are', 'what was', 'what were', 'what does', 'what do',
+    'whats ', "what's ",
     'who is', 'who are', 'who was', 'who were',
+    'whos ', "who's ",
     'when is', 'when was', 'when did', 'when does',
+    'whens ', "when's ",
     'where is', 'where are', 'where was', 'where were',
+    'wheres ', "where's ",
     'how much', 'how many', 'how far', 'how long', 'how old', 'how tall',
     # Wolfram / math / science
     'calculate', 'compute', 'solve', 'convert', 'equation',
@@ -75,6 +79,7 @@ _TOOL_INTENT_KEYWORDS = [
     # Sports
     'score', 'scores', 'game', 'match', 'nfl', 'nba', 'mlb', 'nhl',
     'premier league', 'champions league', 'f1', 'formula 1', 'standings',
+    'schedule', 'fixture', 'fixtures', 'lineup', 'roster', 'olympic', 'olympics',
     # Media / lookup
     'movie', 'film', 'tv show', 'imdb', 'rating', 'rotten tomatoes',
     'define', 'definition', 'meaning of', 'dictionary',
@@ -1190,7 +1195,7 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
 
                 # Update status to show we're analyzing (if synthesis will happen)
                 has_search_results = any("web_search:" in tr for tr in tool_results)
-                only_self_contained = all(any(st in tn for st in SELF_CONTAINED_TOOLS) for tn in tool_names)
+                only_self_contained = all(tn in SELF_CONTAINED_TOOLS for tn in tool_names)
                 if tool_results and (has_search_results or (not only_self_contained and not initial_response_text)):
                     await status_msg.edit(content="🤔 Analyzing results...")
 
@@ -1284,7 +1289,7 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
 
                     # Update status if synthesis will happen
                     has_search_results = any("web_search:" in tr for tr in tool_results)
-                    only_self_contained = all(any(st in tn for st in SELF_CONTAINED_TOOLS) for tn in tool_names)
+                    only_self_contained = all(tn in SELF_CONTAINED_TOOLS for tn in tool_names)
                     if tool_results and (has_search_results or (not only_self_contained and not initial_response_text)):
                         await status_msg.edit(content="🤔 Analyzing results...")
 

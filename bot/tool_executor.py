@@ -133,9 +133,9 @@ class ToolExecutor:
             logger.info("Executing tool: %s", function_name)
             logger.debug("Tool arguments: %s", arguments)
 
-        except (KeyError, json.JSONDecodeError) as e:
-            logger.error("Tool call parse error: %s", e)
-            logger.debug("Raw tool_call: %s", tool_call)
+        except (KeyError, json.JSONDecodeError, TypeError) as e:
+            logger.error("Tool call parse error: %s (type: %s)", e, type(e).__name__)
+            logger.error("Raw tool_call object: %s", tool_call)
             return {
                 "success": False,
                 "error": "Invalid tool call format. Please try your request again."

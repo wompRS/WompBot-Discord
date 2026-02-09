@@ -319,6 +319,8 @@ Be useful and real. That's the balance."""
             'fact check', 'is it true that', 'verify that', 'look up', 'search for',
             'who won', 'who is the president', 'who is the ceo',
             'what happened to', 'score of', 'result of', 'standings', 'leaderboard', 'rankings',
+            'schedule', 'scheduled', 'lineup', 'roster', 'fixture', 'fixtures',
+            'upcoming', 'next game', 'next match', 'next race',
             'how good is', 'how great',
             'review of', 'reviews of',
             'specs on', 'specifications',
