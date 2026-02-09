@@ -138,7 +138,8 @@ class ToolExecutor:
             logger.error("Raw tool_call object: %s", tool_call)
             return {
                 "success": False,
-                "error": "Invalid tool call format. Please try your request again."
+                "error": "Invalid tool call format. Please try your request again.",
+                "parse_error": True
             }
 
         try:

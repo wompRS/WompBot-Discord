@@ -219,8 +219,9 @@ async def _execute_tool_calls(tool_calls, tool_executor, message, channel_id, gu
         else:
             error_msg = result.get("error", "Unknown error")
             tool_results.append(f"Error in {tool_name}: {error_msg}")
-            # Show errors to user immediately
-            text_responses.append(f"Error: {error_msg}")
+            # Don't show parse errors to user — these are internal LLM formatting issues
+            if not result.get("parse_error"):
+                text_responses.append(f"Error: {error_msg}")
             logger.error("Tool %s failed: %s", tool_name, error_msg)
 
     return images_to_send, text_responses, tool_results, tool_names

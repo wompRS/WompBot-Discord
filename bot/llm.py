@@ -722,6 +722,8 @@ Use this history to maintain conversation continuity and remember what was discu
             tool_calls = message.get("tool_calls")
             if tool_calls:
                 logger.info("LLM requested %d tool call(s)", len(tool_calls))
+                for i, tc in enumerate(tool_calls):
+                    logger.debug("Tool call [%d]: %s", i, tc)
                 # Return tool calls for execution
                 return {
                     "type": "tool_calls",
