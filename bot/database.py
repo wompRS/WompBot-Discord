@@ -91,7 +91,7 @@ class Database:
                     result = cur.fetchone()
                     return result[0] if result else None
         except Exception as e:
-            print(f"⚠️ Error fetching last run for {job_name}: {e}")
+            logger.error("Error fetching last run for %s: %s", job_name, e)
             return None
 
     def update_job_last_run(self, job_name: str, run_time: datetime | None = None):
@@ -107,7 +107,7 @@ class Database:
                             last_run = EXCLUDED.last_run
                     """, (job_name, run_time))
         except Exception as e:
-            print(f"⚠️ Error updating last run for {job_name}: {e}")
+            logger.error("Error updating last run for %s: %s", job_name, e)
 
     def should_run_job(self, job_name: str, interval: timedelta):
         """
@@ -192,11 +192,10 @@ class Database:
                     ))
 
                     if stored_id:
-                        preview = (content or "")[:50]
-                        print(f"📥 Stored message {stored_id} from {message.author}: {preview}")
+                        logger.debug("Stored message %s from %s", stored_id, message.author.id)
 
         except Exception as e:
-            print(f"⚠️ Error storing message: {e}")
+            logger.error("Error storing message: %s", e)
     
     def get_recent_messages(self, channel_id, limit=10, exclude_opted_out=True, exclude_bot_id=None, user_id=None, guild_id=None):
         """Get recent messages from a channel for context
@@ -249,7 +248,7 @@ class Database:
                     messages = cur.fetchall()
                     return list(reversed(messages))  # Return chronological order
         except Exception as e:
-            print(f"❌ Error fetching messages: {e}")
+            logger.error("Error fetching messages: %s", e)
             return []
     
     def get_thread_parent_context(self, parent_channel_id, starter_message_id, limit=5):
@@ -299,7 +298,7 @@ class Database:
                     return list(reversed(messages))
 
         except Exception as e:
-            print(f"❌ Error fetching thread parent context: {e}")
+            logger.error("Error fetching thread parent context: %s", e)
             return []
 
     def upsert_topic_expertise(self, user_id, guild_id, topic, message_count, quality_score):
@@ -326,7 +325,7 @@ class Database:
                     """, (user_id, guild_id, topic, message_count, quality_score))
                     conn.commit()
         except Exception as e:
-            print(f"❌ Error upserting topic expertise: {e}")
+            logger.error("Error upserting topic expertise: %s", e)
 
     def batch_upsert_topic_expertise(self, entries):
         """Batch upsert topic expertise entries for efficiency.
@@ -356,7 +355,7 @@ class Database:
                     )
                     conn.commit()
         except Exception as e:
-            print(f"❌ Error batch upserting topic expertise: {e}")
+            logger.error("Error batch upserting topic expertise: %s", e)
 
     def get_user_expertise(self, user_id, guild_id, limit=10):
         """Get a user's top topic expertise entries.
@@ -381,7 +380,7 @@ class Database:
                     """, (user_id, guild_id, limit))
                     return cur.fetchall()
         except Exception as e:
-            print(f"❌ Error getting user expertise: {e}")
+            logger.error("Error getting user expertise: %s", e)
             return []
 
     def get_user_context(self, user_id):
@@ -404,7 +403,7 @@ class Database:
 
                     return {'profile': profile, 'behavior': behavior}
         except Exception as e:
-            print(f"❌ Error fetching user context: {e}")
+            logger.error("Error fetching user context: %s", e)
             return {'profile': None, 'behavior': None}
     
     def store_search_log(self, query, results_count, user_id, channel_id):
@@ -417,7 +416,7 @@ class Database:
                         VALUES (%s, %s, %s, %s)
                     """, (query, results_count, user_id, channel_id))
         except Exception as e:
-            print(f"❌ Error storing search log: {e}")
+            logger.error("Error storing search log: %s", e)
     
     def store_behavior_analysis(self, user_id, username, analysis_data, period_start, period_end):
         """Store user behavior analysis results"""
@@ -441,7 +440,7 @@ class Database:
                         analysis_data.get('conversation_style', '')
                     ))
         except Exception as e:
-            print(f"❌ Error storing behavior analysis: {e}")
+            logger.error("Error storing behavior analysis: %s", e)
     
     def get_user_messages_for_analysis(self, user_id, days=7):
         """Get user messages for behavior analysis"""
@@ -455,12 +454,12 @@ class Database:
                         WHERE m.user_id = %s
                         AND COALESCE(m.opted_out, FALSE) = FALSE
                         AND COALESCE(up.opted_out, FALSE) = FALSE
-                        AND m.timestamp > CURRENT_TIMESTAMP - INTERVAL '%s days'
+                        AND m.timestamp > CURRENT_TIMESTAMP - INTERVAL '1 day' * %s
                         ORDER BY m.timestamp DESC
                     """, (user_id, days))
                     return cur.fetchall()
         except Exception as e:
-            print(f"❌ Error fetching messages for analysis: {e}")
+            logger.error("Error fetching messages for analysis: %s", e)
             return []
     
     def get_all_active_users(self, days=7):
@@ -474,11 +473,11 @@ class Database:
                         LEFT JOIN user_profiles up ON up.user_id = m.user_id
                         WHERE COALESCE(m.opted_out, FALSE) = FALSE
                         AND COALESCE(up.opted_out, FALSE) = FALSE
-                        AND m.timestamp > CURRENT_TIMESTAMP - INTERVAL '%s days'
+                        AND m.timestamp > CURRENT_TIMESTAMP - INTERVAL '1 day' * %s
                     """, (days,))
                     return cur.fetchall()
         except Exception as e:
-            print(f"❌ Error fetching active users: {e}")
+            logger.error("Error fetching active users: %s", e)
             return []
     
     def get_message_stats(self, days=7, limit=10, guild_id=None, exclude_bots=True, exclude_user_ids=None):
@@ -505,7 +504,7 @@ class Database:
                         LEFT JOIN user_profiles up ON up.user_id = m.user_id
                         WHERE COALESCE(m.opted_out, FALSE) = FALSE
                         AND COALESCE(up.opted_out, FALSE) = FALSE
-                        AND m.timestamp > CURRENT_TIMESTAMP - INTERVAL '%s days'
+                        AND m.timestamp > CURRENT_TIMESTAMP - INTERVAL '1 day' * %s
                     """
                     params = [days]
 
@@ -539,7 +538,7 @@ class Database:
                     cur.execute(query, params)
                     return cur.fetchall()
         except Exception as e:
-            print(f"❌ Error fetching message stats: {e}")
+            logger.error("Error fetching message stats: %s", e)
             return []
 
     def get_bot_message_stats(self, days=7, guild_id=None):
@@ -566,7 +565,7 @@ class Database:
                             COUNT(DISTINCT DATE(m.timestamp)) as active_days
                         FROM messages m
                         WHERE m.user_id = %s
-                        AND m.timestamp > CURRENT_TIMESTAMP - INTERVAL '%s days'
+                        AND m.timestamp > CURRENT_TIMESTAMP - INTERVAL '1 day' * %s
                     """
                     params = [self.bot_user_id, days]
 
@@ -585,7 +584,7 @@ class Database:
                         'active_days': 0
                     }
         except Exception as e:
-            print(f"❌ Error fetching bot message stats: {e}")
+            logger.error("Error fetching bot message stats: %s", e)
             return None
 
     def get_question_stats(self, days=7, limit=10):
@@ -603,12 +602,12 @@ class Database:
                         LEFT JOIN user_profiles up ON up.user_id = m.user_id
                         WHERE COALESCE(m.opted_out, FALSE) = FALSE
                         AND COALESCE(up.opted_out, FALSE) = FALSE
-                        AND m.timestamp > CURRENT_TIMESTAMP - INTERVAL '%s days'
+                        AND m.timestamp > CURRENT_TIMESTAMP - INTERVAL '1 day' * %s
                         ORDER BY m.timestamp DESC
                     """, (days,))
                     return cur.fetchall()
         except Exception as e:
-            print(f"❌ Error fetching messages for question analysis: {e}")
+            logger.error("Error fetching messages for question analysis: %s", e)
             return []
     
     def get_profanity_stats(self, days=7, limit=10):
@@ -623,7 +622,7 @@ class Database:
                             ub.message_count,
                             ub.analyzed_at
                         FROM user_behavior ub
-                        WHERE ub.analysis_period_end > CURRENT_TIMESTAMP - INTERVAL '%s days'
+                        WHERE ub.analysis_period_end > CURRENT_TIMESTAMP - INTERVAL '1 day' * %s
                         ORDER BY ub.user_id, ub.analyzed_at DESC
                     """, (days,))
                     results = cur.fetchall()
@@ -631,7 +630,7 @@ class Database:
                     sorted_results = sorted(results, key=lambda x: x['profanity_score'], reverse=True)
                     return sorted_results[:limit]
         except Exception as e:
-            print(f"❌ Error fetching profanity stats: {e}")
+            logger.error("Error fetching profanity stats: %s", e)
             return []
     
     def store_fact_check(self, message_id, user_id, username, channel_id, claim_text,
@@ -659,10 +658,10 @@ class Database:
                         requested_by_username
                     ))
                     fact_check_id = cur.fetchone()[0]
-                    print(f"✅ Stored fact-check #{fact_check_id} for message {message_id}")
+                    logger.info("Stored fact-check #%s for message %s", fact_check_id, message_id)
                     return fact_check_id
         except Exception as e:
-            print(f"❌ Error storing fact-check: {e}")
+            logger.error("Error storing fact-check: %s", e)
             return None
 
     def get_iracing_meta_cache(self, cache_key: str):
@@ -691,7 +690,7 @@ class Database:
 
                     return None
         except Exception as e:
-            print(f"⚠️ Error reading meta cache: {e}")
+            logger.error("Error reading meta cache: %s", e)
             return None
 
     def store_iracing_meta_cache(self, cache_key: str, series_id: int, season_id: int,
@@ -700,9 +699,8 @@ class Database:
         """Store meta analysis data in cache"""
         try:
             import json
-            from datetime import timedelta
 
-            expires_at = datetime.now() + timedelta(hours=ttl_hours)
+            expires_at = datetime.now(timezone.utc) + timedelta(hours=ttl_hours)
 
             with self.get_connection() as conn:
                 with conn.cursor() as cur:
@@ -725,13 +723,10 @@ class Database:
                         expires_at
                     ))
 
-                    has_weather = 'weather' in meta_data
-                    print(f"✅ Stored meta cache for {cache_key} (expires in {ttl_hours}h), has_weather: {has_weather}")
-                    if has_weather:
-                        print(f"  Weather data being stored: {meta_data['weather']}")
+                    logger.debug("Stored meta cache for %s (expires in %dh)", cache_key, ttl_hours)
                     return True
         except Exception as e:
-            print(f"❌ Error storing meta cache: {e}")
+            logger.error("Error storing meta cache: %s", e)
             return False
 
     def cleanup_expired_meta_cache(self):
@@ -747,11 +742,11 @@ class Database:
 
                     deleted = cur.fetchall()
                     if deleted:
-                        print(f"Cleaned up {len(deleted)} expired meta cache entries")
+                        logger.debug("Cleaned up %d expired meta cache entries", len(deleted))
 
                     return len(deleted)
         except Exception as e:
-            print(f"⚠️ Error cleaning meta cache: {e}")
+            logger.error("Error cleaning meta cache: %s", e)
             return 0
 
     def get_iracing_history_cache(self, cust_id: int, timeframe: str):
@@ -774,13 +769,12 @@ class Database:
                     import json
                     return json.loads(row['payload'])
         except Exception as e:
-            print(f"⚠️ Error reading history cache: {e}")
+            logger.error("Error reading history cache: %s", e)
             return None
 
     def store_iracing_history_cache(self, cust_id: int, timeframe: str, payload: dict, ttl_hours: float = 2.0):
         """Persist rating history analysis results for reuse."""
         try:
-            from datetime import timedelta
             import json
 
             expires_at = datetime.now(timezone.utc) + timedelta(hours=ttl_hours)
@@ -797,7 +791,7 @@ class Database:
                             cached_at = NOW()
                     """, (cust_id, timeframe, json.dumps(payload), expires_at))
         except Exception as e:
-            print(f"⚠️ Error storing history cache: {e}")
+            logger.error("Error storing history cache: %s", e)
 
     def cleanup_expired_history_cache(self):
         """Remove stale history cache rows."""
@@ -812,7 +806,7 @@ class Database:
                     deleted = cur.fetchall()
                     return len(deleted)
         except Exception as e:
-            print(f"⚠️ Error cleaning history cache: {e}")
+            logger.error("Error cleaning history cache: %s", e)
             return 0
 
     def get_consent_summary(self):
@@ -848,7 +842,7 @@ class Database:
                     )
 
         except Exception as e:
-            print(f"⚠️ Error building consent summary: {e}")
+            logger.error("Error building consent summary: %s", e)
 
         return summary
 
@@ -880,7 +874,7 @@ class Database:
                     overview["iracing_history_cache"] = cur.fetchone() or {"count": 0}
 
         except Exception as e:
-            print(f"⚠️ Error getting storage overview: {e}")
+            logger.error("Error getting storage overview: %s", e)
 
         return overview
 
@@ -890,7 +884,7 @@ class Database:
         """Store a daily snapshot of series participation"""
         try:
             if snapshot_date is None:
-                snapshot_date = datetime.now().date()
+                snapshot_date = datetime.now(timezone.utc).date()
 
             with self.get_connection() as conn:
                 with conn.cursor() as cur:
@@ -913,7 +907,7 @@ class Database:
                     ))
                     return True
         except Exception as e:
-            print(f"Error storing participation snapshot: {e}")
+            logger.error("Error storing participation snapshot: %s", e)
             return False
 
     def get_participation_data(self, time_range: str, season_year: int, season_quarter: int, limit: int = 10):
@@ -1018,9 +1012,7 @@ class Database:
                             for row in results]
 
         except Exception as e:
-            print(f"❌ Error getting participation data: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error("Error getting participation data: %s", e, exc_info=True)
             return None
 
     def get_data_availability_info(self, season_year: int, season_quarter: int):
@@ -1058,7 +1050,7 @@ class Database:
                         'total_last': total_data['last_snapshot'] if total_data else None,
                     }
         except Exception as e:
-            print(f"Error checking data availability: {e}")
+            logger.error("Error checking data availability: %s", e)
             return None
 
     def check_rate_limit(self, user_id, username, tokens_requested):
@@ -1105,7 +1097,7 @@ class Database:
                     }
 
         except Exception as e:
-            print(f"Error checking rate limit: {e}")
+            logger.error("Error checking rate limit: %s", e)
             # Fail open - allow the request if there's a database error
             return {
                 'allowed': True,
@@ -1133,7 +1125,7 @@ class Database:
                         SELECT content, timestamp
                         FROM messages
                         WHERE user_id = %s
-                          AND timestamp >= NOW() - INTERVAL '%s seconds'
+                          AND timestamp >= NOW() - INTERVAL '1 second' * %s
                           AND content IS NOT NULL
                           AND content != ''
                         ORDER BY timestamp DESC
@@ -1174,7 +1166,7 @@ class Database:
                     }
 
         except Exception as e:
-            print(f"Error checking repeated messages: {e}")
+            logger.error("Error checking repeated messages: %s", e)
             # Fail open - allow the request if there's a database error
             return {
                 'allowed': True,
@@ -1194,14 +1186,10 @@ class Database:
                         VALUES (%s, %s, %s)
                     """, (user_id, username, tokens_used))
 
-                    # Clean up old records (older than 1 hour)
-                    cur.execute("""
-                        DELETE FROM rate_limits
-                        WHERE request_timestamp < NOW() - INTERVAL '1 hour'
-                    """)
+                    # Cleanup moved to daily background job (was running on every insert)
 
         except Exception as e:
-            print(f"Error recording token usage: {e}")
+            logger.error("Error recording token usage: %s", e)
 
     def record_api_cost(self, model, input_tokens, output_tokens, cost_usd, request_type, user_id=None, username=None):
         """Record API cost for monitoring spending"""
@@ -1213,7 +1201,7 @@ class Database:
                         VALUES (%s, %s, %s, %s, %s, %s, %s)
                     """, (model, input_tokens, output_tokens, cost_usd, request_type, user_id, username))
         except Exception as e:
-            print(f"Error recording API cost: {e}")
+            logger.error("Error recording API cost: %s", e)
 
     def get_total_cost(self, since_timestamp=None):
         """Get total API costs, optionally since a specific timestamp"""
@@ -1234,7 +1222,7 @@ class Database:
                     result = cur.fetchone()
                     return float(result[0]) if result else 0.0
         except Exception as e:
-            print(f"Error getting total cost: {e}")
+            logger.error("Error getting total cost: %s", e)
             return 0.0
 
     def check_cost_alert_threshold(self, threshold_usd):
@@ -1268,7 +1256,7 @@ class Database:
                     return {'should_alert': False, 'total_cost': total_cost}
 
         except Exception as e:
-            print(f"Error checking cost alert threshold: {e}")
+            logger.error("Error checking cost alert threshold: %s", e)
             return {'should_alert': False, 'total_cost': 0.0}
 
     def record_cost_alert(self, threshold_usd, total_cost_usd):
@@ -1281,7 +1269,7 @@ class Database:
                         VALUES (%s, %s)
                     """, (threshold_usd, total_cost_usd))
         except Exception as e:
-            print(f"Error recording cost alert: {e}")
+            logger.error("Error recording cost alert: %s", e)
 
     def check_feature_rate_limit(self, user_id, feature_type, cooldown_seconds=None, hourly_limit=None, daily_limit=None):
         """
@@ -1306,7 +1294,7 @@ class Database:
                             SELECT MAX(request_timestamp) as last_request
                             FROM feature_rate_limits
                             WHERE user_id = %s AND feature_type = %s
-                              AND request_timestamp >= NOW() - INTERVAL '%s seconds'
+                              AND request_timestamp >= NOW() - INTERVAL '1 second' * %s
                         """, (user_id, feature_type, cooldown_seconds))
 
                         result = cur.fetchone()
@@ -1362,7 +1350,7 @@ class Database:
                     return {'allowed': True}
 
         except Exception as e:
-            print(f"Error checking feature rate limit: {e}")
+            logger.error("Error checking feature rate limit: %s", e)
             # Fail open
             return {'allowed': True}
 
@@ -1375,14 +1363,22 @@ class Database:
                         INSERT INTO feature_rate_limits (user_id, feature_type)
                         VALUES (%s, %s)
                     """, (user_id, feature_type))
+                    # Note: cleanup of old records moved to periodic background job
+                    # (was running DELETE on every insert, wasting ~20ms per call)
+        except Exception as e:
+            logger.error("Error recording feature usage: %s", e)
 
-                    # Clean up old records (older than 24 hours)
+    def cleanup_feature_rate_limits(self):
+        """Clean up old rate limit records (called periodically by background job)"""
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor() as cur:
                     cur.execute("""
                         DELETE FROM feature_rate_limits
                         WHERE request_timestamp < NOW() - INTERVAL '24 hours'
                     """)
         except Exception as e:
-            print(f"Error recording feature usage: {e}")
+            logger.error("Error cleaning up feature rate limits: %s", e)
 
     def get_server_personality(self, server_id):
         """
@@ -1409,7 +1405,7 @@ class Database:
                     else:
                         return 'default'  # Default personality
         except Exception as e:
-            print(f"Error getting server personality: {e}")
+            logger.error("Error getting server personality: %s", e)
             return 'default'  # Fail safe to default
 
     def set_server_personality(self, server_id, personality, user_id):
@@ -1438,7 +1434,7 @@ class Database:
                     """, (server_id, personality, user_id))
                     return True
         except Exception as e:
-            print(f"Error setting server personality: {e}")
+            logger.error("Error setting server personality: %s", e)
             return False
 
     def get_weather_preference(self, user_id: int):
@@ -1452,7 +1448,7 @@ class Database:
                     )
                     return cur.fetchone()
         except Exception as e:
-            print(f"Error getting weather preference: {e}")
+            logger.error("Error getting weather preference: %s", e)
             return None
 
     def set_weather_preference(self, user_id: int, location: str, units: str = 'imperial'):
@@ -1473,7 +1469,7 @@ class Database:
                     )
                     return True
         except Exception as e:
-            print(f"Error setting weather preference: {e}")
+            logger.error("Error setting weather preference: %s", e)
             return False
 
     def delete_weather_preference(self, user_id: int):
@@ -1487,7 +1483,7 @@ class Database:
                     )
                     return cur.rowcount > 0
         except Exception as e:
-            print(f"Error deleting weather preference: {e}")
+            logger.error("Error deleting weather preference: %s", e)
             return False
 
     # ===== TRIVIA SYSTEM METHODS =====
