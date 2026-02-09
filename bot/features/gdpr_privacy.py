@@ -5,10 +5,13 @@ Handles data subject rights per GDPR Articles 15, 17, 20, 21
 
 import json
 import io
+import logging
 import time
 from datetime import datetime, timedelta
 from typing import Optional, Dict, List
 import psycopg2.extras
+
+logger = logging.getLogger(__name__)
 
 
 class GDPRPrivacyManager:
@@ -51,9 +54,9 @@ class GDPRPrivacyManager:
                         (user_id, action, action_details, performed_by_user_id, success, error_message)
                         VALUES (%s, %s, %s, %s, %s, %s)
                     """, (user_id, action, details, performed_by or user_id, success, error))
-                    print(f"📝 Audit log: {action} for user {user_id}")
+                    logger.debug("Audit log: %s for user %s", action, user_id)
         except Exception as e:
-            print(f"❌ Failed to log audit action: {e}")
+            logger.error("Failed to log audit action: %s", e)
 
     def record_consent(self, user_id: int, username: str, consent_given: bool = True,
                       consent_method: str = 'command', extended_retention: bool = False) -> bool:
@@ -138,7 +141,7 @@ class GDPRPrivacyManager:
                 self.log_audit_action(user_id, action, f"Method: {consent_method}")
                 return True
         except Exception as e:
-            print(f"❌ Error recording consent: {e}")
+            logger.error("Error recording consent: %s", e)
             self.log_audit_action(user_id, 'consent_error', str(e), success=False, error=str(e))
             return False
 
@@ -161,7 +164,7 @@ class GDPRPrivacyManager:
                     """, (user_id,))
                     return cur.fetchone()
         except Exception as e:
-            print(f"❌ Error checking consent: {e}")
+            logger.error("Error checking consent: %s", e)
             return None
 
     def get_consent_status(self, user_id: int) -> Dict:
@@ -401,10 +404,8 @@ class GDPRPrivacyManager:
             return data_export
 
         except Exception as e:
-            print(f"❌ Error exporting user data: {e}")
+            logger.error("Error exporting user data for user %s", user_id, exc_info=True)
             self.log_audit_action(user_id, 'data_export_failed', str(e), success=False, error=str(e))
-            import traceback
-            traceback.print_exc()
             return None
 
     def delete_user_data(self, user_id: int, anonymize_only: bool = False) -> bool:
@@ -492,7 +493,7 @@ class GDPRPrivacyManager:
                     if user_id in self._consent_cache:
                         del self._consent_cache[user_id]
 
-                    print(f"🗑️ User {user_id} data {'anonymized' if anonymize_only else 'deleted'}")
+                    logger.info("User %s data %s", user_id, "anonymized" if anonymize_only else "deleted")
 
             self.log_audit_action(user_id, 'data_deletion_completed',
                                 f"Anonymize only: {anonymize_only}")
@@ -500,10 +501,8 @@ class GDPRPrivacyManager:
             return True
 
         except Exception as e:
-            print(f"❌ Error deleting user data: {e}")
+            logger.error("Error deleting user data for user %s", user_id, exc_info=True)
             self.log_audit_action(user_id, 'data_deletion_failed', str(e), success=False, error=str(e))
-            import traceback
-            traceback.print_exc()
             return False
 
     def has_pending_deletion(self, user_id: int) -> bool:
@@ -526,7 +525,7 @@ class GDPRPrivacyManager:
                     """, (user_id,))
                     return cur.fetchone() is not None
         except Exception as e:
-            print(f"❌ Error checking pending deletion: {e}")
+            logger.error("Error checking pending deletion: %s", e)
             return False
 
     def schedule_data_deletion(self, user_id: int, grace_period_days: int = 30) -> bool:
@@ -568,11 +567,11 @@ class GDPRPrivacyManager:
                     self.log_audit_action(user_id, 'data_deletion_scheduled',
                                         f"Scheduled for {scheduled_date.isoformat()}")
 
-                    print(f"📅 User {user_id} deletion scheduled for {scheduled_date}")
+                    logger.info("User %s deletion scheduled for %s", user_id, scheduled_date)
                     return True
 
         except Exception as e:
-            print(f"❌ Error scheduling deletion: {e}")
+            logger.error("Error scheduling deletion: %s", e)
             self.log_audit_action(user_id, 'deletion_schedule_failed', str(e), success=False, error=str(e))
             return False
 
@@ -612,14 +611,14 @@ class GDPRPrivacyManager:
 
                         self.log_audit_action(user_id, 'data_deletion_cancelled',
                                             'User cancelled scheduled deletion')
-                        print(f"✅ User {user_id} deletion cancelled")
+                        logger.info("User %s deletion cancelled", user_id)
                         return True
                     else:
-                        print(f"⚠️ No scheduled deletion found for user {user_id}")
+                        logger.warning("No scheduled deletion found for user %s", user_id)
                         return False
 
         except Exception as e:
-            print(f"❌ Error cancelling deletion: {e}")
+            logger.error("Error cancelling deletion: %s", e)
             return False
 
     def process_scheduled_deletions(self) -> int:
@@ -649,11 +648,11 @@ class GDPRPrivacyManager:
                         if self.delete_user_data(user_id, anonymize_only=False):
                             count += 1
 
-                    print(f"🗑️ Processed {count} scheduled deletions")
+                    logger.info("Processed %s scheduled deletions", count)
                     return count
 
         except Exception as e:
-            print(f"❌ Error processing scheduled deletions: {e}")
+            logger.error("Error processing scheduled deletions: %s", e)
             return 0
 
     def cleanup_old_data(self) -> Dict[str, int]:
@@ -708,11 +707,9 @@ class GDPRPrivacyManager:
                             WHERE data_type = %s
                         """, (data_type,))
 
-                    print(f"🧹 Data cleanup complete: {deleted_counts}")
+                    logger.info("Data cleanup complete: %s", deleted_counts)
                     return deleted_counts
 
         except Exception as e:
-            print(f"❌ Error during data cleanup: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error("Error during data cleanup", exc_info=True)
             return {}

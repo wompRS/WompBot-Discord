@@ -75,7 +75,8 @@ class DevilsAdvocate:
         # Generate opening statement
         try:
             system_prompt = DEVILS_ADVOCATE_PROMPT.format(topic=topic)
-            opening = await self.llm.simple_completion(
+            opening = await asyncio.to_thread(
+                self.llm.simple_completion,
                 prompt=f"The user wants to discuss: {topic}\n\nProvide a brief opening statement presenting the contrarian view on this topic. Be provocative but intellectually honest.",
                 system_prompt=system_prompt,
                 max_tokens=500
@@ -125,7 +126,8 @@ class DevilsAdvocate:
             system_prompt = DEVILS_ADVOCATE_PROMPT.format(topic=session['topic'])
             prompt = f"Conversation so far:\n{history_text}\n\nUser's latest argument: {user_message}\n\nProvide your counter-argument:"
 
-            response = await self.llm.simple_completion(
+            response = await asyncio.to_thread(
+                self.llm.simple_completion,
                 prompt=prompt,
                 system_prompt=system_prompt,
                 max_tokens=600

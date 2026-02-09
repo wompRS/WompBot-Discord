@@ -3,11 +3,14 @@ Chat Statistics Module
 Provides network graphs, topic trends, primetime analysis, and engagement metrics
 """
 
+import logging
 import re
 from datetime import datetime, timedelta
 from collections import Counter, defaultdict
 from typing import List, Dict, Optional, Tuple
 import json
+
+logger = logging.getLogger(__name__)
 
 class ChatStatistics:
     def __init__(self, db):
@@ -73,7 +76,7 @@ class ChatStatistics:
 
             return None
         except Exception as e:
-            print(f"❌ Error retrieving cached stats: {e}")
+            logger.error("Error retrieving cached stats: %s", e)
             return None
 
     def cache_stats(self, stat_type: str, scope: str, start_date: datetime, end_date: datetime,
@@ -90,11 +93,12 @@ class ChatStatistics:
                         VALUES (%s, %s, %s, %s, %s, %s)
                     """, (stat_type, scope, start_date, end_date, json.dumps(results), valid_until))
         except Exception as e:
-            print(f"❌ Error caching stats: {e}")
+            logger.error("Error caching stats: %s", e)
 
     def get_messages_for_analysis(self, channel_id: Optional[int], start_date: datetime,
                                   end_date: datetime, exclude_opted_out: bool = True,
-                                  max_messages: int = 50000) -> List[dict]:
+                                  max_messages: int = 50000,
+                                  guild_id: Optional[int] = None) -> List[dict]:
         """Get messages for analysis, excluding opted-out users
 
         Args:
@@ -103,13 +107,14 @@ class ChatStatistics:
             end_date: End of date range
             exclude_opted_out: Whether to exclude opted-out users
             max_messages: Maximum number of messages to return (default 50000)
+            guild_id: Optional guild ID to filter by
         """
         try:
             with self.db.get_connection() as conn:
                 with conn.cursor() as cur:
                     query = """
                         SELECT m.message_id, m.user_id, m.username, m.content,
-                               m.timestamp, m.channel_id
+                               m.timestamp, m.channel_id, m.guild_id
                         FROM messages m
                         LEFT JOIN user_profiles up ON up.user_id = m.user_id
                         WHERE m.timestamp BETWEEN %s AND %s
@@ -123,6 +128,10 @@ class ChatStatistics:
                         query += " AND m.channel_id = %s"
                         params.append(channel_id)
 
+                    if guild_id:
+                        query += " AND m.guild_id = %s"
+                        params.append(guild_id)
+
                     query += " ORDER BY m.timestamp ASC LIMIT %s"
                     params.append(max_messages)
 
@@ -133,7 +142,7 @@ class ChatStatistics:
 
                     return [dict(zip(columns, row)) for row in results]
         except Exception as e:
-            print(f"❌ Error fetching messages: {e}")
+            logger.error("Error fetching messages: %s", e)
             return []
 
     def extract_topics_tfidf(self, messages: List[dict], top_n: int = 20) -> List[dict]:
@@ -227,10 +236,10 @@ class ChatStatistics:
             return topics[:top_n]
 
         except ImportError:
-            print("❌ scikit-learn not installed. Install with: pip install scikit-learn")
+            logger.error("scikit-learn not installed. Install with: pip install scikit-learn")
             return []
         except Exception as e:
-            print(f"❌ Error extracting topics: {e}")
+            logger.error("Error extracting topics: %s", e)
             import traceback
             traceback.print_exc()
             return []
@@ -451,7 +460,7 @@ class ChatStatistics:
                         for user_id, username in cur.fetchall():
                             username_map[user_id] = username
             except Exception as e:
-                print(f"⚠️ Error fetching usernames from profiles: {e}")
+                logger.warning("Error fetching usernames from profiles: %s", e)
 
             # Calculate metrics
             nodes = {}
@@ -482,10 +491,10 @@ class ChatStatistics:
             }
 
         except ImportError:
-            print("❌ networkx not installed. Install with: pip install networkx")
+            logger.error("networkx not installed. Install with: pip install networkx")
             return {'edges': [], 'nodes': {}, 'bot_stats': None}
         except Exception as e:
-            print(f"❌ Error building network graph: {e}")
+            logger.error("Error building network graph: %s", e)
             import traceback
             traceback.print_exc()
             return {'edges': [], 'nodes': {}, 'bot_stats': None}

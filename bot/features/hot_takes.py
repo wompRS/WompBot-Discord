@@ -8,9 +8,12 @@ Cost: <$1/month with 90%+ accuracy
 """
 
 import discord
+import logging
 import re
 from datetime import datetime, timedelta
 import json
+
+logger = logging.getLogger(__name__)
 
 
 class HotTakesTracker:
@@ -125,7 +128,7 @@ class HotTakesTracker:
                     }
 
         except Exception as e:
-            print(f"❌ Error tracking community reaction: {e}")
+            logger.error("Error tracking community reaction: %s", e)
             return {
                 'total_reactions': 0,
                 'reaction_diversity': 0.0,
@@ -178,10 +181,10 @@ class HotTakesTracker:
                         hot_take_id
                     ))
 
-            print(f"📊 Updated reactions for hot take #{hot_take_id}: {total_reactions} reactions, {diversity:.2f} diversity")
+            logger.info("Updated reactions for hot take #%s: %s reactions, %.2f diversity", hot_take_id, total_reactions, diversity)
 
         except Exception as e:
-            print(f"❌ Error updating reaction metrics: {e}")
+            logger.error("Error updating reaction metrics: %s", e)
 
     async def score_controversy_with_llm(self, message_content: str, context: str = "") -> float:
         """
@@ -238,13 +241,13 @@ Respond with ONLY a number 0-10 and brief explanation:
             if json_match:
                 result = json.loads(json_match.group())
                 score = float(result.get('score', 0))
-                print(f"🔥 LLM controversy score: {score}/10 - {result.get('reasoning', '')}")
+                logger.info("LLM controversy score: %s/10 - %s", score, result.get('reasoning', ''))
                 return min(max(score, 0), 10)  # Clamp 0-10
 
             return 5.0  # Default mid-range
 
         except Exception as e:
-            print(f"❌ Error scoring controversy: {e}")
+            logger.error("Error scoring controversy: %s", e)
             return 5.0
 
     async def create_hot_take(self, claim_id: int, message, controversy_data: dict):
@@ -282,13 +285,13 @@ Respond with ONLY a number 0-10 and brief explanation:
                 result = cur.fetchone()
                 if result:
                     hot_take_id = result[0]
-                    print(f"🔥 Hot take #{hot_take_id} created for claim #{claim_id}")
+                    logger.info("Hot take #%s created for claim #%s", hot_take_id, claim_id)
                     return hot_take_id
 
             return None
 
         except Exception as e:
-            print(f"❌ Error creating hot take: {e}")
+            logger.error("Error creating hot take: %s", e)
             return None
 
     async def create_hot_take_from_message(self, message, added_by_user):
@@ -306,7 +309,7 @@ Respond with ONLY a number 0-10 and brief explanation:
 
                     if result:
                         claim_id = result[0]
-                        print(f"📝 Found existing claim #{claim_id} for message")
+                        logger.debug("Found existing claim #%s for message", claim_id)
                     else:
                         # Create a claim for this message
                         # Get context (3 messages before)
@@ -336,14 +339,14 @@ Respond with ONLY a number 0-10 and brief explanation:
                         result = cur.fetchone()
                         if result:
                             claim_id = result[0]
-                            print(f"📝 Created claim #{claim_id} from manual hot take")
+                            logger.info("Created claim #%s from manual hot take", claim_id)
                         else:
                             return None
 
                     # Check if hot take already exists
                     cur.execute("SELECT id FROM hot_takes WHERE claim_id = %s", (claim_id,))
                     if cur.fetchone():
-                        print(f"🔥 Hot take already exists for claim #{claim_id}")
+                        logger.debug("Hot take already exists for claim #%s", claim_id)
                         return None
 
                     # Create hot take
@@ -370,13 +373,13 @@ Respond with ONLY a number 0-10 and brief explanation:
                     result = cur.fetchone()
                     if result:
                         hot_take_id = result[0]
-                        print(f"🔥 Manual hot take #{hot_take_id} created by {added_by_user}")
+                        logger.info("Manual hot take #%s created by %s", hot_take_id, added_by_user)
                         return hot_take_id
 
             return None
 
         except Exception as e:
-            print(f"❌ Error creating manual hot take: {e}")
+            logger.error("Error creating manual hot take: %s", e)
             return None
 
     async def check_and_score_high_engagement(self, hot_take_id: int, message):
@@ -402,7 +405,7 @@ Respond with ONLY a number 0-10 and brief explanation:
 
                     # Check if meets threshold and hasn't been scored yet
                     if (total_reactions >= 5 or reply_count >= 3) and current_score == 0.0:
-                        print(f"🎯 Hot take #{hot_take_id} meets threshold - sending to LLM for scoring")
+                        logger.info("Hot take #%s meets threshold - sending to LLM for scoring", hot_take_id)
 
                         # Get claim context
                         cur.execute("""
@@ -426,10 +429,10 @@ Respond with ONLY a number 0-10 and brief explanation:
                                 WHERE id = %s
                             """, (controversy_score, hot_take_id))
 
-                            print(f"✅ Hot take #{hot_take_id} scored: {controversy_score}/10")
+                            logger.info("Hot take #%s scored: %s/10", hot_take_id, controversy_score)
 
         except Exception as e:
-            print(f"❌ Error checking high engagement: {e}")
+            logger.error("Error checking high engagement: %s", e)
 
     async def vindicate_hot_take(self, hot_take_id: int, status: str, notes: str = None):
         """
@@ -460,13 +463,13 @@ Respond with ONLY a number 0-10 and brief explanation:
                     """, (status, datetime.now(), notes, status, status, status, hot_take_id))
 
                     if cur.rowcount > 0:
-                        print(f"⚖️  Hot take #{hot_take_id} vindicated as: {status}")
+                        logger.info("Hot take #%s vindicated as: %s", hot_take_id, status)
                         return True
 
             return False
 
         except Exception as e:
-            print(f"❌ Error vindicating hot take: {e}")
+            logger.error("Error vindicating hot take: %s", e)
             return False
 
     async def get_leaderboard(self, leaderboard_type: str, days: int = 30, limit: int = 10) -> list:
@@ -547,7 +550,7 @@ Respond with ONLY a number 0-10 and brief explanation:
                     return [dict(zip(columns, row)) for row in results]
 
         except Exception as e:
-            print(f"❌ Error fetching leaderboard: {e}")
+            logger.error("Error fetching leaderboard: %s", e)
             return []
 
     async def get_user_hot_takes_stats(self, user_id: int) -> dict:
@@ -585,5 +588,5 @@ Respond with ONLY a number 0-10 and brief explanation:
             return {}
 
         except Exception as e:
-            print(f"❌ Error fetching user hot takes stats: {e}")
+            logger.error("Error fetching user hot takes stats: %s", e)
             return {}

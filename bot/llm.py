@@ -43,6 +43,8 @@ def _get_text_content(content):
 class LLMClient:
     def __init__(self, cost_tracker=None):
         self.api_key = os.getenv('OPENROUTER_API_KEY')
+        if not self.api_key:
+            logger.warning("OPENROUTER_API_KEY not set — LLM calls will fail")
         self.base_url = "https://openrouter.ai/api/v1/chat/completions"
         self.model = os.getenv('MODEL_NAME', 'cognitivecomputations/dolphin-2.9.2-qwen-110b')
         # Vision model for image analysis (text models can't see images)
@@ -161,7 +163,7 @@ RULES:
 
 Be useful and real. That's the balance."""
 
-    def simple_completion(self, prompt: str, max_tokens: int = 500, temperature: float = 0.3, model: str = None, cost_request_type: str = "simple_completion") -> str:
+    def simple_completion(self, prompt: str, max_tokens: int = 500, temperature: float = 0.3, model: str = None, cost_request_type: str = "simple_completion", system_prompt: str = None) -> str:
         """
         Simple prompt->response completion for internal use (claims, fact_check, etc.).
         Centralizes the OpenRouter API call pattern so other modules don't duplicate it.
@@ -172,6 +174,7 @@ Be useful and real. That's the balance."""
             temperature: Sampling temperature
             model: Model to use (defaults to self.model)
             cost_request_type: Label for cost tracking
+            system_prompt: Optional system prompt to prepend
 
         Returns:
             The response text, or empty string on error
@@ -183,9 +186,14 @@ Be useful and real. That's the balance."""
             "Content-Type": "application/json",
         }
 
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
+
         payload = {
             "model": model_to_use,
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": messages,
             "max_tokens": max_tokens,
             "temperature": temperature,
         }

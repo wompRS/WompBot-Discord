@@ -4,11 +4,14 @@ All scheduled tasks that run periodically for data updates, cleanup, and mainten
 """
 
 import asyncio
+import logging
 import random
 from datetime import datetime, timedelta, timezone
 from typing import List, Tuple
 from discord.ext import tasks
 import discord
+
+logger = logging.getLogger(__name__)
 
 
 def register_tasks(bot, db, llm, rag, chat_stats, iracing, iracing_popularity_cache,
@@ -51,7 +54,7 @@ def register_tasks(bot, db, llm, rag, chat_stats, iracing, iracing_popularity_ca
         try:
             should_run, last_run = db.should_run_job(job_name, interval)
         except Exception as exc:
-            print(f"⚠️ Job guard fallback for {job_name}: {exc}")
+            logger.warning("Job guard fallback for %s: %s", job_name, exc)
             return True
 
         if should_run:
@@ -61,9 +64,9 @@ def register_tasks(bot, db, llm, rag, chat_stats, iracing, iracing_popularity_ca
             next_run = last_run + interval
             remaining = next_run - datetime.now(timezone.utc)
             remaining_minutes = max(int(remaining.total_seconds() // 60), 0)
-            print(f"⏭️ Skipping {job_name}; ran recently. Next run in ~{remaining_minutes} minutes.")
+            logger.debug("Skipping %s; ran recently. Next run in ~%s minutes", job_name, remaining_minutes)
         else:
-            print(f"⏭️ Skipping {job_name}; run history unavailable.")
+            logger.debug("Skipping %s; run history unavailable", job_name)
 
         return False
 
@@ -92,14 +95,14 @@ def register_tasks(bot, db, llm, rag, chat_stats, iracing, iracing_popularity_ca
             try:
                 historical_data = db.get_participation_data(time_range, current_year, current_quarter, limit)
                 if historical_data:
-                    print(f"📊 Using historical data from database for {time_range}")
+                    logger.info("Using historical data from database for %s", time_range)
                     return historical_data
             except Exception as e:
-                print(f"⚠️ Error fetching historical data, falling back to live API: {e}")
+                logger.warning("Error fetching historical data, falling back to live API: %s", e)
 
         # Fall back to live API (ONLY works for currently active series)
         # Note: iRacing API doesn't provide historical standings data
-        print(f"📡 Fetching live participation data from iRacing API")
+        logger.info("Fetching live participation data from iRacing API")
         client = await iracing._get_client()
         all_seasons = await client.get_series_seasons()
 
@@ -108,7 +111,7 @@ def register_tasks(bot, db, llm, rag, chat_stats, iracing, iracing_popularity_ca
 
         # Get only currently ACTIVE series (all ~147 series running right now)
         active_seasons = [s for s in all_seasons if s.get('active', False)]
-        print(f"  Found {len(active_seasons)} currently active series")
+        logger.info("Found %s currently active series", len(active_seasons))
 
         # Count participants per series
         series_participation = {}
@@ -161,7 +164,7 @@ def register_tasks(bot, db, llm, rag, chat_stats, iracing, iracing_popularity_ca
             return
 
         try:
-            print("📊 Starting weekly iRacing series popularity update...")
+            logger.info("Starting weekly iRacing series popularity update...")
 
             # Update all time ranges
             time_ranges = ['season', 'yearly', 'all_time']
@@ -174,18 +177,16 @@ def register_tasks(bot, db, llm, rag, chat_stats, iracing, iracing_popularity_ca
                             'data': popularity_data,
                             'timestamp': datetime.now()
                         }
-                        print(f"  ✅ Cached {time_range} popularity data ({len(popularity_data)} series)")
+                        logger.info("Cached %s popularity data (%s series)", time_range, len(popularity_data))
                 except Exception as e:
-                    print(f"  ❌ Error computing {time_range} popularity: {e}")
+                    logger.error("Error computing %s popularity: %s", time_range, e)
 
-            print("✅ iRacing popularity cache updated successfully")
+            logger.info("iRacing popularity cache updated successfully")
             if db:
                 db.update_job_last_run("update_iracing_popularity")
 
         except Exception as e:
-            print(f"❌ Error updating iRacing popularity cache: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error("Error updating iRacing popularity cache: %s", e, exc_info=True)
 
     # Background task for daily participation snapshot
     @tasks.loop(hours=24)  # Run every 24 hours
@@ -198,13 +199,13 @@ def register_tasks(bot, db, llm, rag, chat_stats, iracing, iracing_popularity_ca
             return
 
         try:
-            print("📸 Starting daily iRacing participation snapshot...")
+            logger.info("Starting daily iRacing participation snapshot...")
 
             client = await iracing._get_client()
             all_seasons = await client.get_series_seasons()
 
             if not all_seasons:
-                print("  ❌ No seasons data available")
+                logger.error("No seasons data available")
                 return
 
             now = datetime.now(timezone.utc)
@@ -217,7 +218,7 @@ def register_tasks(bot, db, llm, rag, chat_stats, iracing, iracing_popularity_ca
             # Snapshot only CURRENTLY ACTIVE series (all ~147 series running right now)
             active_seasons = [s for s in all_seasons if s.get('active', False)]
 
-            print(f"  Found {len(active_seasons)} active series to snapshot")
+            logger.info("Found %s active series to snapshot", len(active_seasons))
 
             for season in active_seasons[:100]:  # Limit to 100 to avoid rate limit
                 series_id = season.get('series_id')
@@ -264,13 +265,11 @@ def register_tasks(bot, db, llm, rag, chat_stats, iracing, iracing_popularity_ca
                     error_count += 1
                     continue
 
-            print(f"✅ Participation snapshot complete: {snapshot_count} series recorded, {error_count} errors")
+            logger.info("Participation snapshot complete: %s series recorded, %s errors", snapshot_count, error_count)
             db.update_job_last_run("snapshot_participation_data")
 
         except Exception as e:
-            print(f"❌ Error in participation snapshot: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error("Error in participation snapshot: %s", e, exc_info=True)
 
     # Background task for pre-computing statistics
     @tasks.loop(hours=1)  # Run every hour (can adjust to minutes=30 for 30-min intervals)
@@ -280,7 +279,7 @@ def register_tasks(bot, db, llm, rag, chat_stats, iracing, iracing_popularity_ca
             return
 
         try:
-            print("🔄 Starting background stats computation...")
+            logger.info("Starting background stats computation...")
 
             for guild in bot.guilds:
                 guild_id = guild.id
@@ -298,16 +297,16 @@ def register_tasks(bot, db, llm, rag, chat_stats, iracing, iracing_popularity_ca
                     if not messages:
                         continue
 
-                    print(f"📊 Computing stats for guild {guild_id}, last {days} days ({len(messages)} messages)...")
+                    logger.info("Computing stats for guild %s, last %s days (%s messages)...", guild_id, days, len(messages))
 
                     # 1. Network stats
                     try:
                         scope = f"server:{guild_id}"
                         network = chat_stats.build_network_graph(messages)
                         chat_stats.cache_stats('network', scope, start_date, end_date, network, cache_hours=2)
-                        print(f"  ✅ Network stats cached (last {days} days)")
+                        logger.info("Network stats cached (last %s days)", days)
                     except Exception as e:
-                        print(f"  ❌ Network stats failed: {e}")
+                        logger.error("Network stats failed: %s", e)
 
                     # 2. Topic trends
                     try:
@@ -315,27 +314,27 @@ def register_tasks(bot, db, llm, rag, chat_stats, iracing, iracing_popularity_ca
                         topics = chat_stats.extract_topics_tfidf(messages, top_n=15)
                         if topics:
                             chat_stats.cache_stats('topics', scope, start_date, end_date, topics, cache_hours=2)
-                            print(f"  ✅ Topic trends cached (last {days} days)")
+                            logger.info("Topic trends cached (last %s days)", days)
                     except Exception as e:
-                        print(f"  ❌ Topic trends failed: {e}")
+                        logger.error("Topic trends failed: %s", e)
 
                     # 3. Primetime (server-wide)
                     try:
                         scope = f"server:{guild_id}"
                         primetime = chat_stats.calculate_primetime(messages)
                         chat_stats.cache_stats('primetime', scope, start_date, end_date, primetime, cache_hours=2)
-                        print(f"  ✅ Primetime stats cached (last {days} days)")
+                        logger.info("Primetime stats cached (last %s days)", days)
                     except Exception as e:
-                        print(f"  ❌ Primetime stats failed: {e}")
+                        logger.error("Primetime stats failed: %s", e)
 
                     # 4. Engagement (server-wide)
                     try:
                         scope = f"server_engagement:{guild_id}"
                         engagement = chat_stats.calculate_engagement(messages)
                         chat_stats.cache_stats('engagement', scope, start_date, end_date, engagement, cache_hours=2)
-                        print(f"  ✅ Engagement stats cached (last {days} days)")
+                        logger.info("Engagement stats cached (last %s days)", days)
                     except Exception as e:
-                        print(f"  ❌ Engagement stats failed: {e}")
+                        logger.error("Engagement stats failed: %s", e)
 
                     # 5. User topic expertise (only for 30-day range to avoid redundant work)
                     if days == 30:
@@ -346,24 +345,22 @@ def register_tasks(bot, db, llm, rag, chat_stats, iracing, iracing_popularity_ca
                             if expertise_entries:
                                 db.batch_upsert_topic_expertise(expertise_entries)
                                 user_count = len(set(e[0] for e in expertise_entries))
-                                print(f"  ✅ Topic expertise updated ({user_count} users, {len(expertise_entries)} entries)")
+                                logger.info("Topic expertise updated (%s users, %s entries)", user_count, len(expertise_entries))
                         except Exception as e:
-                            print(f"  ❌ Topic expertise failed: {e}")
+                            logger.error("Topic expertise failed: %s", e)
 
-            print("✅ Background stats computation complete!")
+            logger.info("Background stats computation complete")
             if db:
                 db.update_job_last_run("precompute_stats")
 
         except Exception as e:
-            print(f"❌ Background stats computation error: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error("Background stats computation error: %s", e, exc_info=True)
 
     @precompute_stats.before_loop
     async def before_precompute_stats():
         """Wait for bot to be ready before starting background task"""
         await bot.wait_until_ready()
-        print("🚀 Background stats computation task started")
+        logger.info("Background stats computation task started")
 
     # Background task for checking reminders
     @tasks.loop(minutes=1)  # Check every minute
@@ -379,7 +376,7 @@ def register_tasks(bot, db, llm, rag, chat_stats, iracing, iracing_popularity_ca
                     channel = bot.get_channel(reminder['channel_id'])
 
                     if not user:
-                        print(f"⚠️ User {reminder['user_id']} not found for reminder #{reminder['id']}")
+                        logger.warning("User %s not found for reminder #%s", reminder['user_id'], reminder['id'])
                         await reminder_system.mark_completed(reminder['id'])
                         continue
 
@@ -414,14 +411,14 @@ def register_tasks(bot, db, llm, rag, chat_stats, iracing, iracing_popularity_ca
                     # Send reminder (try DM first, then mention in channel)
                     try:
                         await user.send(embed=embed)
-                        print(f"✅ Sent reminder #{reminder['id']} to {reminder['username']} via DM")
+                        logger.info("Sent reminder #%s to %s via DM", reminder['id'], reminder['username'])
                     except discord.Forbidden:
                         # Can't DM user, mention in channel instead
                         if channel:
                             await channel.send(f"{user.mention}", embed=embed)
-                            print(f"✅ Sent reminder #{reminder['id']} to {reminder['username']} in channel")
+                            logger.info("Sent reminder #%s to %s in channel", reminder['id'], reminder['username'])
                         else:
-                            print(f"⚠️ Could not send reminder #{reminder['id']} - no DM or channel access")
+                            logger.warning("Could not send reminder #%s - no DM or channel access", reminder['id'])
 
                     # Mark as completed
                     await reminder_system.mark_completed(reminder['id'])
@@ -431,20 +428,18 @@ def register_tasks(bot, db, llm, rag, chat_stats, iracing, iracing_popularity_ca
                         await reminder_system.reschedule_recurring(reminder)
 
                 except Exception as e:
-                    print(f"❌ Error processing reminder #{reminder['id']}: {e}")
+                    logger.error("Error processing reminder #%s: %s", reminder['id'], e)
                     # Mark as completed to avoid getting stuck
                     await reminder_system.mark_completed(reminder['id'])
 
         except Exception as e:
-            print(f"❌ Error checking reminders: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error("Error checking reminders: %s", e, exc_info=True)
 
     @check_reminders.before_loop
     async def before_check_reminders():
         """Wait for bot to be ready before starting reminder checker"""
         await bot.wait_until_ready()
-        print("⏰ Reminder checker task started")
+        logger.info("Reminder checker task started")
 
     # Background task for checking event reminders
     @tasks.loop(minutes=5)  # Check every 5 minutes
@@ -459,7 +454,7 @@ def register_tasks(bot, db, llm, rag, chat_stats, iracing, iracing_popularity_ca
                     channel = bot.get_channel(event['channel_id'])
 
                     if not channel:
-                        print(f"⚠️ Channel {event['channel_id']} not found for event #{event['id']}")
+                        logger.warning("Channel %s not found for event #%s", event['channel_id'], event['id'])
                         continue
 
                     # Format time until event
@@ -505,26 +500,22 @@ def register_tasks(bot, db, llm, rag, chat_stats, iracing, iracing_popularity_ca
                     else:
                         await channel.send(embed=embed)
 
-                    print(f"📅 Sent '{event['reminder_interval']}' reminder for event '{event['event_name']}' (ID: {event['id']})")
+                    logger.info("Sent '%s' reminder for event '%s' (ID: %s)", event['reminder_interval'], event['event_name'], event['id'])
 
                     # Mark this reminder as sent
                     await event_system.mark_reminder_sent(event['id'], event['reminder_interval'])
 
                 except Exception as e:
-                    print(f"❌ Error processing event reminder #{event['id']}: {e}")
-                    import traceback
-                    traceback.print_exc()
+                    logger.error("Error processing event reminder #%s: %s", event['id'], e, exc_info=True)
 
         except Exception as e:
-            print(f"❌ Error checking event reminders: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error("Error checking event reminders: %s", e, exc_info=True)
 
     @check_event_reminders.before_loop
     async def before_check_event_reminders():
         """Wait for bot to be ready before starting event reminder checker"""
         await bot.wait_until_ready()
-        print("📅 Event reminder checker task started")
+        logger.info("Event reminder checker task started")
 
     # GDPR Compliance: Background task for data retention and cleanup
     @tasks.loop(hours=24)  # Run once daily
@@ -534,49 +525,47 @@ def register_tasks(bot, db, llm, rag, chat_stats, iracing, iracing_popularity_ca
             return
 
         try:
-            print("🧹 Starting GDPR compliance cleanup...")
+            logger.info("Starting GDPR compliance cleanup...")
 
             # Process scheduled deletions
             deletions_processed = privacy_manager.process_scheduled_deletions()
             if deletions_processed > 0:
-                print(f"   🗑️ Processed {deletions_processed} scheduled user deletions")
+                logger.info("Processed %s scheduled user deletions", deletions_processed)
 
             # Clean up old data based on retention policies
             cleanup_counts = privacy_manager.cleanup_old_data()
             if cleanup_counts:
-                print(f"   📊 Data cleanup results:")
+                logger.info("Data cleanup results:")
                 for data_type, count in cleanup_counts.items():
                     if count > 0:
-                        print(f"      • {data_type}: {count:,} records deleted")
+                        logger.info("  %s: %s records deleted", data_type, f"{count:,}")
 
             if db:
                 removed_meta = db.cleanup_expired_meta_cache()
                 if removed_meta:
-                    print(f"   🧹 Removed {removed_meta} expired iRacing meta cache entries")
+                    logger.info("Removed %s expired iRacing meta cache entries", removed_meta)
 
                 removed_history = db.cleanup_expired_history_cache()
                 if removed_history:
-                    print(f"   🧹 Removed {removed_history} expired iRacing history cache entries")
+                    logger.info("Removed %s expired iRacing history cache entries", removed_history)
 
             # Clean up expired rate limit records (moved from per-insert to periodic)
             if db:
                 db.cleanup_feature_rate_limits()
-                print("   🧹 Cleaned up expired feature rate limit records")
+                logger.info("Cleaned up expired feature rate limit records")
 
-            print("✅ GDPR compliance cleanup complete")
+            logger.info("GDPR compliance cleanup complete")
             if db:
                 db.update_job_last_run("gdpr_cleanup")
 
         except Exception as e:
-            print(f"❌ Error during GDPR cleanup: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error("Error during GDPR cleanup: %s", e, exc_info=True)
 
     @gdpr_cleanup.before_loop
     async def before_gdpr_cleanup():
         """Wait for bot to be ready before starting GDPR cleanup"""
         await bot.wait_until_ready()
-        print("🔒 GDPR cleanup task started (runs daily)")
+        logger.info("GDPR cleanup task started (runs daily)")
 
     # Background task for automatic user behavior analysis
     @tasks.loop(hours=6)  # Run every 6 hours (behavior doesn't change fast, saves ~$80/mo in LLM costs)
@@ -631,21 +620,19 @@ def register_tasks(bot, db, llm, rag, chat_stats, iracing, iracing_popularity_ca
                         break
 
             if analyzed_count > 0:
-                print(f"✅ Behavior analysis complete: {analyzed_count} users analyzed")
+                logger.info("Behavior analysis complete: %s users analyzed", analyzed_count)
 
             if db:
                 db.update_job_last_run("analyze_user_behavior")
 
         except Exception as e:
-            print(f"❌ Error in automatic behavior analysis: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error("Error in automatic behavior analysis: %s", e, exc_info=True)
 
     @analyze_user_behavior.before_loop
     async def before_analyze_user_behavior():
         """Wait for bot to be ready before starting behavior analysis"""
         await bot.wait_until_ready()
-        print("🧠 User behavior analysis task started (runs every 6 hours)")
+        logger.info("User behavior analysis task started (runs every 6 hours)")
 
     @tasks.loop(minutes=5)  # Process embeddings every 5 minutes
     async def process_embeddings():
@@ -661,20 +648,20 @@ def register_tasks(bot, db, llm, rag, chat_stats, iracing, iracing_popularity_ca
             count = await rag.process_embedding_queue(limit=100)
 
             if count > 0:
-                print(f"🧠 Processed {count} message embeddings")
+                logger.info("Processed %s message embeddings", count)
 
             if db:
                 db.update_job_last_run("process_embeddings")
 
         except Exception as e:
-            print(f"❌ Error processing embeddings: {e}")
+            logger.error("Error processing embeddings: %s", e)
 
     @process_embeddings.before_loop
     async def before_process_embeddings():
         """Wait for bot to be ready before starting embedding processing"""
         await bot.wait_until_ready()
         if rag.enabled:
-            print("🧠 Message embedding task started (runs every 5 min)")
+            logger.info("Message embedding task started (runs every 5 min)")
 
     # Background task for team event reminders
     @tasks.loop(minutes=15)
@@ -761,28 +748,24 @@ def register_tasks(bot, db, llm, rag, chat_stats, iracing, iracing_popularity_ca
                         except discord.Forbidden:
                             pass  # User has DMs disabled
                         except Exception as e:
-                            print(f"❌ Error sending team event reminder to user: {e}")
+                            logger.error("Error sending team event reminder to user: %s", e)
 
                     # Mark reminder as sent
                     iracing_team_manager.mark_event_reminder_sent(event['id'], reminder_type)
-                    print(f"📅 Sent {reminder_type} reminder for team event '{event['event_name']}'")
+                    logger.info("Sent %s reminder for team event '%s'", reminder_type, event['event_name'])
 
                 except Exception as e:
-                    print(f"❌ Error processing team event reminder: {e}")
-                    import traceback
-                    traceback.print_exc()
+                    logger.error("Error processing team event reminder: %s", e, exc_info=True)
 
         except Exception as e:
-            print(f"❌ Error in team event reminder task: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error("Error in team event reminder task: %s", e, exc_info=True)
 
     @check_team_event_reminders.before_loop
     async def before_check_team_event_reminders():
         """Wait for bot to be ready before starting team event reminder checker"""
         await bot.wait_until_ready()
         if iracing_team_manager:
-            print("📅 Team event reminder task started (runs every 15 min)")
+            logger.info("Team event reminder task started (runs every 15 min)")
 
     # ── Poll deadline checker ──
     @tasks.loop(minutes=1)
@@ -817,16 +800,16 @@ def register_tasks(bot, db, llm, rag, chat_stats, iracing, iracing_popularity_ca
                         await channel.send(file=file, embed=embed)
 
                 except Exception as e:
-                    print(f"  ❌ Error closing poll {poll['id']}: {e}")
+                    logger.error("Error closing poll %s: %s", poll['id'], e)
 
         except Exception as e:
-            print(f"❌ Poll deadline check error: {e}")
+            logger.error("Poll deadline check error: %s", e)
 
     @check_poll_deadlines.before_loop
     async def before_check_poll_deadlines():
         await bot.wait_until_ready()
         if poll_system:
-            print("📊 Poll deadline checker started (runs every 1 min)")
+            logger.info("Poll deadline checker started (runs every 1 min)")
 
     # ── Devil's Advocate timeout checker ──
     @tasks.loop(minutes=5)
@@ -843,16 +826,16 @@ def register_tasks(bot, db, llm, rag, chat_stats, iracing, iracing_popularity_ca
                     if channel:
                         await channel.send("😈 Devil's advocate session ended due to inactivity (30 minutes).")
                 except Exception as e:
-                    print(f"  ❌ Error notifying DA timeout for channel {channel_id}: {e}")
+                    logger.error("Error notifying DA timeout for channel %s: %s", channel_id, e)
 
         except Exception as e:
-            print(f"❌ Devil's advocate timeout check error: {e}")
+            logger.error("Devil's advocate timeout check error: %s", e)
 
     @check_devils_advocate_timeouts.before_loop
     async def before_check_devils_advocate_timeouts():
         await bot.wait_until_ready()
         if devils_advocate:
-            print("😈 Devil's Advocate timeout checker started (runs every 5 min)")
+            logger.info("Devil's Advocate timeout checker started (runs every 5 min)")
 
     # ── Jeopardy timeout checker ──
     @tasks.loop(minutes=5)
@@ -869,16 +852,16 @@ def register_tasks(bot, db, llm, rag, chat_stats, iracing, iracing_popularity_ca
                     if channel:
                         await channel.send("🎯 Jeopardy game ended due to inactivity (15 minutes).")
                 except Exception as e:
-                    print(f"  ❌ Error notifying Jeopardy timeout for channel {channel_id}: {e}")
+                    logger.error("Error notifying Jeopardy timeout for channel %s: %s", channel_id, e)
 
         except Exception as e:
-            print(f"❌ Jeopardy timeout check error: {e}")
+            logger.error("Jeopardy timeout check error: %s", e)
 
     @check_jeopardy_timeouts.before_loop
     async def before_check_jeopardy_timeouts():
         await bot.wait_until_ready()
         if jeopardy:
-            print("🎯 Jeopardy timeout checker started (runs every 5 min)")
+            logger.info("Jeopardy timeout checker started (runs every 5 min)")
 
     # ── Scheduled message sender ──
     @tasks.loop(minutes=1)
@@ -904,18 +887,18 @@ def register_tasks(bot, db, llm, rag, chat_stats, iracing, iracing_popularity_ca
                     await message_scheduler.mark_sent(msg['id'])
 
                 except Exception as e:
-                    print(f"  ❌ Error sending scheduled message {msg['id']}: {e}")
+                    logger.error("Error sending scheduled message %s: %s", msg['id'], e)
                     # Still mark as sent to prevent infinite retries
                     await message_scheduler.mark_sent(msg['id'])
 
         except Exception as e:
-            print(f"❌ Scheduled message check error: {e}")
+            logger.error("Scheduled message check error: %s", e)
 
     @check_scheduled_messages.before_loop
     async def before_check_scheduled_messages():
         await bot.wait_until_ready()
         if message_scheduler:
-            print("⏰ Scheduled message checker started (runs every 1 min)")
+            logger.info("Scheduled message checker started (runs every 1 min)")
 
     # ── RSS feed checker ──
     @tasks.loop(minutes=5)
@@ -946,16 +929,16 @@ def register_tasks(bot, db, llm, rag, chat_stats, iracing, iracing_popularity_ca
                         await channel.send(embed=embed)
 
                 except Exception as e:
-                    print(f"  ❌ Error posting RSS entry from {feed_result.get('feed_title', '?')}: {e}")
+                    logger.error("Error posting RSS entry from %s: %s", feed_result.get('feed_title', '?'), e)
 
         except Exception as e:
-            print(f"❌ RSS feed check error: {e}")
+            logger.error("RSS feed check error: %s", e)
 
     @check_rss_feeds.before_loop
     async def before_check_rss_feeds():
         await bot.wait_until_ready()
         if rss_monitor:
-            print("📡 RSS feed checker started (runs every 5 min)")
+            logger.info("RSS feed checker started (runs every 5 min)")
 
     # ── GitHub repo checker ──
     @tasks.loop(minutes=5)
@@ -987,16 +970,16 @@ def register_tasks(bot, db, llm, rag, chat_stats, iracing, iracing_popularity_ca
                         await channel.send(embed=embed)
 
                 except Exception as e:
-                    print(f"  ❌ Error posting GitHub event from {repo_result.get('repo', '?')}: {e}")
+                    logger.error("Error posting GitHub event from %s: %s", repo_result.get('repo', '?'), e)
 
         except Exception as e:
-            print(f"❌ GitHub repo check error: {e}")
+            logger.error("GitHub repo check error: %s", e)
 
     @check_github_repos.before_loop
     async def before_check_github_repos():
         await bot.wait_until_ready()
         if github_monitor:
-            print("🐙 GitHub repo checker started (runs every 5 min)")
+            logger.info("GitHub repo checker started (runs every 5 min)")
 
     # ── Watchlist price alert checker ──
     @tasks.loop(minutes=1)
@@ -1030,16 +1013,16 @@ def register_tasks(bot, db, llm, rag, chat_stats, iracing, iracing_popularity_ca
                     await channel.send(embed=embed)
 
                 except Exception as e:
-                    print(f"  ❌ Error posting watchlist alert for {alert.get('symbol', '?')}: {e}")
+                    logger.error("Error posting watchlist alert for %s: %s", alert.get('symbol', '?'), e)
 
         except Exception as e:
-            print(f"❌ Watchlist alert check error: {e}")
+            logger.error("Watchlist alert check error: %s", e)
 
     @check_watchlist_alerts.before_loop
     async def before_check_watchlist_alerts():
         await bot.wait_until_ready()
         if watchlist_manager:
-            print("💹 Watchlist alert checker started (runs every 1 min)")
+            logger.info("Watchlist alert checker started (runs every 1 min)")
 
     # ── Watchlist daily summary ──
     @tasks.loop(hours=24)
@@ -1082,18 +1065,18 @@ def register_tasks(bot, db, llm, rag, chat_stats, iracing, iracing_popularity_ca
                     await channel.send(embed=embed)
 
                 except Exception as e:
-                    print(f"  ❌ Error posting daily summary for guild {guild_id}: {e}")
+                    logger.error("Error posting daily summary for guild %s: %s", guild_id, e)
 
         except Exception as e:
-            print(f"❌ Daily watchlist summary error: {e}")
+            logger.error("Daily watchlist summary error: %s", e)
 
     @daily_watchlist_summary.before_loop
     async def before_daily_watchlist_summary():
         await bot.wait_until_ready()
         if watchlist_manager:
-            print("💹 Daily watchlist summary started (runs every 24 hours)")
+            logger.info("Daily watchlist summary started (runs every 24 hours)")
 
-    print("✅ Background tasks registered (will start in on_ready)")
+    logger.info("Background tasks registered (will start in on_ready)")
 
     # Return task references - they will be started in on_ready event handler
     tasks_dict = {

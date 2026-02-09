@@ -6,6 +6,7 @@ This module contains traditional prefix commands (!command syntax).
 
 import asyncio
 import json
+import logging
 import os
 import discord
 import requests
@@ -15,6 +16,8 @@ from urllib.parse import quote as url_quote
 import re
 from io import BytesIO
 import time
+
+logger = logging.getLogger(__name__)
 
 
 def register_prefix_commands(bot, db, llm, search, help_system, tasks_dict,
@@ -49,16 +52,16 @@ def register_prefix_commands(bot, db, llm, search, help_system, tasks_dict,
         await ctx.send("🔄 Manually triggering stats computation...")
 
         try:
-            # Run the precompute task manually
             if 'precompute_stats' in tasks_dict:
-                # Get the task function and call it directly
-                # The task is a loop, so we need to call the underlying function
-                await ctx.send("✅ Stats computation triggered!")
+                task = tasks_dict['precompute_stats']
+                # The task is a discord.ext.tasks.Loop — invoke its underlying coroutine
+                await task.coro()
+                await ctx.send("✅ Stats computation complete!")
             else:
                 await ctx.send("⚠️ Stats task not found. Contact bot admin.")
         except Exception as e:
             await ctx.send(f"❌ Error computing stats: {str(e)}")
-            print(f"❌ Manual stats refresh error: {e}")
+            logger.error("Manual stats refresh error: %s", e)
 
     @bot.command(name='analyze')
     @commands.has_permissions(administrator=True)
@@ -67,7 +70,7 @@ def register_prefix_commands(bot, db, llm, search, help_system, tasks_dict,
         await ctx.send(f"🔍 Analyzing user behavior from the last {days} days...")
 
         try:
-            active_users = db.get_all_active_users(days=days)
+            active_users = await asyncio.to_thread(db.get_all_active_users, days=days)
 
             if not active_users:
                 await ctx.send("No active users found in this period.")
@@ -78,7 +81,7 @@ def register_prefix_commands(bot, db, llm, search, help_system, tasks_dict,
 
             results = []
             for user in active_users[:10]:  # Limit to 10 users to avoid rate limits
-                messages = db.get_user_messages_for_analysis(user['user_id'], days=days)
+                messages = await asyncio.to_thread(db.get_user_messages_for_analysis, user['user_id'], days=days)
 
                 if len(messages) < 5:  # Skip users with too few messages
                     continue
@@ -88,7 +91,8 @@ def register_prefix_commands(bot, db, llm, search, help_system, tasks_dict,
                 analysis = await asyncio.to_thread(llm.analyze_user_behavior, messages)
 
                 if analysis:
-                    db.store_behavior_analysis(
+                    await asyncio.to_thread(
+                        db.store_behavior_analysis,
                         user['user_id'],
                         user['username'],
                         analysis,
@@ -111,7 +115,7 @@ def register_prefix_commands(bot, db, llm, search, help_system, tasks_dict,
         target = member or ctx.author
 
         try:
-            user_context = db.get_user_context(target.id)
+            user_context = await asyncio.to_thread(db.get_user_context, target.id)
             profile = user_context.get('profile')
             behavior = user_context.get('behavior')
 
@@ -165,7 +169,7 @@ def register_prefix_commands(bot, db, llm, search, help_system, tasks_dict,
 
                 await ctx.send(embed=embed)
 
-                db.store_search_log(query, len(results), ctx.author.id, ctx.channel.id)
+                asyncio.create_task(asyncio.to_thread(db.store_search_log, query, len(results), ctx.author.id, ctx.channel.id))
 
             except Exception as e:
                 await ctx.send(f"❌ Search error: {str(e)}")
@@ -427,7 +431,7 @@ def register_prefix_commands(bot, db, llm, search, help_system, tasks_dict,
 
         # Check for saved preference if no location provided
         if not location:
-            pref = db.get_weather_preference(ctx.author.id)
+            pref = await asyncio.to_thread(db.get_weather_preference, ctx.author.id)
             if pref:
                 location = pref['location']
             else:
@@ -566,7 +570,7 @@ def register_prefix_commands(bot, db, llm, search, help_system, tasks_dict,
             try:
                 def fetch_movie():
                     # URL encode title to handle special characters safely
-                    url = f"http://www.omdbapi.com/?t={url_quote(title, safe='')}&apikey={api_key}"
+                    url = f"https://www.omdbapi.com/?t={url_quote(title, safe='')}&apikey={api_key}"
                     return requests.get(url, timeout=10)
 
                 response = await asyncio.to_thread(fetch_movie)
@@ -779,7 +783,7 @@ def register_prefix_commands(bot, db, llm, search, help_system, tasks_dict,
                 return True
 
             except Exception as e:
-                print(f"Finnhub error for {symbol}: {e}")
+                logger.error("Finnhub error for %s: %s", symbol, e)
                 return False
 
     async def _fetch_crypto_price(ctx, coingecko_id: str, display_symbol: str, fallback_stock: str = None):
@@ -878,14 +882,14 @@ def register_prefix_commands(bot, db, llm, search, help_system, tasks_dict,
                         except Exception:
                             pass
                     except Exception as e:
-                        print(f"Ticker.history failed: {e}")
+                        logger.warning("Ticker.history failed: %s", e)
 
                     # Fallback to download() if history failed
                     if hist.empty:
                         try:
                             hist = yf.download(symbol, period=yf_period, progress=False, auto_adjust=True)
                         except Exception as e:
-                            print(f"yf.download failed: {e}")
+                            logger.warning("yf.download failed: %s", e)
 
                     return hist, info
 
@@ -1059,9 +1063,7 @@ def register_prefix_commands(bot, db, llm, search, help_system, tasks_dict,
                 await ctx.send(embed=embed, file=file)
 
             except Exception as e:
-                print(f"Stock history error for {symbol}: {e}")
-                import traceback
-                traceback.print_exc()
+                logger.error("Stock history error for %s: %s", symbol, e, exc_info=True)
                 await ctx.send(f"❌ Stock history lookup failed: {str(e)}")
 
     @bot.command(name='yt', aliases=['youtube'])
@@ -1303,7 +1305,7 @@ def register_prefix_commands(bot, db, llm, search, help_system, tasks_dict,
                 except Exception as e:
                     await ctx.send(f"❌ Wolfram Alpha query failed: {str(e)}")
 
-    print("✅ Prefix commands registered")
+    logger.info("Prefix commands registered")
 
     # ===== Register sub-module prefix commands =====
     from commands.prefix_admin import register_prefix_admin_commands

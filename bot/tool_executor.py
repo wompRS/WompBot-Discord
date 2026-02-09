@@ -130,12 +130,12 @@ class ToolExecutor:
             else:
                 arguments = {}
 
-            print(f"🛠️  Executing tool: {function_name}")
-            print(f"   Arguments: {arguments}")
+            logger.info("Executing tool: %s", function_name)
+            logger.debug("Tool arguments: %s", arguments)
 
         except (KeyError, json.JSONDecodeError) as e:
-            print(f"❌ Tool call parse error: {e}")
-            print(f"   Raw tool_call: {tool_call}")
+            logger.error("Tool call parse error: %s", e)
+            logger.debug("Raw tool_call: %s", tool_call)
             return {
                 "success": False,
                 "error": "Invalid tool call format. Please try your request again."
@@ -160,9 +160,7 @@ class ToolExecutor:
                     "error": f"Unknown tool: {function_name}"
                 }
         except Exception as e:
-            print(f"❌ Tool execution error: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error("Tool execution error: %s", e, exc_info=True)
             return {
                 "success": False,
                 "error": str(e)
@@ -585,7 +583,7 @@ class ToolExecutor:
                 return {"success": False, "error": f"No images found for '{query}'"}
 
         except Exception as e:
-            print(f"❌ Image search error: {e}")
+            logger.error("Image search error: %s", e)
             return {"success": False, "error": f"Image search failed: {str(e)}"}
 
     # ========== New Utility Tools ==========

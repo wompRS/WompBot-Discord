@@ -39,16 +39,13 @@ class ServerDashboard:
         if cached:
             return cached
 
-        # Fetch messages for analysis
-        messages = self.chat_stats.get_messages_for_analysis(
-            None, start_date, end_date, exclude_opted_out=True
+        # Fetch messages for analysis (filtered at DB layer)
+        guild_messages = self.chat_stats.get_messages_for_analysis(
+            None, start_date, end_date, exclude_opted_out=True, guild_id=guild_id
         )
 
-        if not messages:
+        if not guild_messages:
             return None
-
-        # Filter to this guild's messages (if guild_id column exists)
-        guild_messages = [m for m in messages if m.get('guild_id') == guild_id] or messages
 
         result = {
             'guild_id': guild_id,
