@@ -658,6 +658,7 @@ Full line-by-line audit of ~60 files (~15,000 lines) covering performance, secur
 - **New client methods** — `get_car_assets()`, `get_track_assets()`, `get_series_assets()` in `iracing_client.py`
 - **Cached wrappers** — `_car_assets_cache`, `_track_assets_cache`, `_series_assets_cache` (in-memory TTL)
 - **URL construction** — `IRACING_IMAGE_BASE` constant, `get_asset_url()` helper, convenience methods `get_car_image_url()`, `get_track_image_url()`, `get_series_image_url()`
+- **`IRACING_LOGO_URL`** — Static branding URL constant for commands without specific series/track context
 - **Series logo in meta charts** — Embed thumbnail shows series logo via asset URL
 
 ### New Command: `/iracing_bests`
@@ -671,3 +672,12 @@ Full line-by-line audit of ~60 files (~15,000 lines) covering performance, secur
 - **8+ traceback.print_exc() removed** — Replaced with `exc_info=True` on logger calls
 - **8+ str(e) error exposure fixed** — User-facing Discord error messages no longer leak internal state
 - **Series autocomplete print → logger** — `print()` in series_autocomplete → `logger.warning()`
+
+### API-based Asset Thumbnails (Session latest+4)
+- **Replaced local asset system with API** — Removed `logo_matcher.py` and ~362 MB of local image assets (`car_logos_raw/`, `series_logos/`, `track_logos/`)
+- **All 14 iRacing commands now have thumbnails** — Series-specific commands use series logo via `get_series_image_url()`, generic commands use `IRACING_LOGO_URL` branding
+- **`_set_iracing_thumbnail()` helper** — In `slash_commands.py`, tries series logo first, falls back to iRacing branding
+- **File-only sends wrapped in embeds** — Commands that previously sent bare image files now wrap them in `discord.Embed` with `set_image(url="attachment://...")` + thumbnail
+- **Team/event commands** — All embeds in `iracing_team_commands.py` (8 embeds + 3 file sends) and `iracing_event_commands.py` (1 embed + 2 file sends) now include iRacing branding thumbnail
+- **iracing_viz.py cleaned** — Removed `LogoMatcher` import and local logo rendering from meta charts (series logo + car logo blocks removed; thumbnails on embeds serve this purpose now)
+- **iracing_graphics.py cleaned** — Removed unused `cdn_base` variable

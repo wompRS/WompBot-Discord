@@ -11,6 +11,8 @@ from typing import Optional
 import re
 from dateutil import parser as dateparser
 
+IRACING_LOGO_URL = "https://images-static.iracing.com/img/logos/iracing-logo.png"
+
 
 def setup_iracing_event_commands(bot, iracing_team_manager, iracing_client):
     """Set up all iRacing event scheduling commands"""
@@ -98,6 +100,7 @@ def setup_iracing_event_commands(bot, iracing_team_manager, iracing_client):
                 description=f"**{event_name}**",
                 color=discord.Color.green()
             )
+            embed.set_thumbnail(url=IRACING_LOGO_URL)
             embed.add_field(name="Team", value=f"{team_info['name']} [{team_info['tag']}]", inline=True)
             embed.add_field(name="Type", value=event_type.title(), inline=True)
             embed.add_field(name="Event ID", value=f"`{event_id}`", inline=True)
@@ -197,9 +200,12 @@ def setup_iracing_event_commands(bot, iracing_team_manager, iracing_client):
             availability=availability
         )
 
-        # Send as file attachment
+        # Send as file attachment with thumbnail
         file = discord.File(fp=image_buffer, filename="iracing_event_roster.png")
-        await interaction.followup.send(file=file)
+        roster_embed = discord.Embed(color=discord.Color.blue())
+        roster_embed.set_thumbnail(url=IRACING_LOGO_URL)
+        roster_embed.set_image(url="attachment://iracing_event_roster.png")
+        await interaction.followup.send(embed=roster_embed, file=file)
 
     # ==================== SPECIAL EVENTS ====================
 
@@ -244,12 +250,14 @@ def setup_iracing_event_commands(bot, iracing_team_manager, iracing_client):
                 series_filter=series
             )
 
-            # Send as file attachment
+            # Send as file attachment with thumbnail
             file = discord.File(fp=image_buffer, filename="iracing_upcoming_races.png")
-            await interaction.followup.send(file=file)
+            races_embed = discord.Embed(color=discord.Color.blue())
+            races_embed.set_thumbnail(url=IRACING_LOGO_URL)
+            races_embed.set_image(url="attachment://iracing_upcoming_races.png")
+            await interaction.followup.send(embed=races_embed, file=file)
 
         except Exception as e:
-            print(f"❌ Error fetching upcoming races: {e}")
+            import logging
+            logging.getLogger(__name__).error("Error fetching upcoming races: %s", e, exc_info=True)
             await interaction.followup.send("❌ Error fetching races. Make sure iRacing integration is enabled.", ephemeral=True)
-
-    print("✅ iRacing event commands loaded")

@@ -10,6 +10,8 @@ from datetime import datetime, timedelta
 from typing import Optional
 import re
 
+IRACING_LOGO_URL = "https://images-static.iracing.com/img/logos/iracing-logo.png"
+
 # Store reference to team manager for autocomplete
 _team_manager = None
 
@@ -114,6 +116,7 @@ def setup_iracing_team_commands(bot, iracing_team_manager):
                 description=f"**{team_name}** [{team_tag}]",
                 color=discord.Color.green()
             )
+            embed.set_thumbnail(url=IRACING_LOGO_URL)
             if description:
                 embed.add_field(name="Description", value=description, inline=False)
             embed.add_field(name="Team ID", value=f"`{team_id}`", inline=True)
@@ -183,6 +186,7 @@ def setup_iracing_team_commands(bot, iracing_team_manager):
                 description=f"{member.mention} has been invited to join **{team_info['name']}**{tag_display}",
                 color=discord.Color.blue()
             )
+            embed.set_thumbnail(url=IRACING_LOGO_URL)
             embed.add_field(name="Role", value=role_value.replace('_', ' ').title(), inline=True)
 
             # DM the invited user with buttons
@@ -193,8 +197,9 @@ def setup_iracing_team_commands(bot, iracing_team_manager):
                 dm_embed = discord.Embed(
                     title="Team Invitation",
                     description=f"You've been invited to join **{team_info['name']}**{tag_display}",
-                    color=discord.Color.blue()
+                    color=discord.Color.blue(),
                 )
+                dm_embed.set_thumbnail(url=IRACING_LOGO_URL)
                 dm_embed.add_field(name="Role", value=role_value.replace('_', ' ').title(), inline=True)
                 dm_embed.add_field(name="Invited by", value=interaction.user.display_name, inline=True)
                 dm_embed.add_field(name="Server", value=interaction.guild.name, inline=True)
@@ -243,6 +248,7 @@ def setup_iracing_team_commands(bot, iracing_team_manager):
             title="📨 Pending Team Invitations",
             color=discord.Color.blue()
         )
+        embed.set_thumbnail(url=IRACING_LOGO_URL)
 
         for inv in invitations:
             team_display = f"**{inv['team_name']}**"
@@ -336,9 +342,12 @@ def setup_iracing_team_commands(bot, iracing_team_manager):
             members=members
         )
 
-        # Send as file attachment
+        # Send as file attachment with thumbnail
         file = discord.File(fp=image_buffer, filename="iracing_team_info.png")
-        await interaction.followup.send(file=file)
+        info_embed = discord.Embed(color=discord.Color.blue())
+        info_embed.set_thumbnail(url=IRACING_LOGO_URL)
+        info_embed.set_image(url="attachment://iracing_team_info.png")
+        await interaction.followup.send(embed=info_embed, file=file)
 
     @bot.tree.command(name="iracing_team_list", description="List all teams in this server")
     async def iracing_team_list(interaction: discord.Interaction):
@@ -357,9 +366,12 @@ def setup_iracing_team_commands(bot, iracing_team_manager):
             teams=teams
         )
 
-        # Send as file attachment
+        # Send as file attachment with thumbnail
         file = discord.File(fp=image_buffer, filename="iracing_team_list.png")
-        await interaction.followup.send(file=file)
+        list_embed = discord.Embed(color=discord.Color.blue())
+        list_embed.set_thumbnail(url=IRACING_LOGO_URL)
+        list_embed.set_image(url="attachment://iracing_team_list.png")
+        await interaction.followup.send(embed=list_embed, file=file)
 
     @bot.tree.command(name="iracing_my_teams", description="View your teams")
     async def iracing_my_teams(interaction: discord.Interaction):
@@ -381,9 +393,12 @@ def setup_iracing_team_commands(bot, iracing_team_manager):
             teams=teams
         )
 
-        # Send as file attachment
+        # Send as file attachment with thumbnail
         file = discord.File(fp=image_buffer, filename="iracing_my_teams.png")
-        await interaction.followup.send(file=file, ephemeral=True)
+        teams_embed = discord.Embed(color=discord.Color.blue())
+        teams_embed.set_thumbnail(url=IRACING_LOGO_URL)
+        teams_embed.set_image(url="attachment://iracing_my_teams.png")
+        await interaction.followup.send(embed=teams_embed, file=file, ephemeral=True)
 
     # ==================== EVENT SCHEDULING COMMANDS ====================
 
@@ -410,6 +425,7 @@ def setup_iracing_team_commands(bot, iracing_team_manager):
                         description=f"**{event_name}**",
                         color=discord.Color.blue()
                     )
+                    embed.set_thumbnail(url=IRACING_LOGO_URL)
                     embed.add_field(name="Team", value=f"{team_name}{tag_display}", inline=True)
                     embed.add_field(name="Type", value=event_type.replace('_', ' ').title(), inline=True)
                     embed.add_field(name="When", value=f"<t:{timestamp}:F>\n<t:{timestamp}:R>", inline=False)
@@ -529,6 +545,7 @@ def setup_iracing_team_commands(bot, iracing_team_manager):
                 description=f"**{event_name}**",
                 color=discord.Color.green()
             )
+            embed.set_thumbnail(url=IRACING_LOGO_URL)
             embed.add_field(name="Team", value=f"{team_info['name']}{tag_display}", inline=True)
             embed.add_field(name="Type", value=event_type.name, inline=True)
             embed.add_field(name="When", value=f"<t:{timestamp}:F> (<t:{timestamp}:R>)", inline=False)
@@ -590,8 +607,9 @@ def setup_iracing_team_commands(bot, iracing_team_manager):
 
         embed = discord.Embed(
             title=f"Upcoming Events: {team_info['name']}{tag_display}",
-            color=discord.Color.blue()
+            color=discord.Color.blue(),
         )
+        embed.set_thumbnail(url=IRACING_LOGO_URL)
 
         for event in events[:10]:  # Limit to 10 events
             timestamp = int(event['start'].timestamp())
@@ -648,6 +666,7 @@ def setup_iracing_team_commands(bot, iracing_team_manager):
             description=f"**{event['team_name']}**{tag_display}\n<t:{timestamp}:F>",
             color=discord.Color.blue()
         )
+        embed.set_thumbnail(url=IRACING_LOGO_URL)
 
         # Group by status
         available = []

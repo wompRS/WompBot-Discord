@@ -145,7 +145,6 @@ class iRacingGraphics:
             self.cache_dir = Path('./.image_cache')
             self.cache_dir.mkdir(exist_ok=True)
 
-        self.cdn_base = "https://images-static.iracing.com"
 
     def hex_to_rgb(self, hex_color: str) -> Tuple[int, int, int]:
         """Convert hex color to RGB tuple"""

@@ -67,10 +67,6 @@ class iRacingVisualizer:
         self.cache_dir = Path('/app/.image_cache')
         self.cache_dir.mkdir(exist_ok=True)
 
-        # Import logo matcher for car and series logos
-        from logo_matcher import LogoMatcher
-        self.logo_matcher = LogoMatcher()
-
     async def download_logo(self, url: str, cache_name: str) -> Optional[Image.Image]:
         """Download and cache a logo image"""
         cache_path = self.cache_dir / cache_name
@@ -1108,25 +1104,6 @@ class iRacingVisualizer:
         total_height = num_cars + 4
         ax.set_ylim(0, total_height)
 
-        # Series logo - large on the left, positioned at the top
-        series_logo_path = self.logo_matcher.get_series_logo(series_name)
-        logo_height_ratio = 0.12  # 12% of figure height
-        logo_width_ratio = 0.18   # 18% of figure width
-        logo_top = 0.88           # Position from bottom (88% = near top)
-
-        if series_logo_path and series_logo_path.exists():
-            try:
-                logo_img = Image.open(series_logo_path)
-                if logo_img.mode != 'RGBA':
-                    logo_img = logo_img.convert('RGBA')
-
-                # Add series logo at top left
-                logo_ax = fig.add_axes([0.05, logo_top, logo_width_ratio, logo_height_ratio])
-                logo_ax.imshow(logo_img)
-                logo_ax.axis('off')
-            except Exception as e:
-                logger.warning("Failed to load series logo: %s", e)
-
         # Title and info - centered with better contrast
         title_y = total_height - 0.8
         ax.text(7, title_y, "Best Average Lap Time",
@@ -1271,28 +1248,8 @@ class iRacingVisualizer:
             ax.text(0.8, y_pos, rank_text,
                    fontsize=13, color='#ffffff', va='center', fontweight='bold')
 
-            # Car logo - properly positioned
+            # Car name
             car_name = car.get('car_name', '')
-            logo_path = self.logo_matcher.get_car_logo(car_name, size='thumb')
-
-            if logo_path and logo_path.exists():
-                try:
-                    car_logo = Image.open(logo_path)
-                    if car_logo.mode != 'RGBA':
-                        car_logo = car_logo.convert('RGBA')
-
-                    # Convert axis position to figure coordinates
-                    trans = ax.transData.transform
-                    inv_trans = fig.transFigure.inverted().transform
-                    logo_center = inv_trans(trans([1.8, y_pos]))
-
-                    logo_size = 0.04
-                    logo_ax = fig.add_axes([logo_center[0] - logo_size/2, logo_center[1] - logo_size/2,
-                                          logo_size, logo_size])
-                    logo_ax.imshow(car_logo)
-                    logo_ax.axis('off')
-                except Exception as e:
-                    pass  # Silently skip if logo fails
 
             # Full car name with better contrast
             ax.text(2.8, y_pos, car_name,

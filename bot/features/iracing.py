@@ -728,6 +728,7 @@ class iRacingIntegration:
     # ── Asset methods ──────────────────────────────────────────────────
 
     IRACING_IMAGE_BASE = "https://images-static.iracing.com"
+    IRACING_LOGO_URL = "https://images-static.iracing.com/img/logos/iracing-logo.png"
 
     async def get_car_assets(self) -> Dict:
         """

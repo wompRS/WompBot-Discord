@@ -48,6 +48,19 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
     # Unpack Wompie user ID
     WOMPIE_USER_ID = wompie_user_id[0] if isinstance(wompie_user_id, list) else wompie_user_id
 
+    async def _set_iracing_thumbnail(embed, series_id=None):
+        """Add series logo or iRacing branding thumbnail to an embed."""
+        if iracing and series_id:
+            try:
+                url = await iracing.get_series_image_url(series_id, 'logo')
+                if url:
+                    embed.set_thumbnail(url=url)
+                    return
+            except Exception:
+                pass
+        if iracing:
+            embed.set_thumbnail(url=iracing.IRACING_LOGO_URL)
+
     @bot.tree.command(name="help", description="Show all commands or get detailed help for a specific command or category")
     @app_commands.describe(command="Command or category: tools, stats, claims, debates, trivia, games, polls, reminders, analytics, iracing, admin, etc.")
     async def help_slash(interaction: discord.Interaction, command: str = None):
@@ -948,6 +961,8 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                 description=f"Member since {profile.get('member_since', 'Unknown')}",
                 color=discord.Color.blue()
             )
+            if iracing:
+                embed.set_thumbnail(url=iracing.IRACING_LOGO_URL)
 
             if career_stats:
                 stats = career_stats.get('stats', [])
@@ -1169,9 +1184,12 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                 # Create visualization
                 image_buffer = iracing_viz.create_schedule_table(series_name, schedule, week)
     
-                # Send image
+                # Send image with thumbnail
                 file = discord.File(fp=image_buffer, filename="schedule.png")
-                await interaction.followup.send(file=file)
+                sched_embed = discord.Embed(color=discord.Color.blue())
+                await _set_iracing_thumbnail(sched_embed, series_id)
+                sched_embed.set_image(url="attachment://schedule.png")
+                await interaction.followup.send(embed=sched_embed, file=file)
     
             # Handle category-based schedule
             elif category:
@@ -1277,7 +1295,11 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                 image_buffer = iracing_viz.create_category_schedule_table(category_display_name, series_tracks)
     
                 file = discord.File(fp=image_buffer, filename="category_schedule.png")
-                await interaction.followup.send(file=file)
+                cat_embed = discord.Embed(color=discord.Color.blue())
+                if iracing:
+                    cat_embed.set_thumbnail(url=iracing.IRACING_LOGO_URL)
+                cat_embed.set_image(url="attachment://category_schedule.png")
+                await interaction.followup.send(embed=cat_embed, file=file)
     
             else:
                 await interaction.followup.send("❌ Please specify either a series name or a category")
@@ -1765,7 +1787,8 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                     description=f"Week {week_num} - No race data available yet for this track/series combination.\n\nShowing available cars:",
                     color=discord.Color.orange()
                 )
-    
+                await _set_iracing_thumbnail(embed, series_id)
+
                 if track_name_result:
                     track_text = f"{track_name_result}"
                     if track_config and track_config not in track_name_result:
@@ -1870,7 +1893,9 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                     description=f"Last {len(races)} races",
                     color=discord.Color.blue()
                 )
-    
+                if iracing:
+                    embed.set_thumbnail(url=iracing.IRACING_LOGO_URL)
+
                 for i, race in enumerate(races):
                     series_name = race.get('series_name', 'Unknown Series')
                     track_name = race.get('track_name', 'Unknown Track')
@@ -1889,10 +1914,14 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
     
             # Create visualization
             image_buffer = iracing_viz.create_recent_results_table(display_name, races)
-    
-            # Send as Discord file attachment
+
+            # Send as Discord file attachment with thumbnail
             file = discord.File(fp=image_buffer, filename="results.png")
-            await interaction.followup.send(file=file)
+            results_embed = discord.Embed(color=discord.Color.blue())
+            if iracing:
+                results_embed.set_thumbnail(url=iracing.IRACING_LOGO_URL)
+            results_embed.set_image(url="attachment://results.png")
+            await interaction.followup.send(embed=results_embed, file=file)
     
         except Exception as e:
             logger.error("iRacing results error: %s", e, exc_info=True)
@@ -1996,9 +2025,10 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                         description=f"{season_label} • {len(schedule_sorted)} weeks",
                         color=discord.Color.blue()
                     )
+                    await _set_iracing_thumbnail(embed, series_id)
                     if season_span:
                         embed.add_field(name="Season Dates", value=season_span, inline=False)
-    
+
                     embed.set_footer(text="Generated by WompBot iRacing Visualizer")
                     embed.set_image(url=f"attachment://{filename}")
     
@@ -2015,7 +2045,8 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                 description=f"{season_label} • {len(schedule_sorted)} weeks",
                 color=discord.Color.blue()
             )
-    
+            await _set_iracing_thumbnail(embed, series_id)
+
             display_limit = min(len(schedule_sorted), 12)
     
             for i, week in enumerate(schedule_sorted[:display_limit]):
@@ -2171,7 +2202,9 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                     description=f"{len(leaderboard_data)} linked drivers",
                     color=discord.Color.gold()
                 )
-    
+                if iracing:
+                    embed.set_thumbnail(url=iracing.IRACING_LOGO_URL)
+
                 for i, driver in enumerate(leaderboard_data[:10]):
                     rank_emoji = ["🥇", "🥈", "🥉"][i] if i < 3 else f"**{i+1}.**"
                     embed.add_field(
@@ -2194,7 +2227,11 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                 )
     
                 file = discord.File(fp=image_buffer, filename="server_leaderboard.png")
-                await interaction.followup.send(file=file)
+                lb_embed = discord.Embed(color=discord.Color.gold())
+                if iracing:
+                    lb_embed.set_thumbnail(url=iracing.IRACING_LOGO_URL)
+                lb_embed.set_image(url="attachment://server_leaderboard.png")
+                await interaction.followup.send(embed=lb_embed, file=file)
                 db.record_feature_usage(interaction.user.id, 'iracing_leaderboard')
     
         except Exception as e:
@@ -2574,8 +2611,12 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
             )
     
             file = discord.File(fp=image_buffer, filename="rating_history.png")
-            await interaction.followup.send(file=file)
-    
+            history_embed = discord.Embed(color=discord.Color.blue())
+            if iracing:
+                history_embed.set_thumbnail(url=iracing.IRACING_LOGO_URL)
+            history_embed.set_image(url="attachment://rating_history.png")
+            await interaction.followup.send(embed=history_embed, file=file)
+
         except Exception as e:
             await interaction.followup.send("❌ Error generating history dashboard")
             logger.error("iRacing history error for driver %s: %s", driver_name, e, exc_info=True)
@@ -2670,6 +2711,8 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                 title=f"🏁 Personal Bests — {display_name}",
                 color=0x60a5fa,
             )
+            if iracing:
+                embed.set_thumbnail(url=iracing.IRACING_LOGO_URL)
 
             # Group by event type if available, show top entries
             entries_shown = 0
@@ -2804,6 +2847,7 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                 description=f"{series_full_name}\nWeek {week + 1}",
                 color=discord.Color.gold()
             )
+            await _set_iracing_thumbnail(embed, series_id)
             embed.add_field(name="Total Cars Analyzed", value=str(len(car_data)), inline=True)
             embed.add_field(name="Total Races", value=str(sum(c['races'] for c in car_data)), inline=True)
     
@@ -2954,8 +2998,11 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
             # Generate comparison chart
             image_buffer = iracing_viz.create_driver_comparison(driver1_data, driver2_data, category)
             file = discord.File(fp=image_buffer, filename="comparison.png")
-    
-            await interaction.followup.send(file=file)
+            compare_embed = discord.Embed(color=discord.Color.blue())
+            if iracing:
+                compare_embed.set_thumbnail(url=iracing.IRACING_LOGO_URL)
+            compare_embed.set_image(url="attachment://comparison.png")
+            await interaction.followup.send(embed=compare_embed, file=file)
     
         except Exception as e:
             logger.error("Compare drivers error: %s", e, exc_info=True)
@@ -3059,12 +3106,16 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
             )
     
             file = discord.File(fp=image_buffer, filename="series_popularity.png")
-    
+            pop_embed = discord.Embed(color=discord.Color.blue())
+            if iracing:
+                pop_embed.set_thumbnail(url=iracing.IRACING_LOGO_URL)
+            pop_embed.set_image(url="attachment://series_popularity.png")
+
             # Send with warning message if applicable
             if warning_message:
-                await interaction.followup.send(content=warning_message, file=file)
+                await interaction.followup.send(content=warning_message, embed=pop_embed, file=file)
             else:
-                await interaction.followup.send(file=file)
+                await interaction.followup.send(embed=pop_embed, file=file)
     
         except Exception as e:
             logger.error("Popularity error: %s", e, exc_info=True)
@@ -3189,7 +3240,8 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                             description=f"**Week {current_week}** • {track_name}",
                             color=discord.Color.orange()
                         )
-    
+                        await _set_iracing_thumbnail(embed, series_id)
+
                         embed.add_field(
                             name="📅 Recurring Schedule",
                             value=schedule_desc,
@@ -3253,10 +3305,13 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                 sessions=session_data
             )
     
-            # Send as file attachment
+            # Send as file attachment with thumbnail
             file = discord.File(fp=image_buffer, filename="iracing_timeslots.png")
-            await interaction.followup.send(file=file)
-    
+            timeslots_embed = discord.Embed(color=discord.Color.blue())
+            await _set_iracing_thumbnail(timeslots_embed, series_id)
+            timeslots_embed.set_image(url="attachment://iracing_timeslots.png")
+            await interaction.followup.send(embed=timeslots_embed, file=file)
+
         except Exception as e:
             logger.error("Race times error: %s", e, exc_info=True)
             await interaction.followup.send("❌ Error getting race times. Please try again later.")
