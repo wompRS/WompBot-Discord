@@ -115,8 +115,7 @@ class iRacingClient:
             return await self._authenticate_oauth2()
         else:
             # Legacy authentication not supported as of Dec 2025
-            print("❌ OAuth2 credentials required. Legacy authentication no longer supported.")
-            print("   Update credentials using: docker compose exec bot python encrypt_credentials.py")
+            logger.error("OAuth2 credentials required. Legacy authentication no longer supported.")
             return False
 
     async def _authenticate_oauth2(self) -> bool:
@@ -160,16 +159,15 @@ class iRacingClient:
                     self.auth_expires = datetime.now() + timedelta(seconds=expires_in)
 
                     self.authenticated = True
-                    print("✅ iRacing OAuth2 authentication successful")
+                    logger.info("iRacing OAuth2 authentication successful")
                     return True
                 else:
                     error_text = await response.text()
-                    print(f"❌ iRacing OAuth2 authentication failed: {response.status}")
-                    print(f"   Response: {error_text}")
+                    logger.error("iRacing OAuth2 authentication failed: %d", response.status)
                     return False
 
         except Exception as e:
-            print(f"❌ iRacing OAuth2 authentication error: {e}")
+            logger.error("iRacing OAuth2 authentication error: %s", e)
             return False
 
     async def _refresh_access_token(self) -> bool:
@@ -209,16 +207,14 @@ class iRacingClient:
                     self.auth_expires = datetime.now() + timedelta(seconds=expires_in)
 
                     self.authenticated = True
-                    print("✅ iRacing OAuth2 token refreshed")
+                    logger.info("iRacing OAuth2 token refreshed")
                     return True
                 else:
-                    error_text = await response.text()
-                    print(f"❌ iRacing OAuth2 token refresh failed: {response.status}")
-                    print(f"   Response: {error_text}")
+                    logger.error("iRacing OAuth2 token refresh failed: %d", response.status)
                     return False
 
         except Exception as e:
-            print(f"❌ iRacing OAuth2 token refresh error: {e}")
+            logger.error("iRacing OAuth2 token refresh error: %s", e)
             return False
 
     async def _ensure_authenticated(self):
@@ -424,69 +420,44 @@ class iRacingClient:
             endpoint = "/data/member/info"
             params = {}
 
-        print(f"👤 API REQUEST: {endpoint} with params={params}")
+        logger.debug("Member info request: %s params=%s", endpoint, params)
         result = await self._get(endpoint, params)
-        print(f"   API RESPONSE: Got result with cust_id={result.get('cust_id') if result else None}")
 
-        # Debug logging for profile lookups
         if result and cust_id:
-            print(f"👤 Profile lookup for cust_id {cust_id}:")
-            print(f"   Requested cust_id: {cust_id}")
-            print(f"   Returned cust_id: {result.get('cust_id')}")
-
             # Validate that we got the right customer data
             returned_id = result.get('cust_id')
             if returned_id and int(returned_id) != cust_id:
-                print(f"   ⚠️ WARNING: Requested {cust_id} but got {returned_id}!")
-                print(f"   This is likely an API or caching issue")
+                logger.warning("Requested cust_id %d but got %s", cust_id, returned_id)
 
             # Handle response - might be a dict with 'members' array or 'success' dict
             member_data = result
 
-            # Check if response has 'members' array
             if 'members' in result and isinstance(result['members'], list) and len(result['members']) > 0:
                 member_data = result['members'][0]
-                print(f"   Extracted from members array")
-            # Check if response has 'success' dict
             elif 'success' in result and isinstance(result['success'], dict):
                 member_data = result['success']
-                print(f"   Extracted from success dict")
 
-            print(f"   display_name: '{member_data.get('display_name')}'")
-            print(f"   name: '{member_data.get('name')}'")
-            print(f"   cust_id: '{member_data.get('cust_id')}'")
+            logger.debug("Profile for cust_id %d: display_name=%s", cust_id, member_data.get('display_name'))
 
-            # Debug: Show licenses structure
+            # Convert licenses list to dict format expected by visualization
             licenses = member_data.get('licenses')
-            if licenses:
-                print(f"   licenses type: {type(licenses)}, count: {len(licenses)}")
-                if isinstance(licenses, list):
-                    for idx, lic in enumerate(licenses):
-                        print(f"   License[{idx}]: cat={lic.get('category_id')} name={lic.get('category_name')} "
-                              f"iR={lic.get('irating', 'N/A')} SR={lic.get('safety_rating')} "
-                              f"ttR={lic.get('tt_rating', 'N/A')} group={lic.get('group_name')}")
+            if licenses and isinstance(licenses, list):
+                category_map = {
+                    1: 'oval',                  # Oval
+                    5: 'sports_car_road',       # Sports Car
+                    6: 'formula_car_road',      # Formula Car
+                    3: 'dirt_oval',             # Dirt Oval
+                    4: 'dirt_road'              # Dirt Road
+                }
 
-                    # Convert licenses list to dict format expected by visualization
-                    # Map category_id to expected keys
-                    category_map = {
-                        1: 'oval',                  # Oval
-                        5: 'sports_car_road',       # Sports Car
-                        6: 'formula_car_road',      # Formula Car
-                        3: 'dirt_oval',             # Dirt Oval
-                        4: 'dirt_road'              # Dirt Road
-                    }
+                licenses_dict = {}
+                for lic in licenses:
+                    cat_id = lic.get('category_id')
+                    if cat_id in category_map:
+                        key = category_map[cat_id]
+                        licenses_dict[key] = lic
 
-                    licenses_dict = {}
-                    for lic in licenses:
-                        cat_id = lic.get('category_id')
-                        if cat_id in category_map:
-                            key = category_map[cat_id]
-                            # Keep original license data, just reorganize as dict
-                            licenses_dict[key] = lic
-
-                    # Replace licenses list with dict for visualization compatibility
-                    member_data['licenses'] = licenses_dict
-                    print(f"   ✅ Converted licenses to dict with keys: {list(licenses_dict.keys())}")
+                member_data['licenses'] = licenses_dict
 
             return member_data
 
@@ -658,7 +629,7 @@ class iRacingClient:
 
     async def search_member_by_name(self, name: str) -> Optional[List[Dict]]:
         """
-        Search for members by name - tries multiple endpoint variations.
+        Search for members by name using the lookup/drivers endpoint.
 
         Args:
             name: Display name or part of name
@@ -666,42 +637,24 @@ class iRacingClient:
         Returns:
             List of matching members
         """
-        print(f"🔍 Searching for '{name}'...")
+        logger.debug("Searching for driver: %s", name)
 
-        # Try different endpoints and parameter combinations
-        attempts = [
-            ("/data/lookup/drivers", {'search_term': name}),
-            ("/data/lookup/drivers", {'search_value': name}),
-            ("/data/lookup", {'search_term': name, 'category': 'driver'}),
-            ("/data/member/get", {'search_term': name}),
-            ("/data/lookup/get", {'search_term': name}),
-        ]
+        # Use the known-working endpoint — /data/lookup/drivers with search_term
+        response = await self._get("/data/lookup/drivers", {'search_term': name})
 
-        for endpoint, params in attempts:
-            print(f"   Trying {endpoint} with params {params}")
-            response = await self._get(endpoint, params)
+        if response:
+            # Try to extract driver list from response
+            if isinstance(response, list) and len(response) > 0:
+                logger.debug("Found %d driver results for '%s'", len(response), name)
+                return self._format_driver_results(response)
 
-            if response:
-                import json
-                print(f"   ✓ Got response: {json.dumps(response, indent=2)[:300]}")
+            elif isinstance(response, dict):
+                for key in ['drivers', 'members', 'results', 'data']:
+                    if key in response and isinstance(response[key], list):
+                        logger.debug("Found %d results in '%s' key", len(response[key]), key)
+                        return self._format_driver_results(response[key])
 
-                # Try to extract driver list from response
-                if isinstance(response, list):
-                    # Direct list of drivers
-                    if len(response) > 0:
-                        print(f"   ✓ Found {len(response)} results as direct list")
-                        return self._format_driver_results(response)
-
-                elif isinstance(response, dict):
-                    # Check for common response patterns
-                    for key in ['drivers', 'members', 'results', 'data']:
-                        if key in response and isinstance(response[key], list):
-                            print(f"   ✓ Found {len(response[key])} results in '{key}' key")
-                            return self._format_driver_results(response[key])
-            else:
-                print(f"   ✗ No response or 404")
-
-        print(f"   ❌ All search attempts failed")
+        logger.debug("No results found for '%s'", name)
         return []
 
     def _format_driver_results(self, raw_results: list) -> List[Dict]:
@@ -714,7 +667,6 @@ class iRacingClient:
                     'display_name': r.get('display_name', r.get('name', 'Unknown')),
                     'name': r.get('name', '')
                 })
-                print(f"      • {r.get('display_name', 'Unknown')} (ID: {r.get('cust_id')})")
         return formatted
 
     async def get_member_career_stats(self, cust_id: int) -> Optional[Dict]:
@@ -900,11 +852,11 @@ class iRacingClient:
                         all_data.extend(data)
                     return all_data
                 else:
-                    print(f"⚠️ Failed to download chunk: {response.status}")
+                    logger.warning("Failed to download chunk: %d", response.status)
                     return None
 
         except Exception as e:
-            print(f"❌ Error downloading chunk data: {e}")
+            logger.error("Error downloading chunk data: %s", e)
             return None
 
     async def get_series_average_incidents(self, season_id: int, car_class_id: int) -> Optional[float]:
@@ -947,8 +899,261 @@ class iRacingClient:
             return None
 
         except Exception as e:
-            print(f"⚠️ Error calculating average incidents: {e}")
+            logger.warning("Error calculating average incidents: %s", e)
             return None
+
+    # ==================== NEW ENDPOINTS ====================
+
+    async def get_member_chart_data(self, category_id: int, chart_type: int = 1,
+                                     cust_id: Optional[int] = None) -> Optional[Dict]:
+        """
+        Get historical iRating/TT Rating/SR chart data for a member.
+
+        This is the native iRacing rating progression data — covers full career
+        in a single API call (replaces manual subsession fetching for history).
+
+        Args:
+            category_id: 1=Oval, 2=Road, 3=Dirt Oval, 4=Dirt Road
+            chart_type: 1=iRating, 2=TT Rating, 3=License/SR
+            cust_id: Customer ID (optional, defaults to authenticated user)
+
+        Returns:
+            Dict with chart data points
+        """
+        params = {
+            'category_id': category_id,
+            'chart_type': chart_type,
+        }
+        if cust_id:
+            params['cust_id'] = cust_id
+
+        return await self._get("/data/member/chart_data", params)
+
+    async def get_member_profile(self, cust_id: Optional[int] = None) -> Optional[Dict]:
+        """
+        Get detailed member profile (richer than /data/member/get).
+
+        Args:
+            cust_id: Customer ID (optional, defaults to authenticated user)
+
+        Returns:
+            Detailed profile dict
+        """
+        params = {}
+        if cust_id:
+            params['cust_id'] = cust_id
+
+        return await self._get("/data/member/profile", params)
+
+    async def get_member_awards(self, cust_id: Optional[int] = None) -> Optional[Dict]:
+        """
+        Get member's earned achievements/awards.
+
+        Args:
+            cust_id: Customer ID (optional, defaults to authenticated user)
+
+        Returns:
+            Dict with awards list
+        """
+        params = {}
+        if cust_id:
+            params['cust_id'] = cust_id
+
+        return await self._get("/data/member/awards", params)
+
+    async def get_member_summary(self, cust_id: Optional[int] = None) -> Optional[Dict]:
+        """
+        Get concise member summary statistics.
+
+        Args:
+            cust_id: Customer ID (optional, defaults to authenticated user)
+
+        Returns:
+            Summary statistics dict
+        """
+        params = {}
+        if cust_id:
+            params['cust_id'] = cust_id
+
+        return await self._get("/data/stats/member_summary", params)
+
+    async def get_member_yearly(self, cust_id: Optional[int] = None) -> Optional[Dict]:
+        """
+        Get year-by-year statistics breakdown.
+
+        Args:
+            cust_id: Customer ID (optional, defaults to authenticated user)
+
+        Returns:
+            Yearly stats dict
+        """
+        params = {}
+        if cust_id:
+            params['cust_id'] = cust_id
+
+        return await self._get("/data/stats/member_yearly", params)
+
+    async def get_member_bests(self, cust_id: Optional[int] = None,
+                                car_id: Optional[int] = None) -> Optional[Dict]:
+        """
+        Get member's personal best lap times.
+
+        Args:
+            cust_id: Customer ID (optional, defaults to authenticated user)
+            car_id: Optional car ID to filter results
+
+        Returns:
+            Dict with personal best records
+        """
+        params = {}
+        if cust_id:
+            params['cust_id'] = cust_id
+        if car_id:
+            params['car_id'] = car_id
+
+        return await self._get("/data/stats/member_bests", params)
+
+    async def get_world_records(self, car_id: int, track_id: int,
+                                 season_year: Optional[int] = None,
+                                 season_quarter: Optional[int] = None) -> Optional[Dict]:
+        """
+        Get world record lap times for a car/track combination.
+
+        Args:
+            car_id: Car ID
+            track_id: Track ID
+            season_year: Optional year filter
+            season_quarter: Optional quarter filter (1-4)
+
+        Returns:
+            Dict with world record data
+        """
+        params = {
+            'car_id': car_id,
+            'track_id': track_id,
+        }
+        if season_year:
+            params['season_year'] = season_year
+        if season_quarter:
+            params['season_quarter'] = season_quarter
+
+        return await self._get("/data/stats/world_records", params)
+
+    async def get_car_classes(self) -> Optional[List[Dict]]:
+        """
+        Get all car class definitions (which cars belong to which class).
+
+        Returns:
+            List of car class data
+        """
+        return await self._get("/data/carclass/get")
+
+    async def get_car_assets(self) -> Optional[Dict]:
+        """
+        Get car image/logo asset paths.
+
+        Returns:
+            Dict mapping car_id to asset paths (relative to images-static.iracing.com)
+        """
+        return await self._get("/data/car/assets")
+
+    async def get_track_assets(self) -> Optional[Dict]:
+        """
+        Get track image asset paths.
+
+        Returns:
+            Dict mapping track_id to asset paths
+        """
+        return await self._get("/data/track/assets")
+
+    async def get_series_assets(self) -> Optional[Dict]:
+        """
+        Get series artwork/logo asset paths.
+
+        Returns:
+            Dict mapping series_id to asset paths
+        """
+        return await self._get("/data/series/assets")
+
+    async def get_lap_chart_data(self, subsession_id: int, simsession_number: int = 0) -> Optional[Dict]:
+        """
+        Get lap chart data showing position changes per lap for all drivers.
+
+        Args:
+            subsession_id: Subsession ID
+            simsession_number: Sim session number (0=race, -1=qualifying, etc.)
+
+        Returns:
+            Lap chart data with position per lap
+        """
+        params = {
+            'subsession_id': subsession_id,
+            'simsession_number': simsession_number,
+        }
+        return await self._get("/data/results/lap_chart_data", params)
+
+    async def get_lap_data(self, subsession_id: int, simsession_number: int = 0,
+                            cust_id: Optional[int] = None) -> Optional[Dict]:
+        """
+        Get detailed individual lap data (times, flags, positions).
+
+        Args:
+            subsession_id: Subsession ID
+            simsession_number: Sim session number
+            cust_id: Optional customer ID for specific driver's laps
+
+        Returns:
+            Detailed lap data
+        """
+        params = {
+            'subsession_id': subsession_id,
+            'simsession_number': simsession_number,
+        }
+        if cust_id:
+            params['cust_id'] = cust_id
+
+        return await self._get("/data/results/lap_data", params)
+
+    async def get_event_log(self, subsession_id: int, simsession_number: int = 0) -> Optional[Dict]:
+        """
+        Get event log for a subsession (cautions, incidents, flags, penalties).
+
+        Args:
+            subsession_id: Subsession ID
+            simsession_number: Sim session number
+
+        Returns:
+            Event log data
+        """
+        params = {
+            'subsession_id': subsession_id,
+            'simsession_number': simsession_number,
+        }
+        return await self._get("/data/results/event_log", params)
+
+    async def get_member_recap(self, cust_id: Optional[int] = None,
+                                year: Optional[int] = None,
+                                season: Optional[int] = None) -> Optional[Dict]:
+        """
+        Get season/year recap summary.
+
+        Args:
+            cust_id: Customer ID (optional)
+            year: Year filter
+            season: Season quarter filter (1-4)
+
+        Returns:
+            Recap summary dict
+        """
+        params = {}
+        if cust_id:
+            params['cust_id'] = cust_id
+        if year:
+            params['year'] = year
+        if season:
+            params['season'] = season
+
+        return await self._get("/data/stats/member_recap", params)
 
     async def close(self):
         """Close the aiohttp session"""

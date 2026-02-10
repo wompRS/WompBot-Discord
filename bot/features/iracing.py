@@ -8,8 +8,11 @@ import discord
 from datetime import datetime, timedelta
 from typing import Dict, Optional, List
 import json
+import logging
 from iracing_client import iRacingClient
 from features.iracing_meta import MetaAnalyzer
+
+logger = logging.getLogger(__name__)
 
 
 class iRacingIntegration:
@@ -30,6 +33,10 @@ class iRacingIntegration:
         self._cars_cache = None
         self._series_cache = None
         self._tracks_cache = None
+        self._car_classes_cache = None
+        self._car_assets_cache = None
+        self._track_assets_cache = None
+        self._series_assets_cache = None
 
         # Meta analyzer (initialized on first use)
         self._meta_analyzer = None
@@ -82,7 +89,7 @@ class iRacingIntegration:
             return []
 
         except Exception as e:
-            print(f"❌ Error getting series: {e}")
+            logger.error("Error getting series: %s", e)
             return []
 
     async def get_upcoming_schedule(self, series_name: Optional[str] = None, hours: int = 24) -> List[Dict]:
@@ -111,7 +118,7 @@ class iRacingIntegration:
             return upcoming or []
 
         except Exception as e:
-            print(f"❌ Error getting schedule: {e}")
+            logger.error("Error getting schedule: %s", e)
             return []
 
     async def search_driver(self, name_or_id: str) -> Optional[List[Dict]]:
@@ -154,7 +161,7 @@ class iRacingIntegration:
             # Try first word only as fallback
             words = name_or_id.strip().split()
             if len(words) > 1:
-                print(f"⚠️ No results for '{name_or_id}', trying first word '{words[0]}'...")
+                logger.debug("No results for '%s', trying first word '%s'...", name_or_id, words[0])
                 results = await client.search_member_by_name(words[0])
                 if results and len(results) > 0:
                     # Filter results to match additional words in the name field if available
@@ -175,9 +182,7 @@ class iRacingIntegration:
             return results if results else []
 
         except Exception as e:
-            print(f"❌ Error searching driver: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error("Error searching driver: %s", e, exc_info=True)
             return None
 
     async def get_driver_profile(self, cust_id: int) -> Optional[Dict]:
@@ -192,14 +197,13 @@ class iRacingIntegration:
         """
         cache_key = f'profile_{cust_id}'
 
-        # TEMP: Disable cache to debug profile lookup issue
-        # cached = self._get_cache(cache_key)
-        # if cached:
-        #     print(f"🔄 Using cached profile for {cust_id}")
-        #     return cached
+        cached = self._get_cache(cache_key)
+        if cached:
+            logger.debug("Using cached profile for %s", cust_id)
+            return cached
 
         try:
-            print(f"🌐 Fetching fresh profile data for cust_id {cust_id}")
+            logger.debug("Fetching fresh profile data for cust_id %s", cust_id)
             client = await self._get_client()
             profile = await client.get_member_info(cust_id)
 
@@ -207,7 +211,7 @@ class iRacingIntegration:
                 # Verify we got the right customer's data
                 returned_id = profile.get('cust_id')
                 if returned_id and int(returned_id) != cust_id:
-                    print(f"❌ ERROR: Requested profile for {cust_id} but API returned {returned_id}")
+                    logger.error("Requested profile for %s but API returned %s", cust_id, returned_id)
                     return None
 
                 self._set_cache(cache_key, profile, ttl_minutes=30)
@@ -215,7 +219,7 @@ class iRacingIntegration:
             return None
 
         except Exception as e:
-            print(f"❌ Error getting profile: {e}")
+            logger.error("Error getting profile: %s", e)
             return None
 
     async def get_driver_recent_races(self, cust_id: int, limit: int = 10) -> List[Dict]:
@@ -236,7 +240,7 @@ class iRacingIntegration:
             return races[:limit] if races else []
 
         except Exception as e:
-            print(f"❌ Error getting recent races: {e}")
+            logger.error("Error getting recent races: %s", e)
             return []
 
     async def get_driver_career_stats(self, cust_id: int) -> Optional[Dict]:
@@ -264,7 +268,7 @@ class iRacingIntegration:
             return None
 
         except Exception as e:
-            print(f"❌ Error getting career stats: {e}")
+            logger.error("Error getting career stats: %s", e)
             return None
 
     async def link_discord_to_iracing(self, discord_user_id: int, iracing_cust_id: int, iracing_name: str) -> bool:
@@ -297,8 +301,7 @@ class iRacingIntegration:
                     return True
 
         except Exception as e:
-            print(f"❌ Error linking accounts: {e}")
-            conn.rollback()
+            logger.error("Error linking accounts: %s", e)
             return False
 
     async def get_linked_iracing_id(self, discord_user_id: int) -> Optional[int]:
@@ -325,7 +328,7 @@ class iRacingIntegration:
                     return result if result else None
 
         except Exception as e:
-            print(f"❌ Error getting linked account: {e}")
+            logger.error("Error getting linked account: %s", e)
             return None
 
     def format_irating(self, irating: int) -> str:
@@ -379,7 +382,7 @@ class iRacingIntegration:
             return None
 
         except Exception as e:
-            print(f"❌ Error finding series: {e}")
+            logger.error("Error finding series: %s", e)
             return None
 
     async def get_meta_chart_data(self, series_name: str, season_id: Optional[int] = None, week_num: Optional[int] = None, track_name: Optional[str] = None, force_analysis: bool = False) -> Optional[Dict]:
@@ -402,7 +405,7 @@ class iRacingIntegration:
             # Get full series seasons data
             series_seasons = await client.get_series_seasons()
             if not series_seasons:
-                print(f"❌ Failed to get series seasons data")
+                logger.warning("Failed to get series seasons data")
                 return None
 
             # Find the matching series/season
@@ -422,7 +425,7 @@ class iRacingIntegration:
                     break
 
             if not target_season:
-                print(f"❌ Series not found: {series_name}")
+                logger.warning("Series not found: %s", series_name)
                 return None
 
             # Get season info
@@ -430,7 +433,7 @@ class iRacingIntegration:
             schedules = target_season.get('schedules', [])
 
             if not schedules:
-                print(f"❌ No schedules found for season")
+                logger.warning("No schedules found for season")
                 return None
 
             # Get current or specified week
@@ -450,8 +453,11 @@ class iRacingIntegration:
             # Extract car IDs from car_restrictions or from actual race results
             car_restrictions = target_schedule.get('car_restrictions', [])
 
-            # Get all car details
-            all_cars = await self.get_all_cars()
+            # Get all car details and class lookup in parallel
+            all_cars, car_class_lookup = await asyncio.gather(
+                self.get_all_cars(),
+                self.build_car_class_lookup()
+            )
             car_dict = {car['car_id']: car for car in all_cars}
 
             # Build car list with details
@@ -459,7 +465,7 @@ class iRacingIntegration:
             analyze_from_results = False
 
             if not car_restrictions:
-                print(f"⚠️ No car restrictions found, will analyze actual race results to find cars being used")
+                logger.debug("No car restrictions found, will analyze actual race results to find cars being used")
                 analyze_from_results = True
             else:
                 # Build car list from car_restrictions
@@ -470,6 +476,7 @@ class iRacingIntegration:
                         cars.append({
                             'car_id': car_id,
                             'car_name': car_info.get('car_name', f'Car {car_id}'),
+                            'car_class_name': car_class_lookup.get(car_id, ''),
                             'logo_url': car_info.get('logo', ''),
                             'max_dry_tire_sets': car_rest.get('max_dry_tire_sets'),
                             'power_adjust_pct': car_rest.get('power_adjust_pct', 0),
@@ -494,13 +501,12 @@ class iRacingIntegration:
 
                     if track_name.lower() in full_track_name.lower():
                         track_id_filter = track.get('track_id')
-                        print(f"🏁 Filtering analysis to track: {full_track_name} (ID: {track_id_filter})")
+                        logger.debug("Filtering analysis to track: %s (ID: %s)", full_track_name, track_id_filter)
                         break
 
-            log_msg = f"📊 Analyzing car performance for series {target_schedule.get('series_id')}, season {season_id}, week {target_week}"
-            if track_id_filter:
-                log_msg += f", track {track_id_filter}"
-            print(log_msg)
+            logger.debug("Analyzing car performance for series %s, season %s, week %s%s",
+                         target_schedule.get('series_id'), season_id, target_week,
+                         f", track {track_id_filter}" if track_id_filter else "")
 
             if self._meta_analyzer is None:
                 self._meta_analyzer = MetaAnalyzer(client, database=self.db)
@@ -510,7 +516,7 @@ class iRacingIntegration:
                 series_id_num,
                 season_id,
                 target_week,
-                max_results=300,  # Limit to 300 races to prevent Discord timeout (15min token expiry)
+                max_results=100,  # 100 races is statistically sufficient; subsession fetches capped at 50
                 track_id=track_id_filter  # Filter to specific track if provided
             )
 
@@ -519,28 +525,28 @@ class iRacingIntegration:
 
             # If no data found and force_analysis is True, try previous seasons
             if force_analysis and (not meta_stats or not meta_stats.get('cars')):
-                print(f"⚠️ No data found for current season {season_id}, looking back at previous seasons...")
+                logger.debug("No data found for current season %s, looking back at previous seasons...", season_id)
 
                 # Try up to 4 previous seasons (one year back)
                 for season_offset in range(1, 5):
                     previous_season_id = season_id - season_offset
-                    print(f"🔍 Trying season {previous_season_id}...")
+                    logger.debug("Trying season %s...", previous_season_id)
 
                     try:
                         meta_stats = await self._meta_analyzer.get_meta_for_series(
                             series_id_num,
                             previous_season_id,
                             target_week,
-                            max_results=300,  # Limit to prevent timeout
+                            max_results=100,  # 100 races is statistically sufficient
                             track_id=track_id_filter
                         )
 
                         if meta_stats and meta_stats.get('cars'):
-                            print(f"✅ Found data in season {previous_season_id}")
+                            logger.debug("Found data in season %s", previous_season_id)
                             season_analyzed = previous_season_id
                             break
                     except Exception as e:
-                        print(f"⚠️ Error checking season {previous_season_id}: {e}")
+                        logger.debug("Error checking season %s: %s", previous_season_id, e)
                         continue
 
             # Merge performance statistics into car data
@@ -549,7 +555,7 @@ class iRacingIntegration:
 
                 # If we're analyzing from results (no car restrictions), build cars list from meta_stats
                 if analyze_from_results:
-                    print(f"🏁 Building car list from actual race results ({len(perf_stats_by_car)} cars found)")
+                    logger.debug("Building car list from actual race results (%s cars found)", len(perf_stats_by_car))
                     cars = []
                     for car_id, stats in perf_stats_by_car.items():
                         if car_id in car_dict:
@@ -557,6 +563,7 @@ class iRacingIntegration:
                             cars.append({
                                 'car_id': car_id,
                                 'car_name': car_info.get('car_name', f'Car {car_id}'),
+                                'car_class_name': car_class_lookup.get(car_id, ''),
                                 'logo_url': car_info.get('logo', ''),
                                 'avg_lap_time': stats.get('avg_lap_time'),
                                 'fastest_lap_time': stats.get('fastest_lap_time'),
@@ -607,9 +614,7 @@ class iRacingIntegration:
             }
 
         except Exception as e:
-            print(f"❌ Error getting meta chart data: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error("Error getting meta chart data: %s", e, exc_info=True)
             return None
 
     async def get_all_cars(self) -> List[Dict]:
@@ -637,7 +642,7 @@ class iRacingIntegration:
             return []
 
         except Exception as e:
-            print(f"❌ Error getting cars: {e}")
+            logger.error("Error getting cars: %s", e)
             return []
 
     async def get_all_tracks(self) -> List[Dict]:
@@ -664,8 +669,196 @@ class iRacingIntegration:
             return []
 
         except Exception as e:
-            print(f"❌ Error getting tracks: {e}")
+            logger.error("Error getting tracks: %s", e)
             return []
+
+    async def get_all_car_classes(self) -> List[Dict]:
+        """
+        Get all car class definitions cached.
+
+        Returns:
+            List of car class dicts with car_class_id, name, cars_in_class, etc.
+        """
+        if self._car_classes_cache:
+            return self._car_classes_cache
+
+        try:
+            client = await self._get_client()
+            car_classes = await client.get_car_classes()
+
+            if car_classes:
+                if isinstance(car_classes, dict):
+                    car_classes = list(car_classes.values()) if car_classes else []
+
+                self._car_classes_cache = car_classes
+                return car_classes
+
+            return []
+
+        except Exception as e:
+            logger.error("Error getting car classes: %s", e)
+            return []
+
+    async def build_car_class_lookup(self) -> Dict[int, str]:
+        """
+        Build a lookup mapping car_id -> car_class_name.
+
+        Parses the car class data to create a reverse lookup from individual
+        car IDs to their class name (e.g., car_id 132 -> "GT3").
+
+        Returns:
+            Dict mapping car_id (int) to class name (str)
+        """
+        car_classes = await self.get_all_car_classes()
+        lookup = {}
+
+        for car_class in car_classes:
+            class_name = car_class.get('name', car_class.get('short_name', 'Unknown'))
+            # cars_in_class is a list of dicts with car_id
+            cars_in_class = car_class.get('cars_in_class', [])
+            for car_entry in cars_in_class:
+                car_id = car_entry.get('car_id')
+                if car_id is not None:
+                    lookup[car_id] = class_name
+
+        logger.debug("Built car class lookup: %d cars mapped to %d classes",
+                      len(lookup), len(car_classes))
+        return lookup
+
+    # ── Asset methods ──────────────────────────────────────────────────
+
+    IRACING_IMAGE_BASE = "https://images-static.iracing.com"
+
+    async def get_car_assets(self) -> Dict:
+        """
+        Get car asset paths (logos, images) cached.
+
+        Returns:
+            Dict mapping car_id (str) -> asset info dict with keys like
+            'logo', 'car_make', 'car_model', 'small_image', 'sponsor_logo', etc.
+            Paths are relative to images-static.iracing.com.
+        """
+        if self._car_assets_cache:
+            return self._car_assets_cache
+
+        try:
+            client = await self._get_client()
+            assets = await client.get_car_assets()
+            if assets and isinstance(assets, dict):
+                self._car_assets_cache = assets
+                return assets
+            return {}
+        except Exception as e:
+            logger.error("Error getting car assets: %s", e)
+            return {}
+
+    async def get_track_assets(self) -> Dict:
+        """
+        Get track asset paths (logos, maps, images) cached.
+
+        Returns:
+            Dict mapping track_id (str) -> asset info dict with keys like
+            'logo', 'small_image', 'large_image', 'track_map', 'track_map_layers', etc.
+        """
+        if self._track_assets_cache:
+            return self._track_assets_cache
+
+        try:
+            client = await self._get_client()
+            assets = await client.get_track_assets()
+            if assets and isinstance(assets, dict):
+                self._track_assets_cache = assets
+                return assets
+            return {}
+        except Exception as e:
+            logger.error("Error getting track assets: %s", e)
+            return {}
+
+    async def get_series_assets(self) -> Dict:
+        """
+        Get series asset paths (logos, artwork) cached.
+
+        Returns:
+            Dict mapping series_id (str) -> asset info dict with keys like
+            'logo', 'large_image', 'small_image'.
+        """
+        if self._series_assets_cache:
+            return self._series_assets_cache
+
+        try:
+            client = await self._get_client()
+            assets = await client.get_series_assets()
+            if assets and isinstance(assets, dict):
+                self._series_assets_cache = assets
+                return assets
+            return {}
+        except Exception as e:
+            logger.error("Error getting series assets: %s", e)
+            return {}
+
+    def get_asset_url(self, relative_path: str) -> Optional[str]:
+        """
+        Convert a relative asset path to a full URL.
+
+        Args:
+            relative_path: Path relative to images-static.iracing.com
+
+        Returns:
+            Full URL string, or None if path is empty
+        """
+        if not relative_path:
+            return None
+        # Strip leading slash if present
+        path = relative_path.lstrip('/')
+        return f"{self.IRACING_IMAGE_BASE}/{path}"
+
+    async def get_car_image_url(self, car_id: int, image_type: str = 'small_image') -> Optional[str]:
+        """
+        Get the full image URL for a specific car.
+
+        Args:
+            car_id: iRacing car ID
+            image_type: Type of image ('logo', 'small_image', 'car_make', 'sponsor_logo')
+
+        Returns:
+            Full URL or None
+        """
+        assets = await self.get_car_assets()
+        car_asset = assets.get(str(car_id), {})
+        path = car_asset.get(image_type, '')
+        return self.get_asset_url(path)
+
+    async def get_track_image_url(self, track_id: int, image_type: str = 'small_image') -> Optional[str]:
+        """
+        Get the full image URL for a specific track.
+
+        Args:
+            track_id: iRacing track ID
+            image_type: Type of image ('logo', 'small_image', 'large_image', 'track_map')
+
+        Returns:
+            Full URL or None
+        """
+        assets = await self.get_track_assets()
+        track_asset = assets.get(str(track_id), {})
+        path = track_asset.get(image_type, '')
+        return self.get_asset_url(path)
+
+    async def get_series_image_url(self, series_id: int, image_type: str = 'logo') -> Optional[str]:
+        """
+        Get the full image URL for a specific series.
+
+        Args:
+            series_id: iRacing series ID
+            image_type: Type of image ('logo', 'large_image', 'small_image')
+
+        Returns:
+            Full URL or None
+        """
+        assets = await self.get_series_assets()
+        series_asset = assets.get(str(series_id), {})
+        path = series_asset.get(image_type, '')
+        return self.get_asset_url(path)
 
     async def get_track_name(self, track_id: int) -> str:
         """
@@ -722,7 +915,7 @@ class iRacingIntegration:
             if config_name:
                 track_lookup_by_config[(track_id, config_name.strip().lower())] = track
 
-        print(f"🧪 Raw schedule entries received: {len(schedule_entries)}")
+        logger.debug("Raw schedule entries received: %d", len(schedule_entries))
         unique_weeks: Dict[int, Dict] = {}
 
         def _is_unknown(entry: Dict) -> bool:
@@ -744,7 +937,7 @@ class iRacingIntegration:
             entry = dict(raw_entry)
 
             if index < 3:
-                print(f"📄 Raw entry {index}: {entry}")
+                logger.debug("Raw entry %s: %s", index, entry)
 
             week_num = entry.get('race_week_num')
             if week_num in (None, ''):
@@ -865,10 +1058,10 @@ class iRacingIntegration:
                 unique_weeks[week_num] = entry
 
             if len(unique_weeks) <= 5:
-                print(f"➡️ Week {week_num} track_id={track_id} config={track_config_id} name='{display_name}'")
+                logger.debug("Week %s track_id=%s config=%s name='%s'", week_num, track_id, track_config_id, display_name)
 
         weeks = [unique_weeks[key] for key in sorted(unique_weeks.keys())]
-        print(f"🧮 Normalized to {len(weeks)} unique weeks")
+        logger.debug("Normalized to %d unique weeks", len(weeks))
         return weeks[:12]
 
     async def get_series_schedule(self, series_id: int, season_id: int) -> List[Dict]:
@@ -882,11 +1075,11 @@ class iRacingIntegration:
         Returns:
             List of schedule entries (one per week)
         """
-        print(f"📣 Fetching schedule for series_id={series_id}, season_id={season_id}")
+        logger.debug("Fetching schedule for series_id=%s, season_id=%s", series_id, season_id)
         cache_key = f'schedule_{series_id}_{season_id}'
         cached = self._get_cache(cache_key)
         if cached:
-            print(f"✅ Schedule cache hit for series {series_id}, season {season_id}: {len(cached)} entries")
+            logger.debug("Schedule cache hit for series %s, season %s: %d entries", series_id, season_id, len(cached))
             return cached
 
         try:
@@ -895,29 +1088,29 @@ class iRacingIntegration:
             # Try race guide endpoint first for detailed historical data
             try:
                 race_sessions = await client.get_series_race_schedule(season_id)
-                print(f"📦 Race guide returned {len(race_sessions) if race_sessions else 0} sessions")
+                logger.debug("Race guide returned %d sessions", len(race_sessions) if race_sessions else 0)
             except Exception as e:
-                print(f"⚠️ Race guide lookup failed for season {season_id}: {e}")
+                logger.warning("Race guide lookup failed for season %s: %s", season_id, e)
                 race_sessions = None
 
             if race_sessions:
                 filtered_sessions = [s for s in race_sessions if s.get('series_id') == series_id and s.get('season_id') == season_id]
                 if filtered_sessions:
-                    print(f"🧭 Race guide sessions after filtering: {len(filtered_sessions)}")
+                    logger.debug("Race guide sessions after filtering: %d", len(filtered_sessions))
                     enriched = await self._enrich_schedule_entries(filtered_sessions)
                     if enriched and len(enriched) >= 12 and all(e.get('track_name') != 'Unknown Track' for e in enriched):
                         self._set_cache(cache_key, enriched, ttl_minutes=60)
                         return enriched
                     else:
-                        print(f"ℹ️ Race guide returned {len(enriched) if enriched else 0} usable weeks; falling back to season schedules")
+                        logger.debug("Race guide returned %d usable weeks; falling back to season schedules", len(enriched) if enriched else 0)
                 else:
-                    print("ℹ️ Race guide returned no sessions for requested series/season")
+                    logger.debug("Race guide returned no sessions for requested series/season")
 
-            print(f"🔍 Getting series seasons data")
+            logger.debug("Getting series seasons data")
             all_seasons = await client.get_series_seasons()
 
             if not all_seasons:
-                print(f"❌ No seasons data returned")
+                logger.warning("No seasons data returned")
                 return []
 
             # Find the matching season
@@ -928,14 +1121,14 @@ class iRacingIntegration:
                     break
 
             if not target_season:
-                print(f"❌ Season {season_id} not found in seasons data")
+                logger.warning("Season %s not found in seasons data", season_id)
                 return []
 
             # Extract schedules from the season
             schedules = target_season.get('schedules', [])
-            print(f"📅 Found {len(schedules)} schedule entries for season {season_id}")
+            logger.debug("Found %d schedule entries for season %s", len(schedules), season_id)
             if schedules:
-                print(f"🧾 Season schedule sample: {schedules[0]}")
+                logger.debug("Season schedule sample: %s", schedules[0])
 
             filtered_schedules: List[Dict] = []
             for schedule_entry in schedules:
@@ -947,9 +1140,9 @@ class iRacingIntegration:
                     filtered_schedules.append(schedule_entry)
 
             if filtered_schedules:
-                print(f"✅ Filtered to {len(filtered_schedules)} schedule entries for series {series_id}")
+                logger.debug("Filtered to %d schedule entries for series %s", len(filtered_schedules), series_id)
             elif schedules:
-                print(f"⚠️ No schedule entries matched series_id {series_id}; using all {len(schedules)} entries")
+                logger.debug("No schedule entries matched series_id %s; using all %d entries", series_id, len(schedules))
                 filtered_schedules = schedules
 
             if filtered_schedules:
@@ -960,9 +1153,7 @@ class iRacingIntegration:
             return []
 
         except Exception as e:
-            print(f"❌ Error getting series schedule: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error("Error getting series schedule: %s", e, exc_info=True)
             return []
 
     async def get_race_times(self, series_id: int, season_id: int, race_week_num: Optional[int] = None) -> Optional[List[Dict]]:
@@ -981,7 +1172,7 @@ class iRacingIntegration:
             client = await self._get_client()
             return await client.get_race_times(series_id, season_id, race_week_num)
         except Exception as e:
-            print(f"❌ Error getting race times: {e}")
+            logger.error("Error getting race times: %s", e)
             return []
 
     async def close(self):

@@ -754,6 +754,20 @@ class HelpSystem:
                 ],
                 "related": ["iracing_timeslots", "iracing_schedule"]
             },
+            "iracing_bests": {
+                "usage": "/iracing_bests [driver_name]",
+                "description": "View personal best lap times across cars and tracks",
+                "details": [
+                    "Shows your fastest laps from iRacing",
+                    "Covers all cars and tracks you've driven",
+                    "Leave blank to view your own bests"
+                ],
+                "examples": [
+                    "/iracing_bests - Your personal bests",
+                    "/iracing_bests 'Max Verstappen'"
+                ],
+                "related": ["iracing_profile", "iracing_results", "iracing_history"]
+            },
             # iRacing Team Commands
             "iracing_team_create": {
                 "usage": "/iracing_team_create <name> <tag> [description]",
@@ -924,7 +938,7 @@ class HelpSystem:
         ]
 
         categories_bottom = [
-            ("iracing", "iRacing", "13 driver/series commands"),
+            ("iracing", "iRacing", "14 driver/series commands"),
             ("iracing_teams", "iRacing Teams", "Team management (6 commands)"),
             ("iracing_events", "iRacing Events", "Team event scheduling (4 commands)"),
             ("monitoring", "Monitoring", "RSS, GitHub, price watchlists (Admin)"),
@@ -1247,6 +1261,7 @@ class HelpSystem:
                 ("iracing_series_popularity", "Popular series charts"),
                 ("iracing_timeslots", "Race session times"),
                 ("iracing_upcoming_races", "Upcoming official races"),
+                ("iracing_bests", "Personal best lap times"),
             ],
             "related_categories": ["iracing_teams", "iracing_events"]
         },

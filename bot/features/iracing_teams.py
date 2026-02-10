@@ -3,9 +3,12 @@ iRacing Team Management System
 Handles team creation, member management, events, and scheduling
 """
 
+import logging
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict
 import discord
+
+logger = logging.getLogger(__name__)
 
 
 class iRacingTeamManager:
@@ -45,11 +48,11 @@ class iRacingTeamManager:
                         team_id = result[0]
                         # Automatically add creator as team manager
                         self.add_team_member(team_id, created_by, role='manager')
-                        print(f"✅ Created team: {team_name} (ID: {team_id})")
+                        logger.info("Created team: %s (ID: %s)", team_name, team_id)
                         return team_id
                     return None
         except Exception as e:
-            print(f"❌ Error creating team: {e}")
+            logger.error("Error creating team: %s", e)
             return None
 
     def add_team_member(self, team_id: int, discord_user_id: int, role: str = 'driver', notes: str = None) -> bool:
@@ -75,10 +78,10 @@ class iRacingTeamManager:
                         ON CONFLICT (team_id, discord_user_id)
                         DO UPDATE SET role = EXCLUDED.role, is_active = TRUE
                     """, (team_id, discord_user_id, role, notes))
-                    print(f"✅ Added user {discord_user_id} to team {team_id}")
+                    logger.info("Added user %s to team %s", discord_user_id, team_id)
                     return True
         except Exception as e:
-            print(f"❌ Error adding team member: {e}")
+            logger.error("Error adding team member: %s", e)
             return False
 
     def remove_team_member(self, team_id: int, discord_user_id: int) -> bool:
@@ -94,7 +97,7 @@ class iRacingTeamManager:
                     """, (team_id, discord_user_id))
                     return True
         except Exception as e:
-            print(f"❌ Error removing team member: {e}")
+            logger.error("Error removing team member: %s", e)
             return False
 
     def get_user_teams(self, discord_user_id: int, guild_id: int) -> List[Dict]:
@@ -123,7 +126,7 @@ class iRacingTeamManager:
                         'description': row[4]
                     } for row in results]
         except Exception as e:
-            print(f"❌ Error getting user teams: {e}")
+            logger.error("Error getting user teams: %s", e)
             return []
 
     def get_team_members(self, team_id: int) -> List[Dict]:
@@ -149,7 +152,7 @@ class iRacingTeamManager:
                         'iracing_name': row[4]
                     } for row in results]
         except Exception as e:
-            print(f"❌ Error getting team members: {e}")
+            logger.error("Error getting team members: %s", e)
             return []
 
     def get_team_info(self, team_id: int) -> Optional[Dict]:
@@ -177,7 +180,7 @@ class iRacingTeamManager:
                         }
                     return None
         except Exception as e:
-            print(f"❌ Error getting team info: {e}")
+            logger.error("Error getting team info: %s", e)
             return None
 
     def list_server_teams(self, guild_id: int) -> List[Dict]:
@@ -206,7 +209,7 @@ class iRacingTeamManager:
                         'member_count': row[5]
                     } for row in results]
         except Exception as e:
-            print(f"❌ Error listing server teams: {e}")
+            logger.error("Error listing server teams: %s", e)
             return []
 
     # ==================== EVENT MANAGEMENT ====================
@@ -248,11 +251,11 @@ class iRacingTeamManager:
                     result = cur.fetchone()
                     if result:
                         event_id = result[0]
-                        print(f"✅ Created event: {event_name} (ID: {event_id})")
+                        logger.info("Created event: %s (ID: %s)", event_name, event_id)
                         return event_id
                     return None
         except Exception as e:
-            print(f"❌ Error creating event: {e}")
+            logger.error("Error creating event: %s", e)
             return None
 
     def get_team_events(self, team_id: int, upcoming_only: bool = True) -> List[Dict]:
@@ -288,7 +291,7 @@ class iRacingTeamManager:
                         'is_cancelled': row[8]
                     } for row in results]
         except Exception as e:
-            print(f"❌ Error getting team events: {e}")
+            logger.error("Error getting team events: %s", e)
             return []
 
     # ==================== DRIVER AVAILABILITY ====================
@@ -325,7 +328,7 @@ class iRacingTeamManager:
                     """, (event_id, discord_user_id, status, available_from, available_until, notes))
                     return True
         except Exception as e:
-            print(f"❌ Error setting driver availability: {e}")
+            logger.error("Error setting driver availability: %s", e)
             return False
 
     def get_event_availability(self, event_id: int) -> List[Dict]:
@@ -354,7 +357,7 @@ class iRacingTeamManager:
                         'iracing_name': row[6]
                     } for row in results]
         except Exception as e:
-            print(f"❌ Error getting event availability: {e}")
+            logger.error("Error getting event availability: %s", e)
             return []
 
     # ==================== STINT SCHEDULING ====================
@@ -382,7 +385,7 @@ class iRacingTeamManager:
                           stint_duration_minutes, role, notes))
                     return True
         except Exception as e:
-            print(f"❌ Error creating stint: {e}")
+            logger.error("Error creating stint: %s", e)
             return False
 
     def get_stint_schedule(self, event_id: int) -> List[Dict]:
@@ -411,7 +414,7 @@ class iRacingTeamManager:
                         'iracing_name': row[6]
                     } for row in results]
         except Exception as e:
-            print(f"❌ Error getting stint schedule: {e}")
+            logger.error("Error getting stint schedule: %s", e)
             return []
 
     # ==================== INVITATION MANAGEMENT ====================
@@ -432,7 +435,7 @@ class iRacingTeamManager:
                         WHERE team_id = %s AND discord_user_id = %s AND status = 'pending'
                     """, (team_id, discord_user_id))
                     if cur.fetchone():
-                        print(f"⚠️ User {discord_user_id} already has pending invite to team {team_id}")
+                        logger.debug("User %s already has pending invite to team %s", discord_user_id, team_id)
                         return -1  # Already has pending invite
 
                     # Check if user is already a member
@@ -441,7 +444,7 @@ class iRacingTeamManager:
                         WHERE team_id = %s AND discord_user_id = %s AND is_active = TRUE
                     """, (team_id, discord_user_id))
                     if cur.fetchone():
-                        print(f"⚠️ User {discord_user_id} is already a member of team {team_id}")
+                        logger.debug("User %s is already a member of team %s", discord_user_id, team_id)
                         return -2  # Already a member
 
                     cur.execute("""
@@ -452,11 +455,11 @@ class iRacingTeamManager:
 
                     result = cur.fetchone()
                     if result:
-                        print(f"✅ Created invitation {result[0]} for user {discord_user_id} to team {team_id}")
+                        logger.info("Created invitation %s for user %s to team %s", result[0], discord_user_id, team_id)
                         return result[0]
                     return None
         except Exception as e:
-            print(f"❌ Error creating invitation: {e}")
+            logger.error("Error creating invitation: %s", e)
             return None
 
     def get_user_invitations(self, discord_user_id: int, guild_id: int) -> List[Dict]:
@@ -485,7 +488,7 @@ class iRacingTeamManager:
                         'created_at': row[6]
                     } for row in results]
         except Exception as e:
-            print(f"❌ Error getting user invitations: {e}")
+            logger.error("Error getting user invitations: %s", e)
             return []
 
     def accept_invitation(self, invitation_id: int, discord_user_id: int) -> bool:
@@ -520,10 +523,10 @@ class iRacingTeamManager:
                         DO UPDATE SET role = EXCLUDED.role, is_active = TRUE
                     """, (team_id, discord_user_id, role))
 
-                    print(f"✅ User {discord_user_id} accepted invitation to team {team_id}")
+                    logger.info("User %s accepted invitation to team %s", discord_user_id, team_id)
                     return True
         except Exception as e:
-            print(f"❌ Error accepting invitation: {e}")
+            logger.error("Error accepting invitation: %s", e)
             return False
 
     def decline_invitation(self, invitation_id: int, discord_user_id: int) -> bool:
@@ -540,11 +543,11 @@ class iRacingTeamManager:
 
                     result = cur.fetchone()
                     if result:
-                        print(f"✅ User {discord_user_id} declined invitation {invitation_id}")
+                        logger.info("User %s declined invitation %s", discord_user_id, invitation_id)
                         return True
                     return False
         except Exception as e:
-            print(f"❌ Error declining invitation: {e}")
+            logger.error("Error declining invitation: %s", e)
             return False
 
     def get_team_by_name(self, guild_id: int, team_name: str) -> Optional[Dict]:
@@ -570,7 +573,7 @@ class iRacingTeamManager:
                         }
                     return None
         except Exception as e:
-            print(f"❌ Error getting team by name: {e}")
+            logger.error("Error getting team by name: %s", e)
             return None
 
     def update_member_role(self, team_id: int, discord_user_id: int, new_role: str) -> bool:
@@ -587,11 +590,11 @@ class iRacingTeamManager:
 
                     result = cur.fetchone()
                     if result:
-                        print(f"✅ Updated role for user {discord_user_id} in team {team_id} to {new_role}")
+                        logger.info("Updated role for user %s in team %s to %s", discord_user_id, team_id, new_role)
                         return True
                     return False
         except Exception as e:
-            print(f"❌ Error updating member role: {e}")
+            logger.error("Error updating member role: %s", e)
             return False
 
     def get_managed_teams(self, user_id: int, guild_id: int) -> List[Dict]:
@@ -622,7 +625,7 @@ class iRacingTeamManager:
                         'member_count': row[3]
                     } for row in results]
         except Exception as e:
-            print(f"❌ Error getting managed teams: {e}")
+            logger.error("Error getting managed teams: %s", e)
             return []
 
     # ==================== EVENT REMINDERS ====================
@@ -679,7 +682,7 @@ class iRacingTeamManager:
                         'reminder_type': row[10]
                     } for row in results if row[10] is not None]
         except Exception as e:
-            print(f"❌ Error getting events needing reminders: {e}")
+            logger.error("Error getting events needing reminders: %s", e)
             return []
 
     def mark_event_reminder_sent(self, event_id: int, reminder_type: str) -> bool:
@@ -701,10 +704,10 @@ class iRacingTeamManager:
                         """, (event_id,))
                     else:
                         return False
-                    print(f"✅ Marked {reminder_type} reminder sent for event {event_id}")
+                    logger.info("Marked %s reminder sent for event %s", reminder_type, event_id)
                     return True
         except Exception as e:
-            print(f"❌ Error marking reminder sent: {e}")
+            logger.error("Error marking reminder sent: %s", e)
             return False
 
     def get_event_details(self, event_id: int) -> Optional[Dict]:
@@ -741,5 +744,5 @@ class iRacingTeamManager:
                         }
                     return None
         except Exception as e:
-            print(f"❌ Error getting event details: {e}")
+            logger.error("Error getting event details: %s", e)
             return None

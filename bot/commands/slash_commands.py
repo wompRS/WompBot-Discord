@@ -783,12 +783,12 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                             f"Driver {cust_id}"
                         )
                         # Log what we extracted for debugging
-                        print(f"🔍 Link: Extracted display_name='{display_name}' from profile for cust_id={cust_id}")
-                        print(f"   profile.get('display_name')='{profile.get('display_name')}'")
-                        print(f"   profile.get('name')='{profile.get('name')}'")
+                        logger.debug("Link: Extracted display_name='%s' from profile for cust_id=%s", display_name, cust_id)
+                        logger.debug("profile.get('display_name')='%s'", profile.get('display_name'))
+                        logger.debug("profile.get('name')='%s'", profile.get('name'))
                     else:
                         display_name = f"Driver {cust_id}"
-                        print(f"⚠️ Link: Profile is not a dict, using fallback: {display_name}")
+                        logger.warning("Link: Profile is not a dict, using fallback: %s", display_name)
                 else:
                     await interaction.followup.send(
                         f"❌ Could not find iRacing profile for customer ID {cust_id}\n"
@@ -828,10 +828,8 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                 await interaction.followup.send("❌ Failed to link accounts")
     
         except Exception as e:
-            await interaction.followup.send(f"❌ Error linking account: {str(e)}")
-            print(f"❌ iRacing link error: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error("iRacing link error: %s", e, exc_info=True)
+            await interaction.followup.send("❌ Error linking account. Please try again later.")
     
     @bot.tree.command(name="iracing_profile", description="View iRacing driver profile and stats")
     @app_commands.describe(driver_name="Driver display name, real name, or customer ID (optional if linked)")
@@ -895,7 +893,7 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                 try:
                     await iracing.link_discord_to_iracing(interaction.user.id, cust_id, display_name)
                 except Exception as e:
-                    print(f"⚠️ Non-critical: Failed to update iRacing link: {e}")  # Not critical if update fails
+                    logger.debug("Non-critical: Failed to update iRacing link: %s", e)
     
             if not iracing_viz:
                 # Fallback to simple embed if visualizer failed to load
@@ -929,35 +927,77 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
             # Send as Discord file attachment
             file = discord.File(fp=image_buffer, filename="licenses.png")
     
-            # Also fetch and display career stats
-            career_stats = await iracing.get_driver_career_stats(cust_id)
-    
+            # Fetch career stats and member summary in parallel for richer data
+            client = await iracing._get_client()
+            career_stats, member_summary = await asyncio.gather(
+                iracing.get_driver_career_stats(cust_id),
+                client.get_member_summary(cust_id=cust_id),
+                return_exceptions=True,
+            )
+
+            # Handle exceptions from gather
+            if isinstance(career_stats, Exception):
+                logger.warning("Failed to get career stats: %s", career_stats)
+                career_stats = None
+            if isinstance(member_summary, Exception):
+                logger.warning("Failed to get member summary: %s", member_summary)
+                member_summary = None
+
             embed = discord.Embed(
                 title=f"🏁 {display_name}",
                 description=f"Member since {profile.get('member_since', 'Unknown')}",
                 color=discord.Color.blue()
             )
-    
+
             if career_stats:
-                # Add career stats summary
                 stats = career_stats.get('stats', [])
                 if stats:
                     total_starts = sum(s.get('starts', 0) for s in stats)
                     total_wins = sum(s.get('wins', 0) for s in stats)
                     total_podiums = sum(s.get('top3', 0) for s in stats)
+                    total_top5 = sum(s.get('top5', 0) for s in stats)
                     total_poles = sum(s.get('poles', 0) for s in stats)
-    
-                    embed.add_field(name="Career Stats",
-                                  value=f"**Starts:** {total_starts}\n**Wins:** {total_wins}\n**Podiums:** {total_podiums}\n**Poles:** {total_poles}",
-                                  inline=True)
-    
+                    total_laps = sum(s.get('total_laps', 0) for s in stats)
+                    total_laps_led = sum(s.get('laps_led', 0) for s in stats)
+
+                    career_text = (
+                        f"**Starts:** {total_starts:,}\n"
+                        f"**Wins:** {total_wins:,}\n"
+                        f"**Podiums:** {total_podiums:,}\n"
+                        f"**Top 5:** {total_top5:,}\n"
+                        f"**Poles:** {total_poles:,}"
+                    )
+                    embed.add_field(name="Career Stats", value=career_text, inline=True)
+
+                    if total_laps > 0:
+                        laps_text = f"**Total Laps:** {total_laps:,}\n**Laps Led:** {total_laps_led:,}"
+                        if total_starts > 0:
+                            win_pct = (total_wins / total_starts) * 100
+                            laps_text += f"\n**Win Rate:** {win_pct:.1f}%"
+                        embed.add_field(name="Laps", value=laps_text, inline=True)
+
+            # Add member summary data if available
+            if member_summary and isinstance(member_summary, dict):
+                summary_parts = []
+                for key in ('this_year', 'recent'):
+                    section = member_summary.get(key)
+                    if section and isinstance(section, list):
+                        for cat in section[:2]:
+                            cat_name = cat.get('category', 'Unknown')
+                            starts = cat.get('starts', 0)
+                            avg_finish = cat.get('avg_finish', 0)
+                            if starts > 0:
+                                summary_parts.append(f"**{cat_name}:** {starts} races, avg P{avg_finish:.1f}")
+                        break
+
+                if summary_parts:
+                    embed.add_field(name="Recent Activity", value="\n".join(summary_parts), inline=False)
+
             await interaction.followup.send(embed=embed, file=file)
-    
+
         except Exception as e:
-            await interaction.followup.send(f"❌ Error getting profile: {str(e)}")
-            print(f"❌ iRacing profile error: {e}")
-            import traceback
-            traceback.print_exc()
+            await interaction.followup.send("❌ Error getting profile")
+            logger.error("iRacing profile error: %s", e, exc_info=True)
     
     async def series_autocomplete(
         interaction: discord.Interaction,
@@ -965,7 +1005,7 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
     ) -> list[app_commands.Choice[str]]:
         """Autocomplete function for series names"""
         if not iracing:
-            print("⚠️ Series autocomplete: iRacing integration not available")
+            logger.warning("Series autocomplete: iRacing integration not available")
             return []
 
         try:
@@ -975,7 +1015,7 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
             # Try to use cache first for performance
             if series_autocomplete_cache and series_autocomplete_cache.get('data'):
                 all_series = series_autocomplete_cache['data']
-                print(f"✅ Series autocomplete: Using cached data ({len(all_series)} series)")
+                logger.debug("Series autocomplete: Using cached data (%d series)", len(all_series))
             else:
                 # No cache - fetch with timeout close to Discord's 3-second limit
                 try:
@@ -983,17 +1023,17 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                     if all_series:
                         series_autocomplete_cache['data'] = all_series
                         series_autocomplete_cache['time'] = time.time()
-                        print(f"✅ Series autocomplete: Loaded {len(all_series)} series (cache created)")
+                        logger.debug("Series autocomplete: Loaded %d series (cache created)", len(all_series))
                     else:
-                        print(f"⚠️ Series autocomplete: No series data returned")
+                        logger.warning("Series autocomplete: No series data returned")
                         # Return helpful message instead of empty list
                         return [app_commands.Choice(name="No series data available - try again in a moment", value="")]
                 except asyncio.TimeoutError:
-                    print(f"⚠️ Series autocomplete: Timeout - fetching series data")
+                    logger.warning("Series autocomplete: Timeout fetching series data")
                     # Return helpful message instead of empty list
                     return [app_commands.Choice(name="Loading series data... please try again", value="")]
                 except Exception as e:
-                    print(f"⚠️ Series autocomplete fetch error: {e}")
+                    logger.warning("Series autocomplete fetch error: %s", e)
                     # Return helpful message instead of empty list
                     return [app_commands.Choice(name="Error loading series - try again in a moment", value="")]
     
@@ -1039,13 +1079,11 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                 for s in matches[:25]
             ]
     
-            print(f"✅ Series autocomplete: Returning {len(choices)} choices for '{current}'")
+            logger.debug("Series autocomplete: Returning %d choices for '%s'", len(choices), current)
             return choices
 
         except Exception as e:
-            print(f"❌ Series autocomplete error: {type(e).__name__}: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error("Series autocomplete error: %s: %s", type(e).__name__, e, exc_info=True)
             return []
     
     @bot.tree.command(name="iracing_schedule", description="View iRacing race schedule for a series or category")
@@ -1117,12 +1155,12 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                 series_name = series_match.get('series_name')
                 season_id = series_match.get('season_id')
     
-                print(f"🔍 Schedule request: series_id={series_id}, season_id={season_id}, series_name={series_name}")
-    
+                logger.debug("Schedule request: series_id=%s, season_id=%s, series_name=%s", series_id, season_id, series_name)
+
                 # Get schedule for this series
                 schedule = await iracing.get_series_schedule(series_id, season_id)
-    
-                print(f"📅 Schedule API returned {len(schedule) if schedule else 0} entries")
+
+                logger.debug("Schedule API returned %d entries", len(schedule) if schedule else 0)
     
                 if not schedule or len(schedule) == 0:
                     await interaction.followup.send(f"❌ No schedule found for {series_name}")
@@ -1140,7 +1178,7 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                 # Filter series by category (category_id is a string, not a number)
                 category_series = [s for s in all_series if s.get('category_id') == category]
     
-                print(f"🔍 Looking for category_id='{category}', found {len(category_series)} series (before dedup)")
+                logger.debug("Looking for category_id='%s', found %d series (before dedup)", category, len(category_series))
     
                 # Deduplicate by series_id - keep only one season per series (prefer active=True)
                 series_dict = {}
@@ -1151,7 +1189,7 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                         series_dict[series_id] = s
     
                 category_series = list(series_dict.values())
-                print(f"🔍 After deduplication: {len(category_series)} unique series")
+                logger.debug("After deduplication: %d unique series", len(category_series))
     
                 if not category_series:
                     await interaction.followup.send(f"❌ No series found for category: {category}")
@@ -1187,11 +1225,9 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                     # Debug: check first schedule entry
                     if schedules and series_name == category_series[0].get('series_name'):
                         first_week = schedules[0]
-                        print(f"🔍 First schedule entry keys for {series_name}: {list(first_week.keys())}")
-                        print(f"🔍 First week start_date: {first_week.get('start_date')}")
-                        print(f"🔍 First week race_week_num: {first_week.get('race_week_num')}")
-                        print(f"🔍 Total schedules: {len(schedules)}")
-                        print(f"🔍 Current time: {now}")
+                        logger.debug("First schedule entry keys for %s: %s", series_name, list(first_week.keys()))
+                        logger.debug("First week start_date: %s, race_week_num: %s, total schedules: %d",
+                                     first_week.get('start_date'), first_week.get('race_week_num'), len(schedules))
     
                     for week_data in schedules:
                         start_date = week_data.get('start_date')
@@ -1205,14 +1241,13 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
     
                                 if week_start <= now < week_end:
                                     current_week_num = week_data.get('race_week_num', 0)
-                                    print(f"✅ Found current week {current_week_num} for {series_name} (dates: {week_start.date()} to {week_end.date()})")
+                                    logger.debug("Found current week %d for %s", current_week_num, series_name)
                                     break
                             except Exception as e:
-                                print(f"⚠️ Error parsing date {start_date}: {e}")
-                                pass
-    
+                                logger.debug("Error parsing date %s: %s", start_date, e)
+
                     if current_week_num == 0 and series_name == category_series[0].get('series_name'):
-                        print(f"⚠️ No current week found for {series_name}, defaulting to 0")
+                        logger.debug("No current week found for %s, defaulting to 0", series_name)
     
                     # Find the current week's track
                     for week_data in schedules:
@@ -1248,11 +1283,9 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                 await interaction.followup.send("❌ Please specify either a series name or a category")
     
         except Exception as e:
-            await interaction.followup.send(f"❌ Error getting schedule: {str(e)}")
-            print(f"❌ iRacing schedule error: {e}")
-            import traceback
-            traceback.print_exc()
-    
+            logger.error("iRacing schedule error: %s", e, exc_info=True)
+            await interaction.followup.send("❌ Error getting schedule. Please try again later.")
+
     async def week_autocomplete(
         interaction: discord.Interaction,
         current: str,
@@ -1318,7 +1351,7 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                             break
     
         except Exception as e:
-            print(f"⚠️ Week autocomplete error: {e}")
+            logger.warning("Week autocomplete error: %s", e)
     
         # Fallback to simple week numbers
         weeks = list(range(0, 13))
@@ -1423,7 +1456,7 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
     
             season_choices = []
     
-            print(f"🔍 Season autocomplete called with series='{series_name}', current='{current}'")
+            logger.debug("Season autocomplete called with series='%s', current='%s'", series_name, current)
     
             if series_name:
                 # Try to get seasons for the specific series
@@ -1464,10 +1497,10 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                                     if current.lower() in s.name.lower() or current in str(s.value)
                                 ]
     
-                            print(f"✅ Season autocomplete returning {len(season_choices)} choices")
+                            logger.debug("Season autocomplete returning %d choices", len(season_choices))
                             return season_choices[:25]
                 except Exception as e:
-                    print(f"⚠️ Season autocomplete error: {e}")
+                    logger.warning("Season autocomplete error: %s", e)
     
             # Fallback: provide recent season IDs with year/quarter
             # Current season around 5516 (2025 S4), go back 20 seasons (5 years)
@@ -1488,7 +1521,7 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
             return season_choices[:25]
     
         except Exception as e:
-            print(f"❌ Season autocomplete error: {e}")
+            logger.error("Season autocomplete error: %s", e, exc_info=True)
             # Fallback to basic season list with year/quarter
             base = 5760
             season_choices = []
@@ -1600,10 +1633,10 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                             break
 
         except asyncio.TimeoutError:
-            print(f"⚠️ Track autocomplete: Timeout fetching track data")
+            logger.warning("Track autocomplete: Timeout fetching track data")
             return [app_commands.Choice(name="Loading track data... please try again", value="")]
         except Exception as e:
-            print(f"⚠️ Track autocomplete error: {e}")
+            logger.warning("Track autocomplete error: %s", e)
             return [app_commands.Choice(name="Error loading tracks - try again in a moment", value="")]
 
         # If no series selected or no tracks found, return helpful message
@@ -1714,9 +1747,15 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                     title=f"{series_name} - Meta Analysis",
                     color=discord.Color.blue()
                 )
-    
+
                 chart_embed.set_image(url=f"attachment://meta_{series_name.replace(' ', '_')}_week{week_num}.png")
-    
+
+                # Add series logo as thumbnail if available
+                if series_id:
+                    series_logo_url = await iracing.get_series_image_url(series_id, 'logo')
+                    if series_logo_url:
+                        chart_embed.set_thumbnail(url=series_logo_url)
+
                 # Replace the loading message with the chart
                 await interaction.edit_original_response(content=None, embed=chart_embed, attachments=[file])
             else:
@@ -1751,16 +1790,12 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                 await interaction.edit_original_response(content=None, embed=embed)
     
         except Exception as e:
+            logger.error("iRacing meta error: %s", e, exc_info=True)
             try:
-                await interaction.edit_original_response(content=f"❌ Error getting meta data: {str(e)}")
+                await interaction.edit_original_response(content="❌ Error getting meta data. Please try again later.")
             except (discord.HTTPException, discord.NotFound):
-                # If edit fails (interaction expired or deleted), try followup
-                await interaction.followup.send(f"❌ Error getting meta data: {str(e)}")
-    
-            print(f"❌ iRacing meta error: {e}")
-            import traceback
-            traceback.print_exc()
-    
+                await interaction.followup.send("❌ Error getting meta data. Please try again later.")
+
     @bot.tree.command(name="iracing_results", description="View recent iRacing race results for a driver")
     @app_commands.describe(driver_name="Driver display name, real name, or customer ID (optional if linked)")
     async def iracing_results(interaction: discord.Interaction, driver_name: str = None):
@@ -1860,10 +1895,10 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
             await interaction.followup.send(file=file)
     
         except Exception as e:
-            await interaction.followup.send(f"❌ Error getting race results: {str(e)}")
-            print(f"❌ iRacing results error: {e}")
-    
-    
+            logger.error("iRacing results error: %s", e, exc_info=True)
+            await interaction.followup.send("❌ Error getting race results. Please try again later.")
+
+
     @bot.tree.command(name="iracing_season_schedule", description="View full season schedule for an iRacing series")
     @app_commands.describe(
         series_name="Series name",
@@ -1971,9 +2006,7 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                     await interaction.followup.send(embed=embed, file=file)
                     return
                 except Exception as viz_error:
-                    print(f"⚠️ Failed to render season schedule visualization: {viz_error}")
-                    import traceback
-                    traceback.print_exc()
+                    logger.warning("Failed to render season schedule visualization: %s", viz_error, exc_info=True)
                     # Fallback to text embed below
     
             # Fallback text-based embed when visualizer unavailable
@@ -2041,12 +2074,10 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                         await interaction.followup.send(f"```\n{text_chunk}\n```")
     
         except Exception as e:
-            await interaction.followup.send(f"❌ Error getting schedule: {str(e)}")
-            print(f"❌ iRacing schedule error: {e}")
-            import traceback
-            traceback.print_exc()
-    
-    
+            logger.error("iRacing season schedule error: %s", e, exc_info=True)
+            await interaction.followup.send("❌ Error getting schedule. Please try again later.")
+
+
     @bot.tree.command(name="iracing_server_leaderboard", description="Show iRating leaderboard for this Discord server")
     @app_commands.describe(category="License category (oval/sports_car_road/formula_car_road/dirt_oval/dirt_road)")
     @app_commands.autocomplete(category=category_autocomplete)
@@ -2168,9 +2199,7 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
     
         except Exception as e:
             await interaction.followup.send(f"❌ Error generating leaderboard: {str(e)}")
-            print(f"❌ Server leaderboard error: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error("Server leaderboard error: %s", e, exc_info=True)
     
     
     IRACING_HISTORY_TIMEFRAMES = {
@@ -2179,7 +2208,7 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
         "month": ("Last 30 Days", timedelta(days=30)),
         "season": ("Last Season", timedelta(weeks=12)),
         "year": ("Last Year", timedelta(days=365)),
-        "all": ("Recent History", None),
+        "all": ("Full Career", None),
     }
     
     IRACING_HISTORY_CACHE_TTLS = {
@@ -2190,15 +2219,24 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
         "year": 24,
         "all": 24,
     }
-    
-    
+
+    # iRacing chart_data category IDs
+    IRACING_CHART_CATEGORIES = {
+        "road": (2, "Road"),
+        "oval": (1, "Oval"),
+        "dirt_oval": (3, "Dirt Oval"),
+        "dirt_road": (4, "Dirt Road"),
+    }
+
+
     @bot.tree.command(
         name="iracing_history",
-        description="Analyze rating and safety trends across your recent races",
+        description="Analyze rating and safety trends across your racing career",
     )
     @app_commands.describe(
         driver_name="iRacing display name (optional if you've linked your account)",
-        timeframe="Time range to analyze (default: Last 7 Days)",
+        timeframe="Time range to analyze (default: Last 30 Days)",
+        category="License category (default: Road)",
     )
     @app_commands.choices(
         timeframe=[
@@ -2207,15 +2245,26 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
             app_commands.Choice(name="Last 30 Days", value="month"),
             app_commands.Choice(name="Last Season (~12 weeks)", value="season"),
             app_commands.Choice(name="Last Year", value="year"),
-            app_commands.Choice(name="All Recent Races", value="all"),
-        ]
+            app_commands.Choice(name="Full Career", value="all"),
+        ],
+        category=[
+            app_commands.Choice(name="Road", value="road"),
+            app_commands.Choice(name="Oval", value="oval"),
+            app_commands.Choice(name="Dirt Oval", value="dirt_oval"),
+            app_commands.Choice(name="Dirt Road", value="dirt_road"),
+        ],
     )
     async def iracing_history(
         interaction: discord.Interaction,
         driver_name: str = None,
         timeframe: Optional[app_commands.Choice[str]] = None,
+        category: Optional[app_commands.Choice[str]] = None,
     ):
-        """Render a performance dashboard with iRating/Safety trends and key stats."""
+        """Render a performance dashboard with iRating/Safety trends and key stats.
+
+        Uses the native /data/member/chart_data endpoint for full career rating data
+        and /data/stats/member_recent_races for summary statistics.
+        """
         if not iracing or not iracing_viz:
             await interaction.response.send_message("❌ iRacing integration is not configured on this bot")
             return
@@ -2226,11 +2275,16 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
             cust_id = None
             display_name = driver_name
     
-            timeframe_key = timeframe.value if timeframe else "week"
+            timeframe_key = timeframe.value if timeframe else "month"
             timeframe_label, delta = IRACING_HISTORY_TIMEFRAMES.get(
-                timeframe_key, IRACING_HISTORY_TIMEFRAMES["week"]
+                timeframe_key, IRACING_HISTORY_TIMEFRAMES["month"]
             )
-    
+
+            category_key = category.value if category else "road"
+            category_id, category_name = IRACING_CHART_CATEGORIES.get(
+                category_key, IRACING_CHART_CATEGORIES["road"]
+            )
+
             # Resolve driver identity
             if not driver_name:
                 linked = await iracing.get_linked_iracing_id(interaction.user.id)
@@ -2257,7 +2311,8 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
             rating_points: List[Dict] = []
             summary_stats: Dict = {}
     
-            cache_payload = db.get_iracing_history_cache(cust_id, timeframe_key) if db else None
+            cache_key_suffix = f"{timeframe_key}_{category_key}"
+            cache_payload = db.get_iracing_history_cache(cust_id, cache_key_suffix) if db else None
             if cache_payload:
                 try:
                     rating_points = [
@@ -2283,21 +2338,95 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                         timeframe_label = cache_payload.get("timeframe_label", timeframe_label)
                         display_name = cache_payload.get("display_name", display_name)
                         cache_hit = True
-                        print(f"📦 Using cached history for driver {cust_id} ({timeframe_key})")
+                        logger.debug("Using cached history for driver %s (%s)", cust_id, cache_key_suffix)
                 except Exception as cache_error:
-                    print(f"⚠️ Failed to deserialize history cache: {cache_error}")
+                    logger.warning("Failed to deserialize history cache: %s", cache_error)
                     cache_hit = False
     
             if not cache_hit:
-                races = await iracing.get_driver_recent_races(cust_id, limit=200)
-                if not races:
-                    await interaction.followup.send(f"❌ No race history found for {display_name}")
+                # Fetch chart data (iRating + SR) and recent races in parallel
+                # chart_data: 2 API calls for full career rating history
+                # recent_races: 1 API call for summary stats (wins, incidents, etc.)
+                client = await iracing._get_client()
+
+                ir_data, sr_data, races = await asyncio.gather(
+                    client.get_member_chart_data(category_id, chart_type=1, cust_id=cust_id),
+                    client.get_member_chart_data(category_id, chart_type=3, cust_id=cust_id),
+                    iracing.get_driver_recent_races(cust_id, limit=200),
+                )
+
+                if not ir_data and not sr_data:
+                    await interaction.followup.send(
+                        f"❌ No {category_name} rating data found for {display_name}\n"
+                        f"💡 They may not have raced in this category."
+                    )
                     return
-    
+
+                # Parse chart_data into rating points
                 now = datetime.now(timezone.utc)
                 cutoff = now - delta if delta else None
-    
-                def parse_race_start(race: Dict) -> Optional[datetime]:
+
+                def _parse_chart_entries(data) -> Dict[datetime, float]:
+                    """Parse chart_data response into {datetime: value} dict."""
+                    lookup = {}
+                    entries = data.get('data', []) if isinstance(data, dict) else (data if isinstance(data, list) else [])
+                    for entry in entries:
+                        when = entry.get('when')
+                        value = entry.get('value')
+                        if when and value is not None:
+                            try:
+                                dt = datetime.fromisoformat(str(when).replace("Z", "+00:00"))
+                                if dt.tzinfo is None:
+                                    dt = dt.replace(tzinfo=timezone.utc)
+                                lookup[dt] = float(value)
+                            except (ValueError, TypeError):
+                                continue
+                    return lookup
+
+                ir_by_date = _parse_chart_entries(ir_data) if ir_data else {}
+                sr_by_date = {}
+                if sr_data:
+                    raw_sr = _parse_chart_entries(sr_data)
+                    # SR values from chart_data are sub_level (e.g. 345 = 3.45)
+                    sr_by_date = {dt: val / 100.0 for dt, val in raw_sr.items()}
+
+                # Merge iRating and SR by date, carrying forward last known values
+                all_dates = sorted(set(list(ir_by_date.keys()) + list(sr_by_date.keys())))
+                if cutoff:
+                    all_dates = [d for d in all_dates if d >= cutoff]
+
+                if not all_dates:
+                    await interaction.followup.send(
+                        f"❌ No {category_name} rating data for {display_name} in {timeframe_label}."
+                    )
+                    return
+
+                last_ir = None
+                last_sr = None
+                rating_points = []
+
+                for dt in all_dates:
+                    ir_val = ir_by_date.get(dt, last_ir)
+                    sr_val = sr_by_date.get(dt, last_sr)
+                    if ir_val is not None:
+                        last_ir = ir_val
+                    if sr_val is not None:
+                        last_sr = sr_val
+                    if last_ir is not None:
+                        rating_points.append({
+                            "date": dt,
+                            "irating": int(last_ir),
+                            "safety_rating": last_sr if last_sr is not None else 0.0,
+                        })
+
+                if not rating_points:
+                    await interaction.followup.send(
+                        f"❌ Not enough rating data for {display_name} in {timeframe_label}."
+                    )
+                    return
+
+                # Compute summary stats from recent races
+                def _parse_race_start(race: Dict) -> Optional[datetime]:
                     for key in ("session_start_time", "start_time", "start_time_utc"):
                         raw = race.get(key)
                         if raw is None:
@@ -2319,32 +2448,31 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                                 dt = dt.astimezone(timezone.utc)
                             return dt
                     return None
-    
-                def to_int(value):
+
+                def _to_int(value):
                     try:
                         return int(value)
                     except (TypeError, ValueError):
                         return None
-    
-                processed: List[Dict] = []
-                for race in races:
-                    start_dt = parse_race_start(race)
+
+                # Filter races by timeframe and category
+                processed = []
+                for race in (races or []):
+                    start_dt = _parse_race_start(race)
                     if start_dt is None:
                         continue
                     if cutoff and start_dt < cutoff:
                         continue
-                    race_copy = dict(race)
-                    race_copy["_start_dt"] = start_dt
-                    processed.append(race_copy)
-    
-                if not processed:
-                    await interaction.followup.send(
-                        f"❌ No races for {display_name} in the selected timeframe ({timeframe_label})."
-                    )
-                    return
-    
-                processed.sort(key=lambda r: r["_start_dt"])
-    
+                    # Filter by license category if available
+                    race_cat = race.get('license_category_id') or race.get('category_id')
+                    if race_cat is not None:
+                        try:
+                            if int(race_cat) != category_id:
+                                continue
+                        except (ValueError, TypeError):
+                            pass
+                    processed.append(race)
+
                 total_races = len(processed)
                 finish_values = []
                 incident_values = []
@@ -2352,82 +2480,46 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                 sr_changes = []
                 series_counter: Counter[str] = Counter()
                 car_counter: Counter[str] = Counter()
-                rating_points = []
-    
-                baseline_added = False
+
                 for race in processed:
-                    start_dt = race["_start_dt"]
-                    finish = to_int(race.get("finish_position"))
+                    finish = _to_int(race.get("finish_position"))
                     if finish is not None:
                         finish_values.append(finish)
-                    incidents = to_int(race.get("incidents"))
+                    incidents = _to_int(race.get("incidents"))
                     if incidents is not None:
                         incident_values.append(incidents)
-    
-                    old_ir = to_int(race.get("oldi_rating"))
-                    new_ir = to_int(race.get("newi_rating"))
-                    old_sr_raw = to_int(race.get("old_sub_level"))
-                    new_sr_raw = to_int(race.get("new_sub_level"))
-    
-                    if not baseline_added and old_ir is not None and old_sr_raw is not None:
-                        rating_points.append({
-                            "date": start_dt - timedelta(seconds=1),
-                            "irating": old_ir,
-                            "safety_rating": old_sr_raw / 100.0,
-                        })
-                        baseline_added = True
-    
+
+                    old_ir = _to_int(race.get("oldi_rating"))
+                    new_ir = _to_int(race.get("newi_rating"))
+                    old_sr_raw = _to_int(race.get("old_sub_level"))
+                    new_sr_raw = _to_int(race.get("new_sub_level"))
+
                     if new_ir is not None and old_ir is not None:
                         ir_changes.append(new_ir - old_ir)
                     if new_sr_raw is not None and old_sr_raw is not None:
                         sr_changes.append((new_sr_raw - old_sr_raw) / 100.0)
-    
-                    sr_for_point = None
-                    if new_sr_raw is not None:
-                        sr_for_point = new_sr_raw / 100.0
-                    elif old_sr_raw is not None:
-                        sr_for_point = old_sr_raw / 100.0
-    
-                    if new_ir is not None and sr_for_point is not None:
-                        rating_points.append({
-                            "date": start_dt,
-                            "irating": new_ir,
-                            "safety_rating": sr_for_point,
-                        })
-                    elif new_ir is not None:
-                        rating_points.append({
-                            "date": start_dt,
-                            "irating": new_ir,
-                            "safety_rating": sr_for_point or 0.0,
-                        })
-    
-                    series_name = (race.get("series_name") or race.get("series") or "Unknown Series").strip()
-                    series_counter[series_name] += 1
-    
-                    car_name = (
-                        race.get("car_name")
-                        or race.get("display_car_name")
-                        or race.get("car")
-                        or "Unknown Car"
-                    )
-                    car_counter[str(car_name).strip()] += 1
-    
-                if not rating_points:
-                    await interaction.followup.send(
-                        f"❌ Not enough rating data available for {display_name} in {timeframe_label}."
-                    )
-                    return
-    
-                wins = sum(1 for value in finish_values if value == 1)
-                podiums = sum(1 for value in finish_values if value is not None and value <= 3)
+
+                    sn = (race.get("series_name") or race.get("series") or "Unknown Series").strip()
+                    series_counter[sn] += 1
+                    cn = (race.get("car_name") or race.get("display_car_name") or race.get("car") or "Unknown Car")
+                    car_counter[str(cn).strip()] += 1
+
+                wins = sum(1 for v in finish_values if v == 1)
+                podiums = sum(1 for v in finish_values if v is not None and v <= 3)
                 avg_finish = sum(finish_values) / len(finish_values) if finish_values else 0
                 avg_incidents = sum(incident_values) / len(incident_values) if incident_values else 0
                 total_ir_change = sum(ir_changes)
                 total_sr_change = sum(sr_changes)
-    
+
+                # If chart data covers timeframe but no recent races match, derive change from chart
+                if not ir_changes and len(rating_points) >= 2:
+                    total_ir_change = rating_points[-1]["irating"] - rating_points[0]["irating"]
+                if not sr_changes and len(rating_points) >= 2:
+                    total_sr_change = rating_points[-1]["safety_rating"] - rating_points[0]["safety_rating"]
+
                 series_counts = series_counter.most_common(5)
                 car_counts = car_counter.most_common(5)
-    
+
                 summary_stats = {
                     "timeframe_label": timeframe_label,
                     "total_races": total_races,
@@ -2442,7 +2534,8 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                     "series_counts": series_counts,
                     "car_counts": car_counts,
                 }
-    
+
+                # Cache the results
                 if db:
                     serialized_points = [
                         {
@@ -2459,20 +2552,23 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                     serialized_summary["car_counts"] = [
                         {"name": name, "count": count} for name, count in car_counts
                     ]
-    
+
                     payload = {
                         "display_name": display_name,
                         "timeframe_label": timeframe_label,
                         "rating_points": serialized_points,
                         "summary_stats": serialized_summary,
                     }
-    
+
                     ttl_hours = IRACING_HISTORY_CACHE_TTLS.get(timeframe_key, 2)
-                    db.store_iracing_history_cache(cust_id, timeframe_key, payload, ttl_hours=ttl_hours)
-    
+                    db.store_iracing_history_cache(cust_id, cache_key_suffix, payload, ttl_hours=ttl_hours)
+
+            # Add category to the label for the dashboard
+            full_label = f"{timeframe_label} \u2022 {category_name}"
+
             image_buffer = iracing_viz.create_rating_performance_dashboard(
                 display_name,
-                timeframe_label,
+                full_label,
                 rating_points,
                 summary_stats,
             )
@@ -2481,12 +2577,133 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
             await interaction.followup.send(file=file)
     
         except Exception as e:
-            await interaction.followup.send(f"❌ Error generating history dashboard: {str(e)}")
-            print(f"❌ iRacing history error: {e}")
-            import traceback
-            traceback.print_exc()
+            await interaction.followup.send("❌ Error generating history dashboard")
+            logger.error("iRacing history error for driver %s: %s", driver_name, e, exc_info=True)
     
     
+    @bot.tree.command(
+        name="iracing_bests",
+        description="View personal best lap times across cars and tracks",
+    )
+    @app_commands.describe(
+        driver_name="iRacing display name or customer ID (optional if linked)",
+    )
+    async def iracing_bests(
+        interaction: discord.Interaction,
+        driver_name: str = None,
+    ):
+        """Show a driver's personal best lap times from iRacing."""
+        if not iracing:
+            await interaction.response.send_message("❌ iRacing integration is not configured on this bot")
+            return
+
+        await interaction.response.defer()
+
+        try:
+            cust_id = None
+            display_name = driver_name
+
+            # Resolve driver identity
+            if not driver_name:
+                linked = await iracing.get_linked_iracing_id(interaction.user.id)
+                if linked:
+                    cust_id, display_name = linked
+                else:
+                    await interaction.followup.send(
+                        "❌ No driver name provided and no linked account found.\n"
+                        "Use `/iracing_link` to link your account or provide a driver name."
+                    )
+                    return
+            else:
+                results = await iracing.search_driver(driver_name)
+                if not results:
+                    await interaction.followup.send(
+                        f"❌ No driver found with name '{driver_name}'\n"
+                        f"💡 Tip: Try the driver's customer ID for reliable results"
+                    )
+                    return
+                cust_id = results[0].get('cust_id')
+                display_name = results[0].get('display_name', driver_name)
+
+            client = await iracing._get_client()
+            bests_data = await client.get_member_bests(cust_id=cust_id)
+
+            if not bests_data:
+                await interaction.followup.send(f"❌ No personal best data found for {display_name}")
+                return
+
+            # Parse the bests response
+            bests_list = bests_data.get('bests', [])
+            if isinstance(bests_data, list):
+                bests_list = bests_data
+
+            if not bests_list:
+                await interaction.followup.send(f"❌ No personal best records for {display_name}")
+                return
+
+            # Get car and track name lookups
+            all_cars = await iracing.get_all_cars()
+            all_tracks = await iracing.get_all_tracks()
+            car_lookup = {c.get('car_id'): c.get('car_name', f"Car {c.get('car_id')}") for c in all_cars}
+            track_lookup = {}
+            for t in all_tracks:
+                tid = t.get('track_id')
+                if isinstance(tid, str) and tid.isdigit():
+                    tid = int(tid)
+                tname = t.get('track_name', '')
+                config = t.get('config_name', '')
+                if config and config not in tname:
+                    tname = f"{tname} - {config}"
+                track_lookup[tid] = tname
+
+            def format_lap_time(tenths_of_seconds):
+                """Format lap time from 10000ths of second to MM:SS.mmm"""
+                if not tenths_of_seconds or tenths_of_seconds <= 0:
+                    return "N/A"
+                seconds = tenths_of_seconds / 10000.0
+                minutes = int(seconds // 60)
+                secs = seconds % 60
+                return f"{minutes}:{secs:06.3f}"
+
+            # Build embed with best laps
+            embed = discord.Embed(
+                title=f"🏁 Personal Bests — {display_name}",
+                color=0x60a5fa,
+            )
+
+            # Group by event type if available, show top entries
+            entries_shown = 0
+            max_entries = 15
+
+            for record in bests_list[:max_entries]:
+                car_id = record.get('car_id')
+                track_id = record.get('track_id')
+                best_lap = record.get('best_lap_time', 0)
+                event_type = record.get('event_type_name', 'Race')
+
+                car_name = car_lookup.get(car_id, f"Car {car_id}")
+                track_name = track_lookup.get(track_id, f"Track {track_id}")
+                lap_str = format_lap_time(best_lap)
+
+                embed.add_field(
+                    name=f"{car_name}",
+                    value=f"📍 {track_name}\n⏱️ {lap_str} ({event_type})",
+                    inline=True,
+                )
+                entries_shown += 1
+
+            if len(bests_list) > max_entries:
+                embed.set_footer(text=f"Showing top {max_entries} of {len(bests_list)} records • WompBot")
+            else:
+                embed.set_footer(text=f"{entries_shown} personal best records • WompBot")
+
+            await interaction.followup.send(embed=embed)
+
+        except Exception as e:
+            await interaction.followup.send("❌ Error fetching personal bests")
+            logger.error("iRacing bests error: %s", e, exc_info=True)
+
+
     @bot.tree.command(name="iracing_win_rate", description="View win rate analysis for cars in a series")
     @app_commands.describe(
         series_name="Series name (autocomplete available)",
@@ -2594,9 +2811,7 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
     
         except Exception as e:
             await interaction.followup.send(f"❌ Error generating win rate analysis: {str(e)}")
-            print(f"❌ Win rate error: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error("Win rate error: %s", e, exc_info=True)
     
     
     @bot.tree.command(name="iracing_compare_drivers", description="Compare two drivers side-by-side")
@@ -2655,8 +2870,8 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
             stats1 = await iracing.get_driver_career_stats(cust_id1)
             stats2 = await iracing.get_driver_career_stats(cust_id2)
     
-            print(f"📊 Career stats for {name1}: {len(stats1.get('stats', [])) if stats1 else 0} stat entries")
-            print(f"📊 Career stats for {name2}: {len(stats2.get('stats', [])) if stats2 else 0} stat entries")
+            logger.debug("Career stats for %s: %d stat entries", name1, len(stats1.get('stats', [])) if stats1 else 0)
+            logger.debug("Career stats for %s: %d stat entries", name2, len(stats2.get('stats', [])) if stats2 else 0)
     
             # Build comparison data
             def build_data(profile, stats_data, name):
@@ -2674,11 +2889,7 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                 if stats_data and 'stats' in stats_data and len(stats_data['stats']) > 0:
                     all_stats = stats_data['stats']
     
-                    # Debug: Show what categories are in stats
-                    print(f"   Stats for {name}: {len(all_stats)} categories")
-                    for s in all_stats:
-                        print(f"      Category {s.get('category_id', 'N/A')}: starts={s.get('starts', 0)} "
-                              f"wins={s.get('wins', 0)} category={s.get('category', 'N/A')}")
+                    logger.debug("Stats for %s: %d categories", name, len(all_stats))
     
                     total_starts = sum(s.get('starts', 0) for s in all_stats)
     
@@ -2727,8 +2938,9 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                             'license_class': lic_data.get('group_name', 'R')  # Use group_name (e.g., "Rookie", "Class A")
                         }
     
-                        print(f"   License: {cat_name} - iR:{irating} ttR:{tt_rating} "
-                              f"SR:{lic_data.get('safety_rating')} class:{lic_data.get('group_name', 'N/A')}")
+                        logger.debug("License: %s - iR:%s ttR:%s SR:%s class:%s",
+                                     cat_name, irating, tt_rating,
+                                     lic_data.get('safety_rating'), lic_data.get('group_name', 'N/A'))
     
                 return {
                     'name': name,
@@ -2746,10 +2958,8 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
             await interaction.followup.send(file=file)
     
         except Exception as e:
-            await interaction.followup.send(f"❌ Error comparing drivers: {str(e)}")
-            print(f"❌ Compare drivers error: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error("Compare drivers error: %s", e, exc_info=True)
+            await interaction.followup.send("❌ Error comparing drivers. Please try again later.")
     
     
     @bot.tree.command(name="iracing_series_popularity", description="View most popular series by participation")
@@ -2817,10 +3027,10 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                 cache_entry = iracing_popularity_cache[time_range]
                 sorted_series = cache_entry['data']
                 cache_age = (datetime.now() - cache_entry['timestamp']).total_seconds() / 3600
-                print(f"📊 Using cached {time_range} popularity data (age: {cache_age:.1f} hours)")
+                logger.debug("Using cached %s popularity data (age: %.1f hours)", time_range, cache_age)
             else:
                 # Compute if not cached
-                print(f"📊 Computing {time_range} popularity (not in cache)")
+                logger.debug("Computing %s popularity (not in cache)", time_range)
                 sorted_series = await compute_series_popularity(time_range)
                 if sorted_series:
                     iracing_popularity_cache[time_range] = {
@@ -2833,9 +3043,7 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                 await interaction.followup.send("❌ No participation data available")
                 return
     
-            print(f"📈 Top {len(sorted_series)} series by participation:")
-            for name, count in sorted_series:
-                print(f"  {name}: {count:,} drivers")
+            logger.debug("Top %d series by participation", len(sorted_series))
     
             # Create visualization
             time_range_names = {
@@ -2859,12 +3067,10 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                 await interaction.followup.send(file=file)
     
         except Exception as e:
-            await interaction.followup.send(f"❌ Error: {str(e)}")
-            print(f"❌ Popularity error: {e}")
-            import traceback
-            traceback.print_exc()
-    
-    
+            logger.error("Popularity error: %s", e, exc_info=True)
+            await interaction.followup.send("❌ Error getting popularity data. Please try again later.")
+
+
     @bot.tree.command(name="iracing_timeslots", description="View race session times for a specific series")
     @app_commands.describe(
         series="Series name to look up",
@@ -2911,7 +3117,7 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
             series_name = series_match.get('series_name')
             season_id = series_match.get('season_id')
     
-            print(f"🕐 Race times request: series_id={series_id}, season_id={season_id}, week={week}")
+            logger.debug("Race times request: series_id=%s, season_id=%s, week=%s", series_id, season_id, week)
     
             # Get race times for this series
             sessions = await iracing.get_race_times(series_id, season_id, week)
@@ -2971,7 +3177,7 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                                 })
     
                         if sessions:
-                            print(f"📅 Using scheduled session times from race_time_descriptors: {len(sessions)} sessions")
+                            logger.debug("Using scheduled session times from race_time_descriptors: %d sessions", len(sessions))
     
                 # Final fallback: show recurring pattern if we couldn't find exact times
                 if not sessions:
@@ -3036,7 +3242,7 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                     })
     
                 except Exception as e:
-                    print(f"⚠️ Error parsing session time: {e}")
+                    logger.debug("Error parsing session time: %s", e)
                     continue
     
             # Create visualization
@@ -3052,11 +3258,9 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
             await interaction.followup.send(file=file)
     
         except Exception as e:
-            await interaction.followup.send(f"❌ Error: {str(e)}")
-            print(f"❌ Race times error: {e}")
-            import traceback
-            traceback.print_exc()
-    
+            logger.error("Race times error: %s", e, exc_info=True)
+            await interaction.followup.send("❌ Error getting race times. Please try again later.")
+
     @bot.tree.command(name="trivia_start", description="Start a trivia session")
     @app_commands.describe(
         topic="Topic for trivia questions (e.g., 'science', 'history', 'gaming')",

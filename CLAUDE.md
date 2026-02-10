@@ -68,13 +68,13 @@ Discord message → on_message (events.py) → handle_bot_mention (conversations
 - `yearly_wrapped.py` — Spotify-style yearly summaries
 - `quote_of_the_day.py` — Featured quote selection
 - `admin_utils.py` — Admin permission utilities
-- `iracing.py` — iRacing driver stats and comparisons
+- `iracing.py` — iRacing driver stats, comparisons, car class resolution, asset URL helpers
 - `iracing_teams.py` — iRacing team management
-- `iracing_meta.py` — iRacing meta analysis (best cars/tracks), parallel subsession fetching
+- `iracing_meta.py` — iRacing meta analysis (best cars/tracks), subsession caching, capped fetching
 - `team_menu.py` — Team menu with pagination for lists > 25 items
 
 ### Commands
-- `bot/commands/slash_commands.py` — Slash commands: help, stats (4), wrapped, debate_start, trivia_start, dashboard, flow, poll, mystats, iRacing (13 incl. history) (~3700 lines, 24 commands)
+- `bot/commands/slash_commands.py` — Slash commands: help, stats (4), wrapped, debate_start, trivia_start, dashboard, flow, poll, mystats, iRacing (14 incl. history + bests) (~3700 lines, 25 commands)
 - `bot/commands/prefix_commands.py` — Prefix command router + built-in commands (search, stock, weather, convert, define, etc.), imports sub-modules for migrated commands
 - `bot/commands/prefix_utils.py` — Shared helpers: `is_bot_admin_ctx()`, `parse_choice()` — used by all prefix sub-modules
 - `bot/commands/prefix_admin.py` — Admin prefix commands: !whoami, !setadmin, !removeadmin, !admins, !personality (5 commands)
@@ -98,12 +98,12 @@ Discord message → on_message (events.py) → handle_bot_mention (conversations
 - `bot/migrations/` — 3 iRacing-specific migration files
 
 ### iRacing Subsystem (bot/ root level)
-- `bot/iracing_client.py` — iRacing API client with tenacity retry/backoff
+- `bot/iracing_client.py` — iRacing API client with tenacity retry/backoff, asset/car-class endpoints
 - `bot/iracing_viz.py` — iRacing visualizations
 - `bot/iracing_graphics.py` — iRacing chart generation
 - `bot/iracing_event_commands.py` — Event slash commands
 - `bot/iracing_team_commands.py` — Team slash commands
-- Features in `bot/features/`: `iracing.py`, `iracing_teams.py`, `iracing_meta.py`, `team_menu.py`
+- Features in `bot/features/`: `iracing.py` (car class lookup, asset URL helpers), `iracing_teams.py`, `iracing_meta.py` (subsession cache, capped fetches), `team_menu.py`
 
 ## Tool Architecture
 
@@ -271,6 +271,7 @@ docker compose restart bot       # Restart bot only
 - Bounded `TTLCache(maxsize=50, ttl=7 days)` replaces unbounded dict (via cachetools)
 - Team query optimization: COUNT subquery → JOIN + GROUP BY
 - tenacity for retry/backoff (exponential + jitter)
+- `/iracing_bests` command — personal best lap times across cars and tracks
 
 ### New Dependencies
 - `cachetools` (iRacing cache)
@@ -634,3 +635,39 @@ Full line-by-line audit of ~60 files (~15,000 lines) covering performance, secur
 - **15 print() → logger** (media_processor.py) — All print statements replaced with structured logging, traceback.print_exc() replaced with exc_info=True
 - **5 print() → logger** (local_llm.py) — All print statements replaced with structured logging
 - **5 print() → logger** (credential_manager.py) — All print statements replaced with structured logging
+
+## iRacing Deep Dive (Session latest+3)
+
+### Meta Analysis Performance Overhaul (`iracing_meta.py`)
+- **Subsession-level caching** — `TTLCache(maxsize=200, ttl=24h)` caches individual subsession API results, preventing re-fetches across commands
+- **Capped subsession fetches** — `MAX_SUBSESSION_FETCHES = 50` constant limits API calls per meta analysis (was unbounded up to 300)
+- **Reduced caller max_results** — `iracing.py` now passes `max_results=100` (was 300) to `get_meta_for_series()`
+- **Dead code removed** — First loop in `_process_race_results` (lines 183-209) iterated but collected nothing; removed entirely
+- **Extracted helper methods** — `_extract_weather()`, `_process_subsession_drivers()`, `_extract_irating()`, `_empty_weather_stats()` for cleaner code
+- **Cache hit logging** — Logs cache hit/miss counts per meta analysis for observability
+- **UTC datetime fix** — `datetime.now()` → `datetime.now(timezone.utc)` in `_calculate_meta_statistics`
+
+### Car Class Resolution (`iracing.py`)
+- **`get_all_car_classes()`** — Cached wrapper around `client.get_car_classes()` with in-memory TTL cache
+- **`build_car_class_lookup()`** — Returns `Dict[int, str]` mapping car_id → class name (GT3, LMP2, etc.)
+- **Parallel fetching** — Car data and class lookup fetched in parallel via `asyncio.gather()`
+- **`car_class_name` field** — Added to car entries in both `car_restrictions` and `analyze_from_results` paths
+- **Multi-class support** — Enables proper display of car classes in multi-class series meta charts
+
+### Asset Endpoints (`iracing.py` + `iracing_client.py`)
+- **New client methods** — `get_car_assets()`, `get_track_assets()`, `get_series_assets()` in `iracing_client.py`
+- **Cached wrappers** — `_car_assets_cache`, `_track_assets_cache`, `_series_assets_cache` (in-memory TTL)
+- **URL construction** — `IRACING_IMAGE_BASE` constant, `get_asset_url()` helper, convenience methods `get_car_image_url()`, `get_track_image_url()`, `get_series_image_url()`
+- **Series logo in meta charts** — Embed thumbnail shows series logo via asset URL
+
+### New Command: `/iracing_bests`
+- **Personal best lap times** across all cars and tracks
+- Shows best laps from iRacing data via `get_member_bests()` client endpoint
+- Optional `driver_name` parameter (defaults to linked account)
+
+### Logging & Error Cleanup
+- **45+ print() → logger** across `iracing.py`, `iracing_meta.py`, `slash_commands.py`
+- **F-string logger calls fixed** — Converted to `logger.debug("msg %s", var)` format with emojis removed
+- **8+ traceback.print_exc() removed** — Replaced with `exc_info=True` on logger calls
+- **8+ str(e) error exposure fixed** — User-facing Discord error messages no longer leak internal state
+- **Series autocomplete print → logger** — `print()` in series_autocomplete → `logger.warning()`

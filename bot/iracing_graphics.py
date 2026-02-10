@@ -3,6 +3,7 @@ iRacing Graphics Generator
 Creates professional visual cards and leaderboards with modern design
 """
 
+import logging
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 from io import BytesIO
 from typing import Dict, List, Tuple, Optional
@@ -11,6 +12,8 @@ import asyncio
 from pathlib import Path
 import os
 import math
+
+logger = logging.getLogger(__name__)
 
 
 class iRacingGraphics:
@@ -124,7 +127,7 @@ class iRacingGraphics:
                 self.font_tiny = ImageFont.load_default()
 
         except Exception as e:
-            print(f"⚠️ Font loading error: {e}, using defaults")
+            logger.warning("Font loading error: %s, using defaults", e)
             self.font_display = ImageFont.load_default()
             self.font_title = ImageFont.load_default()
             self.font_heading = ImageFont.load_default()
@@ -760,6 +763,6 @@ class iRacingGraphics:
                             f.write(data)
                         return Image.open(BytesIO(data))
         except Exception as e:
-            print(f"⚠️ Image download failed: {e}")
+            logger.warning("Image download failed: %s", e)
 
         return None

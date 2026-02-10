@@ -95,7 +95,7 @@ class iRacingVisualizer:
                             f.write(image_data)
                         return Image.open(BytesIO(image_data))
         except Exception as e:
-            print(f"⚠️ Failed to download logo {url}: {e}")
+            logger.warning("Failed to download logo %s: %s", url, e)
 
         return None
 
@@ -580,46 +580,61 @@ class iRacingVisualizer:
     async def create_strength_of_field_heatmap(self, series_name: str, series_logo_url: Optional[str],
                                                schedule_data: List[Dict]) -> BytesIO:
         """
-        Create strength of field heatmap showing participation by day/time
+        Create strength of field heatmap showing participation by day/time.
 
         Args:
             series_name: Series name
             series_logo_url: URL to series logo
-            schedule_data: Schedule with participation data
+            schedule_data: List of dicts with 'day', 'time', and 'sof' keys
 
         Returns:
             BytesIO containing PNG
         """
         fig = plt.figure(figsize=(12, 8), facecolor=self.COLORS['bg_dark'])
-
-        # Create dummy heatmap data (will be replaced with real data)
-        days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-        times = ['1:15', '3:15', '5:15', '7:15', '9:15', '11:15', '13:15', '15:15', '17:15', '19:15', '21:15', '23:15']
-
-        # Generate sample participation data (replace with real API data)
-        import numpy as np
-        data = np.random.randint(2500, 5000, size=(len(days), len(times)))
-
-        # Create heatmap
         ax = plt.subplot(111)
-        im = ax.imshow(data, cmap='Blues', aspect='auto')
 
-        # Set ticks
-        ax.set_xticks(np.arange(len(times)))
-        ax.set_yticks(np.arange(len(days)))
-        ax.set_xticklabels(times, color=self.COLORS['text_white'])
-        ax.set_yticklabels(days, color=self.COLORS['text_white'])
+        if not schedule_data:
+            # No data — render a message instead of fake data
+            ax.text(0.5, 0.5, f"No SoF data available for\n{series_name}",
+                    ha='center', va='center', fontsize=18, color=self.COLORS['text_white'],
+                    transform=ax.transAxes)
+            ax.axis('off')
+            logger.warning("create_strength_of_field_heatmap called with no data for %s", series_name)
+        else:
+            # Build heatmap grid from real data
+            days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+            times = sorted(set(str(d.get('time', '')) for d in schedule_data if d.get('time')))
+            if not times:
+                times = ['0:00']
 
-        # Add text annotations
-        for i in range(len(days)):
-            for j in range(len(times)):
-                value = data[i, j]
-                text = ax.text(j, i, f"{value/1000:.1f}k",
-                             ha="center", va="center", color="white", fontsize=9)
+            # Build 2D grid
+            data = np.zeros((len(days), len(times)))
+            day_idx = {d: i for i, d in enumerate(days)}
+            time_idx = {t: i for i, t in enumerate(times)}
 
-        ax.set_xlabel('Session Time GMT', color=self.COLORS['text_white'], fontsize=12)
-        plt.title(f"{series_name}\nAverage Strength of Field",
-                 color=self.COLORS['text_white'], fontsize=16, fontweight='bold', pad=20)
+            for entry in schedule_data:
+                d = str(entry.get('day', ''))
+                t = str(entry.get('time', ''))
+                sof = entry.get('sof', 0)
+                if d in day_idx and t in time_idx:
+                    data[day_idx[d], time_idx[t]] = sof
+
+            im = ax.imshow(data, cmap='Blues', aspect='auto')
+            ax.set_xticks(np.arange(len(times)))
+            ax.set_yticks(np.arange(len(days)))
+            ax.set_xticklabels(times, color=self.COLORS['text_white'], fontsize=9)
+            ax.set_yticklabels(days, color=self.COLORS['text_white'])
+
+            for i in range(len(days)):
+                for j in range(len(times)):
+                    value = data[i, j]
+                    if value > 0:
+                        ax.text(j, i, f"{value/1000:.1f}k",
+                                ha="center", va="center", color="white", fontsize=9)
+
+            ax.set_xlabel('Session Time GMT', color=self.COLORS['text_white'], fontsize=12)
+            plt.title(f"{series_name}\nAverage Strength of Field",
+                      color=self.COLORS['text_white'], fontsize=16, fontweight='bold', pad=20)
 
         plt.tight_layout()
 
@@ -633,12 +648,12 @@ class iRacingVisualizer:
     async def create_lap_time_scatter(self, series_name: str, track_name: str,
                                      lap_data: List[Dict]) -> BytesIO:
         """
-        Create scatter plot of lap times vs iRating with trend line
+        Create scatter plot of lap times vs iRating with trend line.
 
         Args:
             series_name: Series name
             track_name: Track name
-            lap_data: List of {irating, lap_time_seconds} dicts
+            lap_data: List of {irating, lap_time} dicts (lap_time in seconds)
 
         Returns:
             BytesIO containing PNG
@@ -646,37 +661,38 @@ class iRacingVisualizer:
         fig, ax = plt.subplots(figsize=(12, 8), facecolor=self.COLORS['bg_dark'])
 
         if not lap_data:
-            # Generate sample data for visualization
-            import numpy as np
-            iratings = np.random.randint(500, 8000, 500)
-            base_time = 30.0
-            lap_times = base_time - (iratings - 500) / 7000 * 1.2 + np.random.normal(0, 0.15, 500)
-            lap_data = [{'irating': ir, 'lap_time': lt} for ir, lt in zip(iratings, lap_times)]
+            # No data — render a message instead of fake random data
+            ax.text(0.5, 0.5, f"No lap time data available for\n{track_name}",
+                    ha='center', va='center', fontsize=18, color=self.COLORS['text_white'],
+                    transform=ax.transAxes)
+            ax.axis('off')
+            logger.warning("create_lap_time_scatter called with no data for %s", track_name)
+        else:
+            iratings = [d['irating'] for d in lap_data]
+            lap_times = [d['lap_time'] for d in lap_data]
 
-        iratings = [d['irating'] for d in lap_data]
-        lap_times = [d['lap_time'] for d in lap_data]
+            # Create scatter with color gradient
+            scatter = ax.scatter(iratings, lap_times, c=iratings, cmap='cool',
+                               alpha=0.6, s=50, edgecolors='none')
 
-        # Create scatter with color gradient
-        scatter = ax.scatter(iratings, lap_times, c=iratings, cmap='cool',
-                           alpha=0.6, s=50, edgecolors='none')
+            # Add trend line if enough data
+            if len(iratings) >= 3:
+                z = np.polyfit(iratings, lap_times, 2)
+                p = np.poly1d(z)
+                x_trend = np.linspace(min(iratings), max(iratings), 100)
+                ax.plot(x_trend, p(x_trend), "w-", linewidth=3, label='predicted', alpha=0.8)
 
-        # Add trend line
-        import numpy as np
-        z = np.polyfit(iratings, lap_times, 2)
-        p = np.poly1d(z)
-        x_trend = np.linspace(min(iratings), max(iratings), 100)
-        ax.plot(x_trend, p(x_trend), "w-", linewidth=3, label='predicted', alpha=0.8)
+            ax.set_xlabel('iRating', fontsize=14, color=self.COLORS['text_white'])
+            ax.set_ylabel('Lap Time (seconds)', fontsize=14, color=self.COLORS['text_white'])
+            ax.set_title(f"Fastest Race Lap\n{track_name}",
+                        fontsize=18, fontweight='bold', color=self.COLORS['text_white'], pad=20)
 
-        ax.set_xlabel('iRating', fontsize=14, color=self.COLORS['text_white'])
-        ax.set_ylabel('Lap Time (seconds)', fontsize=14, color=self.COLORS['text_white'])
-        ax.set_title(f"Fastest Race Lap\n{track_name}",
-                    fontsize=18, fontweight='bold', color=self.COLORS['text_white'], pad=20)
-
-        ax.set_facecolor(self.COLORS['bg_card'])
-        ax.grid(True, alpha=0.2, color=self.COLORS['text_gray'])
-        ax.tick_params(colors=self.COLORS['text_white'])
-        ax.legend(loc='upper right', facecolor=self.COLORS['bg_card'],
-                 edgecolor=self.COLORS['text_gray'], labelcolor=self.COLORS['text_white'])
+            ax.set_facecolor(self.COLORS['bg_card'])
+            ax.grid(True, alpha=0.2, color=self.COLORS['text_gray'])
+            ax.tick_params(colors=self.COLORS['text_white'])
+            if len(iratings) >= 3:
+                ax.legend(loc='upper right', facecolor=self.COLORS['bg_card'],
+                         edgecolor=self.COLORS['text_gray'], labelcolor=self.COLORS['text_white'])
 
         plt.tight_layout()
 
@@ -1109,7 +1125,7 @@ class iRacingVisualizer:
                 logo_ax.imshow(logo_img)
                 logo_ax.axis('off')
             except Exception as e:
-                print(f"⚠️ Failed to load series logo: {e}")
+                logger.warning("Failed to load series logo: %s", e)
 
         # Title and info - centered with better contrast
         title_y = total_height - 0.8
