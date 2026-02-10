@@ -145,9 +145,72 @@ class ChatStatistics:
             logger.error("Error fetching messages: %s", e)
             return []
 
+    # Words that are common in Discord chat but carry no topic meaning
+    _CHAT_STOPWORDS = {
+        # English stopwords
+        'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for',
+        'of', 'with', 'by', 'from', 'is', 'are', 'was', 'were', 'be', 'been',
+        'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would',
+        'should', 'could', 'may', 'might', 'must', 'can', 'it', 'this', 'that',
+        'these', 'those', 'me', 'my', 'mine', 'myself', 'our', 'ours',
+        'i', 'you', 'he', 'she', 'we', 'they', 'them', 'their', 'his', 'her',
+        'its', 'your', 'yours', 'him', 'us',
+        'what', 'which', 'who', 'whom', 'when', 'where', 'why', 'how',
+        'all', 'each', 'every', 'both', 'few', 'more', 'most', 'other',
+        'some', 'such', 'no', 'nor', 'not', 'only', 'own', 'same', 'so',
+        'than', 'too', 'very', 'just', 'about', 'above', 'after', 'again',
+        'between', 'into', 'through', 'during', 'before', 'up', 'down',
+        'out', 'off', 'over', 'under', 'once', 'here', 'there', 'then',
+        'if', 'because', 'as', 'until', 'while', 'any', 'also',
+        # Contractions and fragments
+        'don', 'doesn', 'didn', 'won', 'wouldn', 'shouldn', 'couldn', 'isn',
+        'aren', 'wasn', 'weren', 'hasn', 'haven', 'hadn', 've', 'll', 're',
+        # Common chat / Discord filler
+        'lol', 'lmao', 'lmfao', 'rofl', 'haha', 'hahaha', 'heh', 'hmm',
+        'yeah', 'yea', 'yep', 'yup', 'nah', 'nope',
+        'bruh', 'bro', 'dude', 'man', 'guys', 'tbh', 'imo', 'imho', 'idk',
+        'ngl', 'smh', 'omg', 'omfg', 'wtf', 'wth', 'stfu', 'btw', 'fyi',
+        'gg', 'rn', 'af', 'fr', 'irl', 'tho', 'tho', 'rip',
+        'like', 'literally', 'actually', 'basically', 'really', 'pretty',
+        'thing', 'things', 'stuff', 'something', 'anything', 'everything',
+        'gonna', 'wanna', 'kinda', 'sorta', 'gotta', 'lemme', 'dunno',
+        'ok', 'okay', 'sure', 'right', 'well', 'oh', 'ah', 'um', 'uh',
+        'hey', 'hi', 'hello', 'bye', 'sup', 'yo',
+        'got', 'get', 'gets', 'getting', 'go', 'going', 'goes', 'went', 'gone',
+        'say', 'said', 'says', 'know', 'knew', 'known', 'think', 'thought',
+        'want', 'need', 'make', 'made', 'take', 'took', 'come', 'came',
+        'see', 'saw', 'look', 'looks', 'looking', 'feel', 'try', 'keep',
+        'let', 'put', 'give', 'tell', 'told', 'much', 'many', 'even',
+        'still', 'already', 'way', 'back', 'one', 'two', 'first', 'last',
+        'new', 'good', 'bad', 'great', 'best', 'better', 'big', 'long',
+        'high', 'old', 'little', 'lot', 'time', 'day', 'people', 'now',
+        # Bot command noise
+        'wompbot', 'help', 'command', 'commands',
+    }
+
+    @staticmethod
+    def _clean_message_for_topics(text: str) -> str:
+        """Strip Discord noise from a message before topic extraction."""
+        # Remove Discord mentions, channel refs, role refs
+        text = re.sub(r'<@!?\d+>', '', text)
+        text = re.sub(r'<#\d+>', '', text)
+        text = re.sub(r'<@&\d+>', '', text)
+        # Remove custom emoji
+        text = re.sub(r'<a?:\w+:\d+>', '', text)
+        # Remove URLs
+        text = re.sub(r'https?://\S+', '', text)
+        # Remove code blocks and inline code
+        text = re.sub(r'```[\s\S]*?```', '', text)
+        text = re.sub(r'`[^`]+`', '', text)
+        # Remove bot prefix commands (e.g. !help, !stock AAPL)
+        text = re.sub(r'^!\w+', '', text)
+        # Collapse whitespace
+        text = re.sub(r'\s+', ' ', text).strip()
+        return text
+
     def extract_topics_tfidf(self, messages: List[dict], top_n: int = 20) -> List[dict]:
         """
-        Extract trending topics using TF-IDF (keyword extraction)
+        Extract trending topics using TF-IDF (keyword extraction).
 
         Args:
             messages: List of message dicts with 'content' field
@@ -159,40 +222,36 @@ class ChatStatistics:
         try:
             from sklearn.feature_extraction.text import TfidfVectorizer
 
-            # Combine all message content
-            texts = [msg['content'] for msg in messages if msg.get('content')]
+            # Clean messages: strip Discord noise, skip very short messages
+            texts = []
+            for msg in messages:
+                raw = msg.get('content', '')
+                if not raw:
+                    continue
+                cleaned = self._clean_message_for_topics(raw)
+                # Skip messages that are too short after cleaning (< 3 real words)
+                if len(cleaned.split()) >= 3:
+                    texts.append(cleaned)
 
-            if not texts:
+            if len(texts) < 3:
                 return []
 
-            # Custom stopwords (common Discord/chat words to ignore)
-            custom_stopwords = {
-                'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for',
-                'of', 'with', 'by', 'from', 'is', 'are', 'was', 'were', 'be', 'been',
-                'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would',
-                'should', 'could', 'may', 'might', 'must', 'can', 'it', 'this', 'that',
-                'these', 'those', 'i', 'you', 'he', 'she', 'we', 'they', 'them', 'their',
-                'what', 'which', 'who', 'when', 'where', 'why', 'how', 'all', 'each',
-                'every', 'both', 'few', 'more', 'most', 'other', 'some', 'such', 'no',
-                'nor', 'not', 'only', 'own', 'same', 'so', 'than', 'too', 'very', 'just',
-                'lol', 'lmao', 'lmfao', 'yeah', 'yea', 'nah', 'bruh', 'bro', 'tbh', 'imo',
-                'like', 'literally', 'actually', 'basically', 'thing', 'things', 'gonna',
-                'wanna', 'kinda', 'sorta'
-            }
+            # Adaptive min_df: at least 2, but lower when few messages
+            adaptive_min_df = 2 if len(texts) >= 20 else 1
 
-            # TF-IDF vectorizer (with graceful fallback for sparse chats)
+            # TF-IDF vectorizer
             vectorizer_kwargs = dict(
-                max_features=top_n * 2,  # Get more candidates
-                stop_words=list(custom_stopwords),
-                ngram_range=(1, 2),  # Unigrams and bigrams
-                min_df=2,  # Must appear in at least 2 messages
-                max_df=0.7,  # Ignore if appears in >70% of messages
-                token_pattern=r'(?u)\b[a-zA-Z][a-zA-Z]+\b'  # Only alphabetic words
+                max_features=top_n * 3,
+                stop_words=list(self._CHAT_STOPWORDS),
+                ngram_range=(1, 2),
+                min_df=adaptive_min_df,
+                max_df=0.8,
+                # Allow alphanumeric words (2+ chars) so terms like "F1", "GT3" aren't lost
+                token_pattern=r'(?u)\b\w[\w]+\b',
             )
 
             vectorizer = TfidfVectorizer(**vectorizer_kwargs)
 
-            # Fit and transform with fallback when the sample is tiny
             try:
                 tfidf_matrix = vectorizer.fit_transform(texts)
             except ValueError as err:
@@ -205,30 +264,31 @@ class ChatStatistics:
                     raise
 
             feature_names = vectorizer.get_feature_names_out()
-
-            # Calculate average TF-IDF score for each term
             avg_scores = tfidf_matrix.mean(axis=0).A1
 
-            # Count actual occurrences
-            word_counts = Counter()
-            for text in texts:
-                words = re.findall(r'\b[a-zA-Z][a-zA-Z]+\b', text.lower())
-                word_counts.update(words)
+            # Count actual document occurrences (how many messages mention the term)
+            # Use the binary occurrence matrix for accurate doc-frequency counts
+            binary_matrix = (tfidf_matrix > 0).astype(int)
+            doc_counts = binary_matrix.sum(axis=0).A1
 
-            # Combine scores and counts
+            # Build topic list, filtering out pure-number tokens and single chars
             topics = []
             for idx, score in enumerate(avg_scores):
                 keyword = feature_names[idx]
-                # For bigrams, count occurrences in original text
-                if ' ' in keyword:
-                    count = sum(1 for text in texts if keyword in text.lower())
-                else:
-                    count = word_counts.get(keyword, 0)
+
+                # Skip pure numbers (years, IDs, etc.) unless they look meaningful
+                if keyword.isdigit():
+                    continue
+                # Skip very short words that slipped through
+                if len(keyword) <= 2 and ' ' not in keyword:
+                    continue
+
+                doc_count = int(doc_counts[idx])
 
                 topics.append({
                     'keyword': keyword,
                     'score': float(score),
-                    'count': count
+                    'count': doc_count,  # Number of messages mentioning this topic
                 })
 
             # Sort by score and return top_n
@@ -239,9 +299,7 @@ class ChatStatistics:
             logger.error("scikit-learn not installed. Install with: pip install scikit-learn")
             return []
         except Exception as e:
-            logger.error("Error extracting topics: %s", e)
-            import traceback
-            traceback.print_exc()
+            logger.error("Error extracting topics: %s", e, exc_info=True)
             return []
 
     def compute_user_topic_expertise(self, messages: List[dict], guild_id: int,

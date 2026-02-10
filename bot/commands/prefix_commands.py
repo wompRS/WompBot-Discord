@@ -198,10 +198,11 @@ def register_prefix_commands(bot, db, llm, search, help_system, tasks_dict,
             else:
                 # List available categories
                 categories = help_system.get_available_categories()
+                cat_list = ", ".join(f"`{c}`" for c in categories)
                 await ctx.send(
-                    f"❌ No help found for `{command}`.\n\n"
-                    f"**Available categories:** {', '.join(f'`{c}`' for c in categories)}\n\n"
-                    f"Use `!help` to see all commands or `!help <category>` for category help."
+                    f"No help found for `{command}`.\n\n"
+                    f"**Categories:** {cat_list}\n\n"
+                    f"Use `!help <category>` for commands in a category, or `!help` for the overview."
                 )
         else:
             # Show general help

@@ -893,35 +893,66 @@ class HelpSystem:
         }
 
     def get_general_help(self) -> discord.Embed:
-        """Generate general help embed with all commands"""
+        """Generate compact help overview directing users to subcategories"""
         embed = discord.Embed(
-            title="WompBot Commands",
-            description="**Slash commands + prefix commands** and **26 AI tools** organized by category\n\nChat: @WompBot, 'wompbot', or '!wb' • Powered by DeepSeek\nSupports images, GIFs, YouTube videos, and video attachments\nUse `/help <command>` or `!help <command>` for details",
+            title="WompBot Help",
+            description=(
+                "Chat: @WompBot, 'wompbot', or '!wb' • Powered by DeepSeek\n"
+                "Supports images, GIFs, YouTube videos, and video attachments\n\n"
+                "Use **`!help <category>`** to see commands in each category below."
+            ),
             color=discord.Color.purple()
         )
 
-        embed.add_field(
-            name="General and Utility",
-            value=(
-                "`/help` or `!help` - Show commands or get help\n"
-                "`!whoami` - Show your Discord info\n"
-                "`!personality` - Change bot personality mode (Admin only)\n"
-                "Three modes: Default (conversational), Concise (brief), Bogan (Aussie slang)"
-            ),
-            inline=False
+        # Build category listing — two columns using inline fields
+        categories_left = [
+            ("tools", "Utility Tools", "Convert, define, weather, stock, translate, roll, search, wiki"),
+            ("stats", "Chat Statistics", "Server graphs, topics, primetime, engagement"),
+            ("claims", "Claims & Quotes", "Track predictions, verify claims, save quotes"),
+            ("hot_takes", "Hot Takes", "Controversial claims, vindication tracking"),
+            ("debates", "Debates", "Tracked debates with LLM judging & scoring"),
+            ("trivia", "Trivia", "Multiplayer trivia with leaderboards"),
+        ]
+
+        categories_right = [
+            ("games", "Games", "Who Said It, Devil's Advocate, Jeopardy"),
+            ("polls", "Polls", "Button voting, results cards, auto-close"),
+            ("reminders", "Reminders & Events", "Natural language reminders and events"),
+            ("scheduling", "Message Scheduling", "Schedule messages for later"),
+            ("analytics", "Personal Analytics", "Stats card, stored facts, topic expertise"),
+            ("weather", "Weather", "Forecasts, saved locations"),
+        ]
+
+        categories_bottom = [
+            ("iracing", "iRacing", "13 driver/series commands"),
+            ("iracing_teams", "iRacing Teams", "Team management (6 commands)"),
+            ("iracing_events", "iRacing Events", "Team event scheduling (4 commands)"),
+            ("monitoring", "Monitoring", "RSS, GitHub, price watchlists (Admin)"),
+            ("admin", "Admin", "Bot admins, personality modes"),
+            ("privacy", "Privacy & GDPR", "Opt-out, data export, deletion"),
+        ]
+
+        left_text = "\n".join(
+            f"**`!help {cat}`** — {desc}" for cat, _title, desc in categories_left
+        )
+        right_text = "\n".join(
+            f"**`!help {cat}`** — {desc}" for cat, _title, desc in categories_right
+        )
+        bottom_text = "\n".join(
+            f"**`!help {cat}`** — {desc}" for cat, _title, desc in categories_bottom
         )
 
+        embed.add_field(name="\u200b", value=left_text, inline=True)
+        embed.add_field(name="\u200b", value=right_text, inline=True)
+        # Force new row
+        embed.add_field(name="\u200b", value=bottom_text, inline=False)
+
         embed.add_field(
-            name="Conversational AI Tools (26 tools)",
+            name="AI Tools (26)",
             value=(
-                "WompBot can use tools automatically when you ask questions:\n"
-                "**Weather:** `get_weather`, `get_weather_forecast`, `wolfram_query`\n"
-                "**Search:** `web_search`, `image_search`, `wikipedia`, `define_word`, `url_preview`\n"
-                "**Utility:** `currency_convert`, `get_time`, `translate`, `random_choice`, `create_reminder`\n"
-                "**Media:** `youtube_search`, `movie_info`, `stock_price`, `stock_history`, `sports_scores`\n"
-                "**Charts:** `create_bar_chart`, `create_line_chart`, `create_pie_chart`, `create_table`, `create_comparison_chart`\n"
-                "**Data:** `user_stats`, `iracing_driver_stats`, `iracing_series_info`\n"
-                "Just ask naturally - e.g., 'convert 100 USD to EUR' or 'weather in Tokyo'"
+                "WompBot uses tools automatically when you ask questions naturally.\n"
+                "Weather, search, Wikipedia, currency, translate, stocks, charts, and more.\n"
+                "Just ask — e.g. *'convert 100 USD to EUR'* or *'weather in Tokyo'*"
             ),
             inline=False
         )
@@ -929,250 +960,13 @@ class HelpSystem:
         embed.add_field(
             name="Media Analysis",
             value=(
-                "Share images, GIFs, or videos with WompBot to analyze them:\n"
-                "**Images:** Describe content, read text, identify memes\n"
-                "**GIFs:** Extracts 6 frames to describe the animation\n"
-                "**YouTube:** Fetches transcript instantly (no download needed)\n"
-                "**Videos:** Transcribes audio using Whisper AI\n"
-                "Just attach media and ask 'what's this?' or 'what's happening?'"
+                "Attach images, GIFs, YouTube links, or videos and ask about them.\n"
+                "Images, GIF frame extraction, YouTube transcripts, video transcription."
             ),
             inline=False
         )
 
-        embed.add_field(
-            name="Claims and Quotes",
-            value=(
-                "`!receipts` (alias `!claims`) - View tracked claims\n"
-                "`!quotes` - View saved quotes\n"
-                "`!verify` - Verify a claim\n"
-                "React with cloud emoji to save quote, warning emoji to fact-check"
-            ),
-            inline=False
-        )
-
-        embed.add_field(
-            name="Chat Statistics",
-            value=(
-                "`/stats_server` - Network graph and server stats\n"
-                "`/stats_topics` - Trending keywords\n"
-                "`/stats_primetime` - Activity heatmap\n"
-                "`/stats_engagement` - Engagement metrics"
-            ),
-            inline=False
-        )
-
-        embed.add_field(
-            name="Hot Takes",
-            value=(
-                "`!hottakes` (alias `!ht`) - Hot takes leaderboard\n"
-                "`!myht` - Your hot takes stats\n"
-                "`!vindicate` - Mark hot take vindicated (Admin)"
-            ),
-            inline=False
-        )
-
-        embed.add_field(
-            name="Reminders and Events",
-            value=(
-                "`!remind` - Set reminder\n"
-                "`!reminders` - View your reminders\n"
-                "`!cancelremind` - Cancel reminder\n"
-                "`!event` - Schedule event\n"
-                "`!events` - View upcoming events\n"
-                "`!cancelevent` - Cancel event"
-            ),
-            inline=False
-        )
-
-        embed.add_field(
-            name="Wrapped and Quote of the Day",
-            value=(
-                "`/wrapped` - Your yearly summary\n"
-                "`!qotd` - Quote of the day"
-            ),
-            inline=False
-        )
-
-        embed.add_field(
-            name="Debates",
-            value=(
-                "`/debate_start` - Start tracking debate\n"
-                "`!debate_end` (`!de`) - End and analyze debate\n"
-                "`!debate_stats` (`!ds`) - Your debate stats\n"
-                "`!debate_lb` (`!dlb`) - Top debaters\n"
-                "`!debate_review` (`!dr`) - Analyze debate file\n"
-                "`!debate_profile` (`!dp`) - Argumentation profile card"
-            ),
-            inline=False
-        )
-
-        embed.add_field(
-            name="Trivia (4 commands)",
-            value=(
-                "`/trivia_start` - Start multiplayer trivia session\n"
-                "`!triviastop` - Stop active trivia session\n"
-                "`!triviastats` - View your trivia statistics\n"
-                "`!trivialeaderboard` (`!tlb`) - Server trivia rankings\n"
-                "LLM-generated questions • Fuzzy answer matching • Speed & streak bonuses"
-            ),
-            inline=False
-        )
-
-        embed.add_field(
-            name="iRacing (13 commands)",
-            value=(
-                "`/iracing_link` - Link account\n"
-                "`/iracing_profile` - Driver profile\n"
-                "`/iracing_schedule` - Race schedules\n"
-                "`/iracing_meta` - Series meta analysis\n"
-                "`/iracing_results` - Recent results\n"
-                "`/iracing_season_schedule` - Full season\n"
-                "`/iracing_server_leaderboard` - Server rankings\n"
-                "`/iracing_history` - Rating trends\n"
-                "`/iracing_win_rate` - Car win rates\n"
-                "`/iracing_compare_drivers` - Compare drivers\n"
-                "`/iracing_series_popularity` - Popular series\n"
-                "`/iracing_timeslots` - Race times\n"
-                "`/iracing_upcoming_races` - Upcoming official races"
-            ),
-            inline=False
-        )
-
-        embed.add_field(
-            name="Weather",
-            value=(
-                "Say: 'wompbot weather' or 'wompbot forecast'\n"
-                "`!weatherset` - Set default location\n"
-                "`!weatherclear` - Clear saved location"
-            ),
-            inline=False
-        )
-
-        embed.add_field(
-            name="iRacing Teams (6 commands)",
-            value=(
-                "`/iracing_team_create` - Create team\n"
-                "`/iracing_team_invite` - Invite member\n"
-                "`/iracing_team_leave` - Leave team\n"
-                "`/iracing_team_info` - Team details\n"
-                "`/iracing_team_list` - All teams\n"
-                "`/iracing_my_teams` - Your teams"
-            ),
-            inline=False
-        )
-
-        embed.add_field(
-            name="iRacing Team Events (4 commands)",
-            value=(
-                "`/iracing_event_create` - Create team event\n"
-                "`/iracing_team_events` - View team events\n"
-                "`/iracing_event_availability` - Set availability\n"
-                "`/iracing_event_roster` - View event roster"
-            ),
-            inline=False
-        )
-
-        embed.add_field(
-            name="Privacy and GDPR (3 commands)",
-            value=(
-                "`/wompbot_optout` - Opt out of data collection\n"
-                "`/download_my_data` - Export your data\n"
-                "`/delete_my_data` - Delete data (or cancel pending deletion)"
-            ),
-            inline=False
-        )
-
-        embed.add_field(
-            name="Polls",
-            value=(
-                "`/poll` - Create a poll with button voting\n"
-                "`!pollresults` - View poll results card\n"
-                "`!pollclose` - Close a poll (creator only)"
-            ),
-            inline=False
-        )
-
-        embed.add_field(
-            name="Games",
-            value=(
-                "`!whosaidit` - Start Who Said It? game\n"
-                "`!wsisskip` / `!wsisend` - Skip round / End game\n"
-                "`!da` - Start Devil's Advocate session\n"
-                "`!daend` - End Devil's Advocate session\n"
-                "`!jeopardy` - Start Channel Jeopardy\n"
-                "`!jpick` / `!jpass` / `!jend` - Pick clue / Pass / End game"
-            ),
-            inline=False
-        )
-
-        embed.add_field(
-            name="Personal Analytics and Memory",
-            value=(
-                "`/mystats` - Personal analytics card\n"
-                "`!myfacts` - View stored facts about you\n"
-                "`!forget` - Delete a stored fact"
-            ),
-            inline=False
-        )
-
-        embed.add_field(
-            name="Message Scheduling",
-            value=(
-                "`!schedule` - Schedule a message\n"
-                "`!scheduled` - View pending messages\n"
-                "`!cancelschedule` - Cancel a scheduled message"
-            ),
-            inline=False
-        )
-
-        embed.add_field(
-            name="Monitoring (Admin Only)",
-            value=(
-                "`!feedadd` / `!feedremove` / `!feeds` - RSS feed monitoring\n"
-                "`!ghwatch` / `!ghunwatch` / `!ghwatches` - GitHub repo monitoring\n"
-                "`!wladd` / `!wlremove` / `!watchlist` (`!wl`) - Price watchlists"
-            ),
-            inline=False
-        )
-
-        embed.add_field(
-            name="Admin",
-            value=(
-                "`!setadmin` / `!removeadmin` / `!admins` - Manage bot admins\n"
-                "`!personality` - Change bot personality mode"
-            ),
-            inline=False
-        )
-
-        embed.add_field(
-            name="Prefix Commands - Utility",
-            value=(
-                "`!ping` - Check latency\n"
-                "`!help` - Show help\n"
-                "`!stats` - User stats\n"
-                "`!search` - Web search\n"
-                "`!analyze` - Behavior analysis (Admin)\n"
-                "`!refreshstats` - Refresh cache (Admin)"
-            ),
-            inline=False
-        )
-
-        embed.add_field(
-            name="Prefix Commands - Tools",
-            value=(
-                "`!convert 100 USD EUR` - Currency conversion\n"
-                "`!define word` - Dictionary definition\n"
-                "`!weather London` - Current weather\n"
-                "`!time Tokyo` - Time in timezone\n"
-                "`!roll d20` - Roll dice / `!roll coin` - Flip coin\n"
-                "`!movie Inception` - Movie/TV info\n"
-                "`!stock AAPL` or `Microsoft` - Stock/crypto\n"
-                "`!translate es Hello` - Translate text"
-            ),
-            inline=False
-        )
-
-        embed.set_footer(text="Use /help <command> or !help <command> for detailed help")
+        embed.set_footer(text="!help <category> for commands • !help <command> for details on one command")
 
         return embed
 
@@ -1261,21 +1055,196 @@ class HelpSystem:
 
     # Command categories for group-specific help
     COMMAND_CATEGORIES = {
+        "tools": {
+            "title": "Utility Tools & Prefix Commands",
+            "description": "Quick utility commands that work without LLM processing (faster and zero token cost).",
+            "prefix_commands": [
+                ("!search query", "Web search"),
+                ("!convert 100 USD EUR", "Currency conversion"),
+                ("!define word", "Dictionary definition"),
+                ("!weather [location]", "Current weather"),
+                ("!time timezone", "Time in any timezone"),
+                ("!roll d20 / !roll coin", "Dice rolls and coin flips"),
+                ("!movie title", "Movie/TV information"),
+                ("!stock symbol", "Stock/crypto prices with charts"),
+                ("!translate lang text", "Translate text"),
+                ("!wiki topic", "Wikipedia summary"),
+                ("!wa query", "Wolfram Alpha calculations"),
+                ("!yt query", "YouTube search"),
+                ("!ping", "Check bot latency"),
+            ],
+            "related_categories": ["weather"]
+        },
+        "stats": {
+            "title": "Chat Statistics",
+            "description": "Server analytics, network graphs, topic trends, and engagement metrics. Zero LLM cost — pure database analytics.",
+            "commands": [
+                ("stats_server", "Network graph and interaction stats"),
+                ("stats_topics", "Trending keywords and topics"),
+                ("stats_primetime", "Activity heatmap by hour/day"),
+                ("stats_engagement", "Engagement and response metrics"),
+                ("dashboard", "Server health dashboard with charts"),
+                ("flow", "Conversation flow Sankey diagram"),
+            ],
+            "prefix_commands": [
+                ("!stats", "View user statistics"),
+                ("!analyze", "Run behavior analysis (Admin)"),
+                ("!refreshstats", "Refresh stats cache (Admin)"),
+            ],
+            "related_categories": ["analytics"]
+        },
+        "claims": {
+            "title": "Claims & Quotes",
+            "description": "Track predictions, verify claims, and save memorable quotes.",
+            "prefix_commands": [
+                ("!receipts (!claims)", "View tracked claims"),
+                ("!verify", "Verify a claim as true/false/mixed"),
+                ("!quotes", "View saved quotes"),
+                ("!qotd", "Quote of the Day"),
+            ],
+            "features": [
+                "React with cloud emoji to save quotes",
+                "React with warning emoji to fact-check",
+                "Automatic claim detection for predictions",
+            ],
+            "related_categories": ["hot_takes"]
+        },
+        "hot_takes": {
+            "title": "Hot Takes",
+            "description": "Track controversial claims and monitor how predictions age over time.",
+            "prefix_commands": [
+                ("!hottakes (!ht)", "Hot takes leaderboard"),
+                ("!myht", "Your hot takes statistics"),
+                ("!vindicate", "Mark hot take vindication status (Admin)"),
+            ],
+            "related_categories": ["claims", "debates"]
+        },
+        "debates": {
+            "title": "Debates",
+            "description": "Track and analyze debates with LLM-powered judging, logical fallacy detection, and scoring.",
+            "commands": [
+                ("debate_start", "Start tracking a debate"),
+            ],
+            "prefix_commands": [
+                ("!debate_end (!de)", "End debate and show analysis"),
+                ("!debate_stats (!ds)", "View your debate statistics"),
+                ("!debate_lb (!dlb)", "Top debaters leaderboard"),
+                ("!debate_review (!dr)", "Analyze uploaded debate transcript"),
+                ("!debate_profile (!dp)", "Argumentation profile card"),
+            ],
+            "related_categories": ["hot_takes", "games"]
+        },
+        "trivia": {
+            "title": "Trivia",
+            "description": "LLM-powered trivia games with dynamic question generation, scoring, and leaderboards.",
+            "commands": [
+                ("trivia_start", "Start trivia session"),
+            ],
+            "prefix_commands": [
+                ("!triviastop", "Stop current session"),
+                ("!triviastats", "View your trivia stats"),
+                ("!trivialeaderboard (!tlb)", "Server trivia rankings"),
+            ],
+            "related_categories": ["games"]
+        },
+        "games": {
+            "title": "Games",
+            "description": "Interactive channel games — Who Said It, Devil's Advocate, and Channel Jeopardy.",
+            "prefix_commands": [
+                ("!whosaidit [rounds]", "Start Who Said It? (guess who wrote anonymous quotes)"),
+                ("!wsisskip", "Skip current round"),
+                ("!wsisend", "End game and show scores"),
+                ("!da [topic]", "Start Devil's Advocate session"),
+                ("!daend", "End Devil's Advocate session"),
+                ("!jeopardy [categories] [clues_per]", "Start Channel Jeopardy"),
+                ("!jpick [category] [value]", "Pick a Jeopardy clue"),
+                ("!jpass", "Pass on current clue"),
+                ("!jend", "End Jeopardy and show scores"),
+            ],
+            "related_categories": ["trivia", "debates"]
+        },
+        "polls": {
+            "title": "Polls",
+            "description": "Create polls with Discord button voting. Supports single/multi-choice and timed auto-close.",
+            "commands": [
+                ("poll", "Create a new poll with button voting"),
+            ],
+            "prefix_commands": [
+                ("!pollresults <id>", "View poll results card"),
+                ("!pollclose <id>", "Close a poll (creator only)"),
+            ],
+            "related_categories": []
+        },
+        "reminders": {
+            "title": "Reminders & Events",
+            "description": "Context-aware reminders and event scheduling with natural language time parsing. Supports recurring reminders.",
+            "prefix_commands": [
+                ("!remind <time> <message>", "Set a reminder (e.g. 'in 30 minutes Check oven')"),
+                ("!reminders", "View your active reminders"),
+                ("!cancelremind <id>", "Cancel a reminder"),
+                ("!event <name> <date>", "Schedule an event with auto-reminders"),
+                ("!events [limit]", "View upcoming events"),
+                ("!cancelevent <id>", "Cancel an event (creator only)"),
+            ],
+            "related_categories": ["scheduling"]
+        },
+        "scheduling": {
+            "title": "Message Scheduling",
+            "description": "Schedule messages to be sent later. Max 5 pending per user, max 30 days out.",
+            "prefix_commands": [
+                ("!schedule <message> <time>", "Schedule a message for later"),
+                ("!scheduled", "View your pending scheduled messages"),
+                ("!cancelschedule <id>", "Cancel a scheduled message"),
+            ],
+            "related_categories": ["reminders"]
+        },
+        "analytics": {
+            "title": "Personal Analytics & Memory",
+            "description": "Your personal stats card, stored facts, and topic expertise tracking.",
+            "commands": [
+                ("mystats", "Personal analytics card (messages, debates, trivia, topics)"),
+                ("wrapped", "Yearly activity summary (Spotify Wrapped for Discord)"),
+            ],
+            "prefix_commands": [
+                ("!myfacts", "View stored facts about you"),
+                ("!forget <id>", "Delete a stored fact"),
+                ("!qotd [mode]", "Quote of the Day (daily/weekly/all-time)"),
+            ],
+            "features": [
+                "Tell WompBot 'remember that I prefer Python' to store facts",
+                "Facts are automatically used in conversations for personalization",
+            ],
+            "related_categories": ["stats"]
+        },
+        "weather": {
+            "title": "Weather",
+            "description": "Weather lookups with saved locations and dual-unit display.",
+            "prefix_commands": [
+                ("!weather [location]", "Current weather"),
+                ("!weatherset <location> [units]", "Set default location and units"),
+                ("!weatherclear", "Clear saved location"),
+            ],
+            "natural_language": [
+                "'wompbot weather' or 'wompbot forecast' — uses your saved location",
+                "'wompbot weather Tokyo' — specify a location",
+            ],
+            "related_categories": ["tools"]
+        },
         "iracing": {
             "title": "iRacing Commands",
-            "description": "Comprehensive iRacing integration for driver stats, series analytics, and team management.",
+            "description": "Comprehensive iRacing integration for driver stats, series analytics, and race data.",
             "commands": [
                 ("iracing_link", "Link Discord to iRacing account"),
                 ("iracing_profile", "View driver profile and stats"),
                 ("iracing_results", "Recent race results"),
-                ("iracing_schedule", "Race schedules by series"),
-                ("iracing_server_leaderboard", "Server driver rankings"),
-                ("iracing_compare_drivers", "Side-by-side driver comparison"),
                 ("iracing_history", "Rating progression over time"),
+                ("iracing_schedule", "Race schedules by series"),
+                ("iracing_season_schedule", "Full season track rotation"),
                 ("iracing_meta", "Best cars for a series"),
                 ("iracing_win_rate", "Win rates by car"),
+                ("iracing_server_leaderboard", "Server driver rankings"),
+                ("iracing_compare_drivers", "Side-by-side driver comparison"),
                 ("iracing_series_popularity", "Popular series charts"),
-                ("iracing_season_schedule", "Full season rotation"),
                 ("iracing_timeslots", "Race session times"),
                 ("iracing_upcoming_races", "Upcoming official races"),
             ],
@@ -1305,143 +1274,44 @@ class HelpSystem:
             ],
             "related_categories": ["iracing_teams"]
         },
-        "stats": {
-            "title": "Statistics Commands",
-            "description": "Server analytics, network graphs, topic trends, and engagement metrics. Zero LLM cost - pure database analytics.",
-            "commands": [
-                ("stats_server", "Network graph and interaction stats"),
-                ("stats_topics", "Trending keywords and topics"),
-                ("stats_primetime", "Activity heatmap by hour/day"),
-                ("stats_engagement", "Engagement and response metrics"),
-            ],
+        "monitoring": {
+            "title": "Monitoring (Admin Only)",
+            "description": "RSS feeds, GitHub repos, and price watchlists — admin-only monitoring tools.",
             "prefix_commands": [
-                ("!stats", "View user statistics"),
-                ("!analyze", "Run behavior analysis (Admin)"),
-                ("!refreshstats", "Refresh stats cache (Admin)"),
+                ("!feedadd <url> [channel]", "Add an RSS feed to monitor"),
+                ("!feedremove <id>", "Remove a monitored feed"),
+                ("!feeds", "List all monitored feeds"),
+                ("!ghwatch <repo> [type] [channel]", "Watch a GitHub repo (releases/issues/prs)"),
+                ("!ghunwatch <id>", "Stop watching a repo"),
+                ("!ghwatches", "List watched repos"),
+                ("!wladd <symbols> [threshold] [channel]", "Add stock/crypto to watchlist"),
+                ("!wlremove <symbol>", "Remove from watchlist"),
+                ("!watchlist (!wl)", "View the server's watchlist"),
             ],
-            "related_categories": ["analytics"]
-        },
-        "privacy": {
-            "title": "Privacy & GDPR Commands",
-            "description": "GDPR-compliant privacy controls for data management. WompBot operates under Legitimate Interest (GDPR Art. 6.1.f).",
-            "commands": [
-                ("wompbot_optout", "Opt out of data collection"),
-                ("download_my_data", "Export all your data (GDPR Art. 15)"),
-                ("delete_my_data", "Request data deletion or cancel pending deletion (GDPR Art. 17)"),
-            ],
-            "related_categories": []
-        },
-        "debates": {
-            "title": "Debate Commands",
-            "description": "Track and analyze debates with LLM-powered judging, logical fallacy detection, and scoring.",
-            "commands": [
-                ("debate_start", "Start tracking a debate"),
-            ],
-            "prefix_commands": [
-                ("!debate_end (!de)", "End debate and show analysis"),
-                ("!debate_stats (!ds)", "View your debate statistics"),
-                ("!debate_lb (!dlb)", "Top debaters leaderboard"),
-                ("!debate_review (!dr)", "Analyze uploaded debate transcript"),
-                ("!debate_profile (!dp)", "Argumentation profile card"),
-            ],
-            "related_categories": ["hot_takes"]
-        },
-        "trivia": {
-            "title": "Trivia Commands",
-            "description": "LLM-powered trivia games with dynamic question generation, scoring, and leaderboards.",
-            "commands": [
-                ("trivia_start", "Start trivia session"),
-            ],
-            "prefix_commands": [
-                ("!triviastop", "Stop current session"),
-                ("!triviastats", "View your trivia stats"),
-                ("!trivialeaderboard (!tlb)", "Server trivia rankings"),
-            ],
-            "related_categories": []
-        },
-        "reminders": {
-            "title": "Reminders & Events",
-            "description": "Context-aware reminders and event scheduling with natural language time parsing.",
-            "prefix_commands": [
-                ("!remind", "Set a reminder"),
-                ("!reminders", "View active reminders"),
-                ("!cancelremind", "Cancel a reminder"),
-                ("!event", "Schedule an event"),
-                ("!events", "View upcoming events"),
-                ("!cancelevent", "Cancel an event"),
-            ],
-            "related_categories": []
-        },
-        "claims": {
-            "title": "Claims & Quotes",
-            "description": "Track predictions, verify claims, and save memorable quotes.",
-            "prefix_commands": [
-                ("!receipts (!claims)", "View tracked claims"),
-                ("!verify", "Verify a claim as true/false"),
-                ("!quotes", "View saved quotes"),
-                ("!qotd", "Quote of the Day"),
-            ],
-            "features": [
-                "React with cloud emoji to save quotes",
-                "React with warning emoji to fact-check",
-                "Automatic claim detection for predictions",
-            ],
-            "related_categories": ["hot_takes"]
-        },
-        "hot_takes": {
-            "title": "Hot Takes",
-            "description": "Track controversial claims and monitor how predictions age over time.",
-            "prefix_commands": [
-                ("!hottakes (!ht)", "Hot takes leaderboard"),
-                ("!myht", "Your hot takes statistics"),
-                ("!vindicate", "Mark hot take vindication status (Admin)"),
-            ],
-            "related_categories": ["claims", "debates"]
-        },
-        "weather": {
-            "title": "Weather Commands",
-            "description": "Weather lookups with dual-unit display (Fahrenheit primary, Celsius secondary).",
-            "prefix_commands": [
-                ("!weatherset", "Set default location and units"),
-                ("!weatherclear", "Clear saved location"),
-                ("!weather [location]", "Current weather"),
-            ],
-            "natural_language": [
-                "wompbot weather [location]",
-                "wompbot forecast [location]",
-            ],
-            "related_categories": ["tools"]
-        },
-        "tools": {
-            "title": "Utility Tools & Prefix Commands",
-            "description": "Quick utility commands that work without LLM processing (faster and zero token cost).",
-            "prefix_commands": [
-                ("!convert 100 USD EUR", "Currency conversion"),
-                ("!define word", "Dictionary definition"),
-                ("!time timezone", "Time in any timezone"),
-                ("!roll d20 / !roll coin", "Dice rolls and coin flips"),
-                ("!movie title", "Movie/TV information"),
-                ("!stock symbol", "Stock/crypto prices with charts"),
-                ("!translate lang text", "Translate text"),
-                ("!wiki topic", "Wikipedia summary"),
-                ("!wa query", "Wolfram Alpha calculations"),
-                ("!yt query", "YouTube search"),
-                ("!search query", "Web search"),
-            ],
-            "related_categories": ["weather"]
+            "related_categories": ["admin"]
         },
         "admin": {
             "title": "Admin Commands",
-            "description": "Server administration and bot management commands.",
+            "description": "Server administration and bot management. Requires bot admin permissions.",
             "prefix_commands": [
-                ("!setadmin", "Add a bot admin"),
-                ("!removeadmin", "Remove a bot admin"),
+                ("!setadmin @user", "Add a bot admin"),
+                ("!removeadmin @user", "Remove a bot admin"),
                 ("!admins", "List bot admins"),
-                ("!personality", "Change bot personality mode"),
+                ("!personality <mode>", "Change bot personality (default/concise/bogan)"),
                 ("!analyze [days]", "Run behavior analysis"),
                 ("!refreshstats", "Refresh stats cache"),
             ],
-            "related_categories": ["privacy"]
+            "related_categories": ["monitoring", "privacy"]
+        },
+        "privacy": {
+            "title": "Privacy & GDPR",
+            "description": "GDPR-compliant privacy controls. WompBot operates under Legitimate Interest (GDPR Art. 6.1.f).",
+            "commands": [
+                ("wompbot_optout", "Opt out of data collection"),
+                ("download_my_data", "Export all your data (GDPR Art. 15)"),
+                ("delete_my_data", "Request data deletion or cancel pending (GDPR Art. 17)"),
+            ],
+            "related_categories": []
         },
     }
 

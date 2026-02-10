@@ -6,12 +6,15 @@ This module contains all slash commands (/ syntax using app_commands).
 
 import os
 import asyncio
+import logging
 import discord
 from discord import app_commands
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Literal
 from collections import Counter
 from features.admin_utils import is_bot_admin, is_bot_admin_interaction, is_super_admin, SUPER_ADMIN_IDS
+
+logger = logging.getLogger(__name__)
 
 import re
 
@@ -46,7 +49,7 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
     WOMPIE_USER_ID = wompie_user_id[0] if isinstance(wompie_user_id, list) else wompie_user_id
 
     @bot.tree.command(name="help", description="Show all commands or get detailed help for a specific command or category")
-    @app_commands.describe(command="Command name or category (iracing, stats, privacy, debates, trivia, claims, weather, tools, admin)")
+    @app_commands.describe(command="Command or category: tools, stats, claims, debates, trivia, games, polls, reminders, analytics, iracing, admin, etc.")
     async def help_slash(interaction: discord.Interaction, command: str = None):
         """Show bot commands or detailed help for a specific command or category"""
         if command:
@@ -65,10 +68,11 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
             else:
                 # List available categories
                 categories = help_system.get_available_categories()
+                cat_list = ", ".join(f"`{c}`" for c in categories)
                 await interaction.response.send_message(
-                    f"❌ No help found for `{command}`.\n\n"
-                    f"**Available categories:** {', '.join(f'`{c}`' for c in categories)}\n\n"
-                    f"Use `/help` to see all commands or `/help <category>` for category help.",
+                    f"No help found for `{command}`.\n\n"
+                    f"**Categories:** {cat_list}\n\n"
+                    f"Use `/help <category>` for commands in a category, or `/help` for the overview.",
                     ephemeral=True
                 )
         else:
@@ -3256,10 +3260,8 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
                     await interaction.followup.send(embed=embed)
 
             except Exception as e:
-                await interaction.followup.send(f"❌ Error generating dashboard: {str(e)}")
-                print(f"❌ Dashboard error: {e}")
-                import traceback
-                traceback.print_exc()
+                logger.error("Dashboard generation failed: %s", e, exc_info=True)
+                await interaction.followup.send("❌ Error generating dashboard. Please try again.")
 
         print("✅ Dashboard commands registered")
 

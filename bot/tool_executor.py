@@ -184,7 +184,7 @@ class ToolExecutor:
             data=data,
             title=args["title"],
             xlabel=args.get("xlabel", ""),
-            ylabel=args.get("ylabel", "Value"),
+            ylabel=args.get("ylabel", ""),
             horizontal=args.get("horizontal", False)
         )
 

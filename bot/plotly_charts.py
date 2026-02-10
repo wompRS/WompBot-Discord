@@ -87,7 +87,7 @@ class PlotlyCharts:
                 borderwidth=1,
                 font=dict(color=self.COLORS['text_gray'], size=12),
             ),
-            margin=dict(l=60, r=30, t=70, b=60),
+            # NOTE: margin intentionally NOT in template — set per chart type
         )
 
     def _to_png(self, fig: go.Figure, width: int = 1000, height: int = 600) -> BytesIO:
@@ -107,7 +107,7 @@ class PlotlyCharts:
         data: Dict[str, Union[int, float]],
         title: str,
         xlabel: str = "",
-        ylabel: str = "Value",
+        ylabel: str = "",
         horizontal: bool = False,
         color: str = None
     ) -> BytesIO:
@@ -117,7 +117,7 @@ class PlotlyCharts:
         Args:
             data: Dictionary of {label: value}
             title: Chart title
-            xlabel: X-axis label
+            xlabel: X-axis label (for horizontal bars, this labels the value axis)
             ylabel: Y-axis label
             horizontal: If True, create horizontal bar chart
             color: Single color for all bars (default: multi-color)
@@ -138,24 +138,55 @@ class PlotlyCharts:
 
         fig = go.Figure()
 
+        # Widen bargap when there are few bars to prevent oversized bars
+        n = len(labels)
+        gap = 0.35 if n <= 4 else 0.25 if n <= 7 else 0.2
+
+        # Apply template FIRST so per-chart overrides aren't clobbered
+        fig.update_layout(
+            template=self.template,
+            title=dict(text=title),
+            showlegend=False,
+            bargap=gap,
+        )
+
         if horizontal:
+            # Truncate long labels for readability
+            display_labels = [l[:20] + '…' if len(l) > 20 else l for l in labels]
+
             fig.add_trace(go.Bar(
-                y=labels,
+                y=display_labels,
                 x=values,
                 orientation='h',
                 marker=dict(
                     color=bar_colors,
                     line=dict(width=0),
+                    cornerradius=4,
                 ),
                 text=[f'{v:,.1f}' if isinstance(v, float) and v != int(v) else f'{int(v):,}' for v in values],
                 textposition='outside',
-                textfont=dict(color=self.COLORS['text_white'], size=12),
+                textfont=dict(color=self.COLORS['text_white'], size=13),
             ))
+
+            # Calculate left margin based on longest label
+            max_label_len = max((len(l) for l in display_labels), default=5)
+            left_margin = max(100, min(220, max_label_len * 10 + 20))
+
+            # For horizontal bars the value axis is x — accept either xlabel or ylabel
+            value_axis_label = xlabel or ylabel
+
+            # These overrides come AFTER template so they win
             fig.update_layout(
-                xaxis_title=ylabel,
-                yaxis_title=xlabel,
-                yaxis=dict(autorange='reversed'),
+                xaxis_title=value_axis_label,
+                yaxis=dict(
+                    autorange='reversed',
+                    tickfont=dict(color=self.COLORS['text_gray'], size=13),
+                ),
+                margin=dict(l=left_margin, r=50, t=70, b=50),
             )
+
+            # Scale height to data count so bars don't look absurdly thick
+            chart_height = max(300, min(700, 100 + n * 55))
         else:
             fig.add_trace(go.Bar(
                 x=labels,
@@ -163,24 +194,20 @@ class PlotlyCharts:
                 marker=dict(
                     color=bar_colors,
                     line=dict(width=0),
+                    cornerradius=4,
                 ),
                 text=[f'{v:,.1f}' if isinstance(v, float) and v != int(v) else f'{int(v):,}' for v in values],
                 textposition='outside',
-                textfont=dict(color=self.COLORS['text_white'], size=12),
+                textfont=dict(color=self.COLORS['text_white'], size=13),
             ))
             fig.update_layout(
                 xaxis_title=xlabel,
                 yaxis_title=ylabel,
+                margin=dict(l=60, r=30, t=70, b=60),
             )
+            chart_height = 600
 
-        fig.update_layout(
-            template=self.template,
-            title=dict(text=title),
-            showlegend=False,
-            bargap=0.2,
-        )
-
-        return self._to_png(fig)
+        return self._to_png(fig, height=chart_height)
 
     def create_line_chart(
         self,
@@ -233,6 +260,7 @@ class PlotlyCharts:
             yaxis_title=ylabel,
             showlegend=len(data) > 1,
             hovermode='x unified',
+            margin=dict(l=60, r=30, t=70, b=60),
         )
 
         return self._to_png(fig)
@@ -283,6 +311,7 @@ class PlotlyCharts:
                 xanchor='left',
                 x=1.02,
             ),
+            margin=dict(l=30, r=30, t=70, b=30),
         )
 
         return self._to_png(fig, width=1000, height=650)
@@ -397,6 +426,7 @@ class PlotlyCharts:
             bargap=0.15,
             bargroupgap=0.1,
             showlegend=True,
+            margin=dict(l=60, r=30, t=70, b=60),
         )
 
         return self._to_png(fig)
@@ -442,6 +472,7 @@ class PlotlyCharts:
         fig.update_layout(
             template=self.template,
             title=dict(text=title),
+            margin=dict(l=30, r=30, t=70, b=30),
         )
 
         return self._to_png(fig, width=1200, height=700)
@@ -503,6 +534,7 @@ class PlotlyCharts:
                 ),
             ),
             showlegend=False,
+            margin=dict(l=30, r=30, t=70, b=30),
         )
 
         return self._to_png(fig, width=800, height=700)
@@ -554,6 +586,7 @@ class PlotlyCharts:
         fig.update_layout(
             template=self.template,
             title=dict(text=title),
+            margin=dict(l=60, r=30, t=70, b=60),
         )
 
         return self._to_png(fig, width=1000, height=650)
