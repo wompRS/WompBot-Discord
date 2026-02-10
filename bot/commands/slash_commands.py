@@ -3009,6 +3009,59 @@ def register_slash_commands(bot, db, llm, claims_tracker, chat_stats, stats_viz,
             await interaction.followup.send("❌ Error comparing drivers. Please try again later.")
     
     
+    # Local cache for series popularity data (populated on-demand by the command)
+    iracing_popularity_cache = {}
+
+    async def compute_series_popularity(time_range: str, limit: int = 10):
+        """Compute series popularity by participant count."""
+        if not iracing:
+            return []
+
+        now = datetime.now(timezone.utc)
+        current_year = now.year
+        current_quarter = (now.month - 1) // 3 + 1
+
+        # Try database first
+        if db:
+            try:
+                historical_data = db.get_participation_data(time_range, current_year, current_quarter, limit)
+                if historical_data:
+                    return historical_data
+            except Exception as e:
+                logger.warning("Error fetching historical popularity data: %s", e)
+
+        # Fall back to live API
+        client = await iracing._get_client()
+        all_seasons = await client.get_series_seasons()
+        if not all_seasons:
+            return []
+
+        active_seasons = [s for s in all_seasons if s.get('active', False)]
+        series_participation = {}
+
+        for season in active_seasons[:100]:
+            series_id = season.get('series_id')
+            season_id = season.get('season_id')
+            car_class_ids = season.get('car_class_ids', [])
+            if not car_class_ids:
+                continue
+
+            try:
+                standings = await client.get_series_stats(season_id, car_class_ids[0])
+                if standings and isinstance(standings, dict):
+                    series_name = standings.get('series_name', f'Series {series_id}')
+                    participant_count = 0
+                    if 'chunk_info' in standings:
+                        chunk_info = standings['chunk_info']
+                        if isinstance(chunk_info, dict) and 'rows' in chunk_info:
+                            participant_count = chunk_info['rows']
+                    if participant_count > 0:
+                        series_participation[series_name] = series_participation.get(series_name, 0) + participant_count
+            except Exception:
+                continue
+
+        return sorted(series_participation.items(), key=lambda x: x[1], reverse=True)[:limit]
+
     @bot.tree.command(name="iracing_series_popularity", description="View most popular series by participation")
     @app_commands.describe(
         time_range="Time period for popularity analysis"
