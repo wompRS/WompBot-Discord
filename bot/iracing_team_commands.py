@@ -16,7 +16,7 @@ IRACING_LOGO_URL = "https://images-static.iracing.com/img/logos/iracing-logo.png
 _team_manager = None
 
 
-def setup_iracing_team_commands(bot, iracing_team_manager):
+def setup_iracing_team_commands(bot, iracing_team_manager, iracing_viz):
     global _team_manager
     _team_manager = iracing_team_manager
 

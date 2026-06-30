@@ -391,12 +391,12 @@ class GDPRPrivacyManager:
                         'account_age_days': (datetime.now() - data_export['profile']['first_seen']).days if data_export['profile'] else 0
                     }
 
-            # Record successful export
-            cur.execute("""
-                INSERT INTO data_export_requests
-                (user_id, username, status, completed_date, expires_at)
-                VALUES (%s, %s, 'completed', NOW(), NOW() + INTERVAL '48 hours')
-            """, (user_id, data_export['profile'].get('username', 'Unknown') if data_export['profile'] else 'Unknown'))
+                    # Record successful export (must run while the cursor/connection is still open)
+                    cur.execute("""
+                        INSERT INTO data_export_requests
+                        (user_id, username, status, completed_date, expires_at)
+                        VALUES (%s, %s, 'completed', NOW(), NOW() + INTERVAL '48 hours')
+                    """, (user_id, data_export['profile'].get('username', 'Unknown') if data_export['profile'] else 'Unknown'))
 
             self.log_audit_action(user_id, 'data_export_completed',
                                 f"Exported {data_export['summary']['total_messages']} messages")

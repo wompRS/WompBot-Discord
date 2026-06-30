@@ -11,8 +11,10 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and install Python dependencies
+# SECURITY: upgrade build toolchain first (clears pip/wheel/setuptools CVEs)
 COPY requirements.txt .
-RUN pip install --no-cache-dir --timeout=120 --retries=5 -r requirements.txt
+RUN pip install --no-cache-dir --upgrade pip wheel setuptools && \
+    pip install --no-cache-dir --timeout=120 --retries=5 -r requirements.txt
 
 # SECURITY: Create non-root user to run the application
 RUN useradd -m -u 1000 -s /bin/bash botuser && \

@@ -372,7 +372,7 @@ class EventSystem:
                     cur.execute("""
                         UPDATE events
                         SET cancelled = TRUE, cancelled_at = NOW()
-                        WHERE id = %s AND cancelled = FALSE AND created_by = %s
+                        WHERE id = %s AND cancelled = FALSE AND created_by_user_id = %s
                         RETURNING id
                     """, (event_id, user_id))
 

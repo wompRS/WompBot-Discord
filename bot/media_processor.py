@@ -13,7 +13,7 @@ import asyncio
 import tempfile
 import subprocess
 from typing import List, Dict, Any, Optional, Tuple
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urljoin
 import socket
 
 from PIL import Image
@@ -69,7 +69,7 @@ def _check_content_length(session: requests.Session, url: str, max_bytes: int) -
     Returns content length if available and within limit, or None if HEAD fails.
     Raises ValueError if content exceeds max_bytes."""
     try:
-        head = session.head(url, timeout=10, allow_redirects=True)
+        head = session.head(url, timeout=10, allow_redirects=False)
         cl = head.headers.get('Content-Length')
         if cl is not None:
             size = int(cl)
@@ -85,20 +85,33 @@ def _check_content_length(session: requests.Session, url: str, max_bytes: int) -
 
 def _streaming_download(session: requests.Session, url: str, max_bytes: int, timeout: int = 60) -> bytes:
     """Download URL with streaming size enforcement.
-    Raises ValueError if download exceeds max_bytes."""
-    response = session.get(url, timeout=timeout, stream=True)
-    response.raise_for_status()
-
-    chunks = []
-    total = 0
-    for chunk in response.iter_content(chunk_size=8192):
-        total += len(chunk)
-        if total > max_bytes:
+    Follows redirects manually, re-validating each hop against SSRF rules.
+    Raises ValueError if download exceeds max_bytes or redirects to an unsafe address."""
+    current = url
+    for _ in range(5):  # bounded redirect chain
+        response = session.get(current, timeout=timeout, stream=True, allow_redirects=False)
+        if response.status_code in (301, 302, 303, 307, 308):
+            location = response.headers.get('Location')
             response.close()
-            raise ValueError(f"Download exceeded {max_bytes / 1024 / 1024:.0f}MB limit (aborted at {total / 1024 / 1024:.1f}MB)")
-        chunks.append(chunk)
+            if not location:
+                raise ValueError("Redirect without Location header")
+            current = urljoin(current, location)
+            if not _is_safe_url(current):
+                raise ValueError("Redirect to unsafe/internal address blocked (SSRF)")
+            continue
+        response.raise_for_status()
 
-    return b''.join(chunks)
+        chunks = []
+        total = 0
+        for chunk in response.iter_content(chunk_size=8192):
+            total += len(chunk)
+            if total > max_bytes:
+                response.close()
+                raise ValueError(f"Download exceeded {max_bytes / 1024 / 1024:.0f}MB limit (aborted at {total / 1024 / 1024:.1f}MB)")
+            chunks.append(chunk)
+
+        return b''.join(chunks)
+    raise ValueError("Too many redirects")
 
 
 class MediaProcessor:

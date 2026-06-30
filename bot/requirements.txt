@@ -1,11 +1,11 @@
 discord.py==2.6.4  # SECURITY: Updated from 2.3.2 for latest security patches
 psycopg2-binary==2.9.9
-python-dotenv==1.0.1
+python-dotenv==1.2.2  # SECURITY: CVE-2026-28684
 python-dateutil==2.9.0  # Natural language date parsing for event scheduling
 dateparser==1.2.0  # Advanced date parsing for visualizations
-aiohttp==3.13.3  # SECURITY: Updated from 3.9.5 for CVE fixes (HTTP request smuggling, etc.)
+aiohttp==3.14.1  # SECURITY: 3.13.3 had 21 CVEs (pip-audit 2026-06); fixed in 3.14.1
 tavily-python==0.3.9  # Updated for latest features
-requests==2.32.5  # SECURITY: Updated from 2.32.3 for latest CVE patches
+requests==2.34.2  # SECURITY: CVE-2026-25645 (fixed 2.33.0)
 httpx==0.28.1  # SECURITY: Updated from 0.24.1 for security fixes
 openai==1.109.1  # OpenAI API for embeddings (RAG system) - latest v1.x stable (v2.x has breaking changes)
 pgvector==0.3.5  # PostgreSQL vector extension Python client
@@ -13,8 +13,8 @@ scikit-learn==1.5.1  # Updated for performance and security
 networkx==3.3  # Updated for bug fixes
 pandas==2.2.2  # Updated for performance improvements
 numpy==1.26.4  # Keep on 1.x branch (numpy 2.x has breaking changes)
-cryptography==46.0.3  # SECURITY: Critical update from 42.0.8 for OpenSSL bindings and CVE fixes
-Pillow==11.0.0  # SECURITY: Updated from 10.3.0, staying on 11.x for compatibility (12.x may have breaking changes)
+cryptography==48.0.1  # SECURITY: 46.0.3 had 6 CVEs (pip-audit 2026-06); fixed in 48.0.1
+Pillow==12.2.0  # SECURITY: 11.0.0 had 6 CVEs (decodes user images); fixed in 12.2.0
 matplotlib==3.9.0  # Visualization library for charts and tables
 seaborn==0.13.2  # Statistical visualizations built on matplotlib
 llmlingua==0.2.2  # Prompt compression for reducing context token usage
@@ -25,7 +25,7 @@ yfinance==0.2.37  # Stock/crypto price lookups
 curl_cffi==0.7.4  # Required by yfinance to bypass Yahoo Finance bot detection
 beautifulsoup4==4.12.3  # HTML parsing for URL previews
 pytz==2024.1  # Timezone handling
-yt-dlp==2024.12.6  # YouTube video downloading for frame extraction
+yt-dlp==2026.6.9  # SECURITY: 2024.12.6 had 5 CVEs (processes user URLs); + YouTube extraction freshness
 youtube-transcript-api==0.6.2  # YouTube captions/transcript extraction
 duckduckgo-search==7.0.1  # Image search with safe search support
 plotly>=6.0.0  # Modern chart generation (replaces matplotlib for data charts)

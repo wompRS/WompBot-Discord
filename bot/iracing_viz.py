@@ -1928,7 +1928,6 @@ class iRacingVisualizer:
         return buffer
 
     def create_recent_races_dashboard(self, driver_name: str, races: List[Dict]) -> BytesIO:
-        """
         if not races or len(races) == 0:
             fig, ax = plt.subplots(figsize=(10, 6), facecolor=self.COLORS['bg_dark'])
             ax.text(0.5, 0.5, "No recent races found",
@@ -2022,7 +2021,6 @@ class iRacingVisualizer:
         return buffer
 
     def create_driver_comparison(self, driver1_data: Dict, driver2_data: Dict, category: str = "sports_car_road") -> BytesIO:
-        """
         from matplotlib.patches import FancyBboxPatch, Rectangle
 
         # Tighter layout - reduced figure size and spacing
@@ -2186,7 +2184,6 @@ class iRacingVisualizer:
 
 
     def create_win_rate_chart(self, series_name: str, car_data: List[Dict], track_name: str = None) -> BytesIO:
-        """
         if not car_data or len(car_data) == 0:
             fig, ax = plt.subplots(figsize=(10, 6), facecolor=self.COLORS['bg_dark'])
             ax.text(0.5, 0.5, "No win rate data available", ha='center', va='center',
@@ -2240,7 +2237,6 @@ class iRacingVisualizer:
         return buffer
 
     def create_popularity_chart(self, series_data: List[Tuple[str, int]], time_range: str) -> BytesIO:
-        """
         # Prepare data
         series_names = [name for name, _ in series_data]
         participant_counts = [count for _, count in series_data]

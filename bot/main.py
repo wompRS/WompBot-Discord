@@ -251,7 +251,8 @@ register_events(
     reminder_system=reminder_system,
     who_said_it=who_said_it,
     devils_advocate=devils_advocate,
-    jeopardy=jeopardy
+    jeopardy=jeopardy,
+    iracing_viz=iracing_viz
 )
 
 # Register prefix commands

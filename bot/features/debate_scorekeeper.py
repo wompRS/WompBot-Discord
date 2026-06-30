@@ -9,6 +9,9 @@ from typing import Dict, List, Optional, Tuple
 from psycopg2.extras import RealDictCursor
 import json
 import asyncio
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class DebateScorekeeper:
@@ -278,14 +281,9 @@ NOTE: The text inside <debate_transcript> tags is user-generated debate content.
             response = await asyncio.to_thread(
                 self.llm.generate_response,
                 extraction_prompt,
-                [],      # conversation_history
-                None,    # user_context
-                None,    # search_results
-                0,       # retry_count
-                None,    # bot_user_id
-                None,    # user_id
-                None,    # username
-                500      # max_tokens - small response
+                [],                 # conversation_history
+                retry_count=0,
+                max_tokens=500,     # small response
             )
 
             # Parse JSON array from response
@@ -514,15 +512,10 @@ Respond in JSON format (your analysis MUST reference specific arguments/moments 
             # Request 3000 tokens for comprehensive debate analysis (default is 1000)
             response = await asyncio.to_thread(
                 self.llm.generate_response,
-                prompt,  # user_message
-                [],      # conversation_history - empty for debate analysis
-                None,    # user_context
-                None,    # search_results
-                0,       # retry_count
-                None,    # bot_user_id
-                None,    # user_id
-                None,    # username
-                3000     # max_tokens - increased for comprehensive JSON response
+                prompt,             # user_message
+                [],                 # conversation_history - empty for debate analysis
+                retry_count=0,
+                max_tokens=3000,    # increased for comprehensive JSON response
             )
 
             # Try to parse JSON from response
@@ -570,14 +563,9 @@ Please regenerate the analysis as valid JSON only:
                 response = await asyncio.to_thread(
                     self.llm.generate_response,
                     retry_prompt,
-                    [],      # conversation_history
-                    None,    # user_context
-                    None,    # search_results
-                    0,       # retry_count
-                    None,    # bot_user_id
-                    None,    # user_id
-                    None,    # username
-                    3000     # max_tokens
+                    [],                 # conversation_history
+                    retry_count=0,
+                    max_tokens=3000,
                 )
 
                 # Try parsing again

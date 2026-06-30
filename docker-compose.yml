@@ -108,7 +108,7 @@ services:
       # Redis for caching
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      REDIS_PASSWORD: ${REDIS_PASSWORD:-wompbot_redis_secret}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?set_REDIS_PASSWORD_in_.env}
     depends_on:
       postgres:
         condition: service_healthy
@@ -152,12 +152,12 @@ services:
   redis:
     image: redis:7-alpine
     container_name: discord_bot_redis
-    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru --requirepass ${REDIS_PASSWORD:-wompbot_redis_secret}
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru --requirepass ${REDIS_PASSWORD:?set_REDIS_PASSWORD_in_.env}
     volumes:
       - redis_data:/data
     restart: always
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-wompbot_redis_secret}", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:?set_REDIS_PASSWORD_in_.env}", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
