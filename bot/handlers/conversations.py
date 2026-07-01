@@ -557,6 +557,8 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
     placeholder_msg = None
     # Track channel lock for cleanup
     channel_lock = None
+    lock_acquired = False  # only release the semaphore if we actually acquired it
+    counter_incremented = False  # only decrement the concurrency counter if we incremented it
     try:
         # Periodic cleanup of stale rate limiting state
         await cleanup_stale_rate_state()
@@ -976,6 +978,7 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
             else:
                 # Increment concurrent request counter atomically
                 USER_CONCURRENT_REQUESTS[message.author.id] = current_requests + 1
+                counter_incremented = True
 
         if concurrent_limited:
             await message.channel.send(
@@ -991,6 +994,7 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
             # Wait up to 10 seconds for a slot to be free
             async with asyncio.timeout(10):
                 await channel_lock.acquire()
+            lock_acquired = True
         except asyncio.TimeoutError:
             await message.channel.send("⏳ Channel has too many concurrent requests (3 max), please wait a moment and try again.")
             return
@@ -1373,21 +1377,23 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
 
         await message.channel.send("Something went wrong processing your request. Please try again.")
     finally:
-        # Release channel semaphore slot to allow next request
-        try:
-            if channel_lock is not None:
+        # Release channel semaphore slot to allow next request. Only release if we actually
+        # acquired it — releasing an un-acquired asyncio.Semaphore silently over-releases and
+        # permanently inflates the channel's concurrency cap.
+        if channel_lock is not None and lock_acquired:
+            try:
                 channel_lock.release()
-        except ValueError:
-            pass  # Semaphore was not acquired (e.g., timeout path)
-        except Exception as lock_error:
-            logger.warning("Error releasing channel semaphore: %s", lock_error)
+            except Exception as lock_error:
+                logger.warning("Error releasing channel semaphore: %s", lock_error)
 
-        # Decrement concurrent request counter (with lock for thread safety)
-        try:
-            async with _CONCURRENT_REQUESTS_LOCK:
-                if message.author.id in USER_CONCURRENT_REQUESTS:
-                    USER_CONCURRENT_REQUESTS[message.author.id] -= 1
-                    if USER_CONCURRENT_REQUESTS[message.author.id] <= 0:
-                        del USER_CONCURRENT_REQUESTS[message.author.id]
-        except Exception as cleanup_error:
-            logger.warning("Error cleaning up concurrent request counter: %s", cleanup_error)
+        # Decrement concurrent request counter — only if THIS request incremented it, so an
+        # early return before the increment doesn't decrement another in-flight request's count.
+        if counter_incremented:
+            try:
+                async with _CONCURRENT_REQUESTS_LOCK:
+                    if message.author.id in USER_CONCURRENT_REQUESTS:
+                        USER_CONCURRENT_REQUESTS[message.author.id] -= 1
+                        if USER_CONCURRENT_REQUESTS[message.author.id] <= 0:
+                            del USER_CONCURRENT_REQUESTS[message.author.id]
+            except Exception as cleanup_error:
+                logger.warning("Error cleaning up concurrent request counter: %s", cleanup_error)
