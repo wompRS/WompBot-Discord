@@ -424,6 +424,8 @@ Be useful and real. That's the balance."""
             system_prompt = self.system_prompt_bogan
         elif personality == 'concise':
             system_prompt = self.system_prompt_concise
+        elif personality == 'feyd':
+            system_prompt = self.system_prompt_feyd
         else:
             system_prompt = self.system_prompt_default
 
