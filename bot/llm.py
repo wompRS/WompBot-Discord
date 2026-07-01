@@ -292,6 +292,16 @@ Be useful and real. That's the balance."""
 
         message_lower = message_content.lower().strip()
 
+        # Strong, explicit search requests override the conversational negatives below,
+        # so polite phrasings ("can you look up...", "could you search for...") still search.
+        strong_triggers = [
+            'look up', 'search for', 'fact check', 'is it true that', 'verify that',
+            'current price', 'latest news', 'price of', 'who won', 'score of',
+            'standings', 'leaderboard',
+        ]
+        if any(trigger in message_lower for trigger in strong_triggers):
+            return True
+
         # NEGATIVE filters first - skip search for conversational/knowledge questions
         # the LLM can answer from training data
         no_search_patterns = [
