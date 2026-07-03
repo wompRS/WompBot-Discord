@@ -14,7 +14,7 @@ from dateutil import parser as dateparser
 IRACING_LOGO_URL = "https://images-static.iracing.com/img/logos/iracing-logo.png"
 
 
-def setup_iracing_event_commands(bot, iracing_team_manager, iracing_client):
+def setup_iracing_event_commands(bot, iracing_team_manager, iracing_client, iracing_viz):
     """Set up all iRacing event scheduling commands"""
 
     # ==================== EVENT MANAGEMENT ====================

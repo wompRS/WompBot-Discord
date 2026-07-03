@@ -219,11 +219,16 @@ class RSSMonitor:
                     new_entries.append(entry)
 
                 if new_entries:
-                    # Limit to 3 new entries per check to avoid spam
-                    new_entries = new_entries[:3]
+                    # feed.entries is newest-first, so new_entries is newest-first too.
+                    # Deliver oldest-first and cap per check; advance the cursor only to the
+                    # newest entry we actually POST, so a burst of >3 entries is delivered
+                    # across successive checks instead of silently dropping the older ones.
+                    new_entries.reverse()          # oldest-first
+                    to_post = new_entries[:3]      # cap per check to avoid spam
 
-                    # Update last_entry_id
-                    latest_id = new_entries[0].get('id') or new_entries[0].get('link') or new_entries[0].get('title', '')
+                    # Update last_entry_id to the newest entry we are posting this round
+                    newest_posted = to_post[-1]
+                    latest_id = newest_posted.get('id') or newest_posted.get('link') or newest_posted.get('title', '')
                     await asyncio.to_thread(
                         self._update_last_entry, feed_row['id'], latest_id
                     )
@@ -232,7 +237,7 @@ class RSSMonitor:
                         'feed_id': feed_row['id'],
                         'feed_title': feed_row['feed_title'],
                         'channel_id': feed_row['channel_id'],
-                        'entries': [self._format_entry(e) for e in new_entries]
+                        'entries': [self._format_entry(e) for e in to_post]
                     })
 
             except Exception as e:

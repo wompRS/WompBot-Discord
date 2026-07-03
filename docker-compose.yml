@@ -108,13 +108,19 @@ services:
       # Redis for caching
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      REDIS_PASSWORD: ${REDIS_PASSWORD:-wompbot_redis_secret}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?set_REDIS_PASSWORD_in_.env}
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
     restart: always
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8080/health', timeout=5).status == 200 else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
     volumes:
       - ./bot:/app
       - ./README.md:/README.md          # Self-knowledge system needs README
@@ -152,12 +158,12 @@ services:
   redis:
     image: redis:7-alpine
     container_name: discord_bot_redis
-    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru --requirepass ${REDIS_PASSWORD:-wompbot_redis_secret}
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru --requirepass ${REDIS_PASSWORD:?set_REDIS_PASSWORD_in_.env}
     volumes:
       - redis_data:/data
     restart: always
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-wompbot_redis_secret}", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:?set_REDIS_PASSWORD_in_.env}", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5

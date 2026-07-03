@@ -427,9 +427,17 @@ def register_tasks(bot, db, llm, rag, chat_stats, iracing, iracing_popularity_ca
                     if reminder['recurring']:
                         await reminder_system.reschedule_recurring(reminder)
 
+                except discord.HTTPException as e:
+                    # Distinguish transient (retry) from permanent (give up) delivery failures,
+                    # so a transient 5xx/429 doesn't silently drop an undelivered reminder.
+                    if e.status and (e.status >= 500 or e.status == 429):
+                        logger.warning("Transient Discord error on reminder #%s (will retry next cycle): %s", reminder['id'], e)
+                        # leave the reminder pending so the next cycle retries it
+                    else:
+                        logger.error("Permanent Discord error on reminder #%s (marking done): %s", reminder['id'], e)
+                        await reminder_system.mark_completed(reminder['id'])
                 except Exception as e:
-                    logger.error("Error processing reminder #%s: %s", reminder['id'], e)
-                    # Mark as completed to avoid getting stuck
+                    logger.error("Error processing reminder #%s (marking done): %s", reminder['id'], e)
                     await reminder_system.mark_completed(reminder['id'])
 
         except Exception as e:
@@ -883,12 +891,18 @@ def register_tasks(bot, db, llm, rag, chat_stats, iracing, iracing_popularity_ca
                             f"⏰ **Scheduled message from {username}:**\n{msg['content']}"
                         )
 
-                    # Mark as sent regardless (even if channel not found)
+                    # Mark as sent (even if the channel no longer exists — undeliverable)
                     await message_scheduler.mark_sent(msg['id'])
 
+                except discord.HTTPException as e:
+                    # Transient 5xx/429 -> leave pending for the next cycle; permanent -> give up
+                    if e.status and (e.status >= 500 or e.status == 429):
+                        logger.warning("Transient Discord error on scheduled message %s (will retry next cycle): %s", msg['id'], e)
+                    else:
+                        logger.error("Permanent Discord error on scheduled message %s (marking sent): %s", msg['id'], e)
+                        await message_scheduler.mark_sent(msg['id'])
                 except Exception as e:
-                    logger.error("Error sending scheduled message %s: %s", msg['id'], e)
-                    # Still mark as sent to prevent infinite retries
+                    logger.error("Error sending scheduled message %s (marking sent): %s", msg['id'], e)
                     await message_scheduler.mark_sent(msg['id'])
 
         except Exception as e:

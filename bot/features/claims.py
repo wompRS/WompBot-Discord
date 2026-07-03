@@ -281,10 +281,16 @@ If no contradiction, respond with:
                 result = json.loads(json_match.group())
 
                 if result.get('contradicts'):
-                    return {
-                        'contradicted_claim': past_claims[result['claim_number'] - 1],
-                        'explanation': result['explanation']
-                    }
+                    idx = result.get('claim_number')
+                    if isinstance(idx, int) and 1 <= idx <= len(past_claims):
+                        return {
+                            'contradicted_claim': past_claims[idx - 1],
+                            'explanation': result.get('explanation', '')
+                        }
+                    logger.warning(
+                        "Contradiction check returned invalid claim_number %r (have %d claims)",
+                        idx, len(past_claims)
+                    )
 
             return None
 

@@ -76,3 +76,6 @@ setup_automatic_backups.bat
 BACKUP_PIPELINE_SETUP.md
 backup_sync.log
 backup_incremental.log
+
+# Editor/AI backup files
+*.backup

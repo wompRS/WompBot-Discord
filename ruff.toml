@@ -1,0 +1,17 @@
+# Ruff config for WompBot.
+#
+# Strategy: this is a large legacy codebase, so we enforce only the "real bug"
+# rule set in CI (undefined names, syntax errors, broken comparisons) — the class
+# of defect that caused several commands to ship completely broken. Stylistic /
+# cleanup rules (unused imports F401, unused vars F841, f-strings F541) are left
+# as warnings you can run locally with `ruff check bot --select F` and clean up
+# incrementally. Do NOT blanket `--fix` F401 here: some imports (e.g.
+# `import psycopg2.pool`) are side-effecting and removing them breaks startup.
+
+line-length = 120
+target-version = "py311"
+extend-exclude = ["**/__pycache__", "*.backup"]
+
+[lint]
+# E9   = syntax errors (E999) ; F63/F7/F82 = pyflakes "logic/undefined" bug set
+select = ["E9", "F63", "F7", "F82"]

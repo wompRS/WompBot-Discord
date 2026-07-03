@@ -312,12 +312,10 @@ class EventSystem:
                     ))
 
                     event_id = cur.fetchone()[0]
-                    conn.commit()
                     return event_id
 
         except Exception as e:
             print(f"❌ Error creating event: {e}")
-            conn.rollback()
             return None
 
     async def get_upcoming_events(self, guild_id: int, limit: int = 10) -> List[Dict]:
@@ -372,17 +370,15 @@ class EventSystem:
                     cur.execute("""
                         UPDATE events
                         SET cancelled = TRUE, cancelled_at = NOW()
-                        WHERE id = %s AND cancelled = FALSE AND created_by = %s
+                        WHERE id = %s AND cancelled = FALSE AND created_by_user_id = %s
                         RETURNING id
                     """, (event_id, user_id))
 
                     result = cur.fetchone()
-                    conn.commit()
                     return result is not None
 
         except Exception as e:
             print(f"❌ Error cancelling event: {e}")
-            conn.rollback()
             return False
 
     async def get_events_needing_reminders(self) -> List[Dict]:
@@ -485,12 +481,10 @@ class EventSystem:
                         WHERE id = %s
                     """, (interval, event_id))
 
-                    conn.commit()
                     return True
 
         except Exception as e:
             print(f"❌ Error marking reminder sent: {e}")
-            conn.rollback()
             return False
 
     def format_time_until(self, event_date: datetime) -> str:

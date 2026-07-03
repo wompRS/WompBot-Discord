@@ -39,10 +39,11 @@ MODEL_PRICING = {
 COST_ALERT_THRESHOLD = float(os.getenv('COST_ALERT_THRESHOLD', '1.00'))
 
 class CostTracker:
-    def __init__(self, db, bot):
+    def __init__(self, db, bot, wompie_user_id=None):
         self.db = db
         self.bot = bot
-        self.wompie_username = 'wompie__'
+        self.wompie_user_id = wompie_user_id
+        self.wompie_username = 'wompie__'  # fallback only; usernames are mutable
 
     def calculate_cost(self, model, input_tokens, output_tokens):
         """Calculate cost for a model's token usage"""
@@ -102,16 +103,25 @@ class CostTracker:
     async def send_cost_alert(self, threshold, total_cost):
         """Send DM to wompie__ about cost threshold"""
         try:
-            # Find wompie__ in all guilds
+            # Resolve the alert recipient by stable user ID (usernames are mutable)
             wompie_user = None
-            for guild in self.bot.guilds:
-                member = discord.utils.get(guild.members, name=self.wompie_username)
-                if member:
-                    wompie_user = member
-                    break
+            if self.wompie_user_id:
+                wompie_user = self.bot.get_user(self.wompie_user_id)
+                if wompie_user is None:
+                    try:
+                        wompie_user = await self.bot.fetch_user(self.wompie_user_id)
+                    except discord.HTTPException:
+                        wompie_user = None
+            if wompie_user is None:
+                # Fallback: search by username across guilds
+                for guild in self.bot.guilds:
+                    member = discord.utils.get(guild.members, name=self.wompie_username)
+                    if member:
+                        wompie_user = member
+                        break
 
             if not wompie_user:
-                logger.warning("Could not find user %s to send cost alert", self.wompie_username)
+                logger.warning("Could not find Wompie (id=%s) to send cost alert", self.wompie_user_id)
                 return
 
             # Get breakdown by model

@@ -787,6 +787,15 @@ def register_prefix_game_commands(bot, db, llm=None, debate_scorekeeper=None,
                     )
                     return
 
+                # Rate-limit LLM-backed game starts (per user, across channels) to prevent cost abuse
+                rate = await asyncio.to_thread(
+                    db.check_feature_rate_limit, ctx.author.id, 'game_start', 30, 10
+                )
+                if not rate['allowed']:
+                    await ctx.send(f"⏳ {rate['reason']}")
+                    return
+                await asyncio.to_thread(db.record_feature_usage, ctx.author.id, 'game_start')
+
                 async with ctx.typing():
                     result = await devils_advocate.start_session(
                         channel_id=ctx.channel.id,
@@ -846,6 +855,15 @@ def register_prefix_game_commands(bot, db, llm=None, debate_scorekeeper=None,
                         "Use `!jend` to end it first."
                     )
                     return
+
+                # Rate-limit LLM-backed game starts (per user, across channels) to prevent cost abuse
+                rate = await asyncio.to_thread(
+                    db.check_feature_rate_limit, ctx.author.id, 'game_start', 30, 10
+                )
+                if not rate['allowed']:
+                    await ctx.send(f"⏳ {rate['reason']}")
+                    return
+                await asyncio.to_thread(db.record_feature_usage, ctx.author.id, 'game_start')
 
                 async with ctx.typing():
                     result = await jeopardy.start_game(

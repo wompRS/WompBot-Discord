@@ -20,8 +20,9 @@ setup_logging(
 logger = get_logger(__name__)
 
 from database import Database
+from db_migrations import run_migrations
+from health import make_health_starter
 from llm import LLMClient
-from local_llm import LocalLLMClient
 from cost_tracker import CostTracker
 from search import SearchEngine
 from rag import RAGSystem
@@ -41,10 +42,8 @@ from features.iracing import iRacingIntegration
 from features.iracing_teams import iRacingTeamManager
 from features.trivia import TriviaSystem
 from credential_manager import CredentialManager
-from iracing_graphics import iRacingGraphics
 from self_knowledge import SelfKnowledge
 from features.help_system import HelpSystem
-from backup_manager import BackupManager
 
 # Import registration functions
 from tasks.background_jobs import register_tasks
@@ -69,10 +68,20 @@ bot = commands.Bot(command_prefix='!', intents=intents, help_command=None)  # Di
 
 # Initialize components
 db = Database()
+# Apply any pending schema migrations (idempotent; safe on fresh and existing DBs)
+run_migrations(db)
+
+# Start a /health endpoint (bot ready + DB SELECT 1) via setup_hook for container health checks
+_start_health = make_health_starter(bot, db, port=int(os.getenv('HEALTH_PORT', '8080')))
+_orig_setup_hook = bot.setup_hook
+async def _setup_hook():
+    await _orig_setup_hook()
+    await _start_health()
+bot.setup_hook = _setup_hook
+
 cache = get_cache()  # Redis cache for faster access to hot data
 cost_tracker = None  # Will be initialized in on_ready when bot is available
 llm = LLMClient(cost_tracker=None)  # Cost tracker will be set in on_ready
-local_llm = LocalLLMClient()  # Local uncensored LLM (optional)
 search = SearchEngine()
 
 # Initialize Wolfram Alpha and Weather APIs (optional)
@@ -251,7 +260,8 @@ register_events(
     reminder_system=reminder_system,
     who_said_it=who_said_it,
     devils_advocate=devils_advocate,
-    jeopardy=jeopardy
+    jeopardy=jeopardy,
+    iracing_viz=iracing_viz
 )
 
 # Register prefix commands

@@ -156,13 +156,13 @@ class WhoSaidItGame:
         if not correct_answer:
             return None
 
-        # Fuzzy match: case-insensitive, check if guess contains the username or vice versa
+        # Fuzzy match: case-insensitive. Require a minimum-length substring match so
+        # trivially short guesses (1-2 chars) can't win.
         guess_lower = guess.lower().strip()
         answer_lower = correct_answer.lower().strip()
-        is_correct = (
-            guess_lower == answer_lower or
-            guess_lower in answer_lower or
-            answer_lower in guess_lower
+        is_correct = guess_lower == answer_lower or (
+            len(guess_lower) >= 3 and len(answer_lower) >= 3 and
+            (guess_lower in answer_lower or answer_lower in guess_lower)
         )
 
         # Initialize scorer

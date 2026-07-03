@@ -557,9 +557,13 @@ class ToolExecutor:
                         for result in results:
                             image_url = result.get('image')
                             if image_url and image_url.startswith('http'):
+                                # SSRF guard: skip URLs resolving to internal/private addresses,
+                                # and don't follow redirects (a result could 302 to an internal host).
+                                if self._is_internal_url(image_url):
+                                    continue
                                 # Verify the image is accessible
                                 try:
-                                    check = self.session.head(image_url, headers=headers, timeout=5, allow_redirects=True)
+                                    check = self.session.head(image_url, headers=headers, timeout=5, allow_redirects=False)
                                     if check.status_code == 200:
                                         return {
                                             'url': image_url,
@@ -1592,9 +1596,13 @@ class ToolExecutor:
 
         try:
             def do_convert():
-                # Frankfurter API - free, no key required
-                url = f"https://api.frankfurter.app/latest?amount={amount}&from={from_curr}&to={to_curr}"
-                resp = self.session.get(url, timeout=10)
+                # Frankfurter API - free, no key required. Pass params via dict so requests
+                # URL-encodes the (LLM-provided) currency codes/amount (avoids param injection).
+                resp = self.session.get(
+                    "https://api.frankfurter.app/latest",
+                    params={"amount": amount, "from": from_curr, "to": to_curr},
+                    timeout=10,
+                )
                 return resp
 
             response = await asyncio.to_thread(do_convert)

@@ -10,7 +10,7 @@ import logging
 import discord
 from discord import app_commands
 from datetime import datetime, timedelta, timezone
-from typing import Optional, Dict, Literal
+from typing import Optional, Dict, List, Literal
 from collections import Counter
 from features.admin_utils import is_bot_admin, is_bot_admin_interaction, is_super_admin, SUPER_ADMIN_IDS
 

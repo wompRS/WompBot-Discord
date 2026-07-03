@@ -22,7 +22,8 @@ def register_events(bot, db, privacy_manager, claims_tracker, debate_scorekeeper
                     hot_takes_tracker, fact_checker, wompie_user_id, wompie_username,
                     tasks_dict, search, self_knowledge, wolfram=None, weather=None,
                     series_cache=None, trivia=None, reminder_system=None,
-                    who_said_it=None, devils_advocate=None, jeopardy=None):
+                    who_said_it=None, devils_advocate=None, jeopardy=None,
+                    iracing_viz=None):
     """
     Register all Discord event handlers with the bot.
 
@@ -75,7 +76,7 @@ def register_events(bot, db, privacy_manager, claims_tracker, debate_scorekeeper
                     break
 
         # Initialize cost tracker with bot instance
-        cost_tracker_instance = CostTracker(db, bot)
+        cost_tracker_instance = CostTracker(db, bot, wompie_user_id[0])
         llm.cost_tracker = cost_tracker_instance
         logger.info("Cost tracking enabled - alerts every $1")
 
@@ -87,12 +88,12 @@ def register_events(bot, db, privacy_manager, claims_tracker, debate_scorekeeper
         # Setup iRacing team commands BEFORE syncing
         from iracing_team_commands import setup_iracing_team_commands
         from iracing_event_commands import setup_iracing_event_commands
-        setup_iracing_team_commands(bot, iracing_team_manager)
+        setup_iracing_team_commands(bot, iracing_team_manager, iracing_viz)
         if iracing:  # Event commands need iRacing API client
-            setup_iracing_event_commands(bot, iracing_team_manager, iracing.client)
+            setup_iracing_event_commands(bot, iracing_team_manager, iracing.client, iracing_viz)
         else:
             # Set up event commands without API features
-            setup_iracing_event_commands(bot, iracing_team_manager, None)
+            setup_iracing_event_commands(bot, iracing_team_manager, None, iracing_viz)
         logger.info("iRacing team & event commands registered")
 
         # Sync slash commands with Discord (guild-specific for instant updates)
@@ -584,7 +585,8 @@ def register_events(bot, db, privacy_manager, claims_tracker, debate_scorekeeper
             fact_check_cooldown = int(os.getenv('FACT_CHECK_COOLDOWN', '300'))  # 5 minutes default
             fact_check_daily_limit = int(os.getenv('FACT_CHECK_DAILY_LIMIT', '10'))  # 10 per day default
 
-            rate_limit_check = db.check_feature_rate_limit(
+            rate_limit_check = await asyncio.to_thread(
+                db.check_feature_rate_limit,
                 user.id,
                 'fact_check',
                 cooldown_seconds=fact_check_cooldown,
@@ -617,7 +619,7 @@ def register_events(bot, db, privacy_manager, claims_tracker, debate_scorekeeper
 
                 # Record usage if successful
                 if result['success']:
-                    db.record_feature_usage(user.id, 'fact_check')
+                    await asyncio.to_thread(db.record_feature_usage, user.id, 'fact_check')
 
                 if result['success']:
                     # Parse verdict emoji

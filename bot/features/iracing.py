@@ -28,6 +28,7 @@ class iRacingIntegration:
         self._client_lock = asyncio.Lock()
         self._cache = {}
         self._cache_expiry = {}
+        self._cache_max = 512  # cap to avoid unbounded growth over long uptimes
 
         # Asset caches with logo URLs
         self._cars_cache = None
@@ -57,15 +58,30 @@ class iRacingIntegration:
             return False
         return datetime.now() < self._cache_expiry[key]
 
+    def _evict_cache(self):
+        """Drop expired entries; if still at capacity, drop the soonest-to-expire ones."""
+        now = datetime.now()
+        for k in [k for k, exp in self._cache_expiry.items() if exp < now]:
+            self._cache.pop(k, None)
+            self._cache_expiry.pop(k, None)
+        while len(self._cache) >= self._cache_max and self._cache_expiry:
+            oldest = min(self._cache_expiry, key=self._cache_expiry.get)
+            self._cache.pop(oldest, None)
+            self._cache_expiry.pop(oldest, None)
+
     def _set_cache(self, key: str, data, ttl_minutes: int = 15):
-        """Cache data with expiry"""
+        """Cache data with expiry (bounded to avoid unbounded growth)."""
+        if key not in self._cache and len(self._cache) >= self._cache_max:
+            self._evict_cache()
         self._cache[key] = data
         self._cache_expiry[key] = datetime.now() + timedelta(minutes=ttl_minutes)
 
     def _get_cache(self, key: str):
-        """Get cached data if valid"""
+        """Get cached data if valid; evict stale entries on access."""
         if self._is_cache_valid(key):
             return self._cache.get(key)
+        self._cache.pop(key, None)
+        self._cache_expiry.pop(key, None)
         return None
 
     async def get_current_series(self) -> List[Dict]:

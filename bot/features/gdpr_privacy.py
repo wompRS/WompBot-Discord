@@ -10,6 +10,7 @@ import time
 from datetime import datetime, timedelta
 from typing import Optional, Dict, List
 import psycopg2.extras
+from cachetools import TTLCache
 
 logger = logging.getLogger(__name__)
 
@@ -29,8 +30,9 @@ class GDPRPrivacyManager:
             database: Database instance
         """
         self.db = database
-        self._consent_cache = {}  # {user_id: {'status': result, 'expires': timestamp}}
         self._consent_cache_ttl = 300  # 5 minutes
+        # Bounded + auto-expiring so it can't grow unbounded across many distinct users
+        self._consent_cache = TTLCache(maxsize=4096, ttl=self._consent_cache_ttl)
 
     def log_audit_action(self, user_id: int, action: str, details: str = None,
                         performed_by: int = None, success: bool = True, error: str = None):
@@ -391,12 +393,12 @@ class GDPRPrivacyManager:
                         'account_age_days': (datetime.now() - data_export['profile']['first_seen']).days if data_export['profile'] else 0
                     }
 
-            # Record successful export
-            cur.execute("""
-                INSERT INTO data_export_requests
-                (user_id, username, status, completed_date, expires_at)
-                VALUES (%s, %s, 'completed', NOW(), NOW() + INTERVAL '48 hours')
-            """, (user_id, data_export['profile'].get('username', 'Unknown') if data_export['profile'] else 'Unknown'))
+                    # Record successful export (must run while the cursor/connection is still open)
+                    cur.execute("""
+                        INSERT INTO data_export_requests
+                        (user_id, username, status, completed_date, expires_at)
+                        VALUES (%s, %s, 'completed', NOW(), NOW() + INTERVAL '48 hours')
+                    """, (user_id, data_export['profile'].get('username', 'Unknown') if data_export['profile'] else 'Unknown'))
 
             self.log_audit_action(user_id, 'data_export_completed',
                                 f"Exported {data_export['summary']['total_messages']} messages")

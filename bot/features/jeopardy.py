@@ -462,8 +462,9 @@ class JeopardyGame:
         if similarity >= threshold:
             return (True, similarity)
 
-        # Check exact containment
-        if correct_norm in normalized or normalized in correct_norm:
+        # Check substantial containment (min length + coverage so short guesses don't win)
+        shorter, longer = sorted((correct_norm, normalized), key=len)
+        if len(shorter) >= 4 and shorter in longer and len(shorter) >= len(longer) * 0.6:
             return (True, 0.95)
 
         # Check alternatives
