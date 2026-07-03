@@ -42,7 +42,10 @@ class Database:
                     database=os.getenv('DB_NAME', 'discord_bot'),
                     user=os.getenv('DB_USER', 'botuser'),
                     password=os.getenv('DB_PASSWORD'),
-                    connect_timeout=10
+                    connect_timeout=10,
+                    # Cap any single statement at 30s so a pathological query can't pin a
+                    # pooled connection open forever.
+                    options='-c statement_timeout=30000'
                 )
                 logger.info(f"✅ Database connection pool created ({min_connections}-{max_connections} connections)")
                 return
@@ -56,8 +59,24 @@ class Database:
 
     @contextmanager
     def get_connection(self):
-        """Get a transactional connection from the pool"""
-        conn = self.pool.getconn()
+        """Get a transactional connection from the pool.
+
+        The event-loop default executor allows up to 100 concurrent worker threads
+        but the pool tops out at ~25 connections, so getconn() can hit PoolError under
+        load. Wait (bounded) for a free connection instead of failing immediately —
+        turning silent exhaustion errors into honest backpressure. This runs in worker
+        threads (via asyncio.to_thread), so the short sleeps don't block the event loop.
+        """
+        conn = None
+        for attempt in range(100):  # up to ~5s of backpressure before giving up
+            try:
+                conn = self.pool.getconn()
+                break
+            except pool.PoolError:
+                if attempt == 99:
+                    logger.error("DB pool exhausted after waiting ~5s; raising")
+                    raise
+                time.sleep(0.05)
         try:
             yield conn
             conn.commit()
