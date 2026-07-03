@@ -585,7 +585,8 @@ def register_events(bot, db, privacy_manager, claims_tracker, debate_scorekeeper
             fact_check_cooldown = int(os.getenv('FACT_CHECK_COOLDOWN', '300'))  # 5 minutes default
             fact_check_daily_limit = int(os.getenv('FACT_CHECK_DAILY_LIMIT', '10'))  # 10 per day default
 
-            rate_limit_check = db.check_feature_rate_limit(
+            rate_limit_check = await asyncio.to_thread(
+                db.check_feature_rate_limit,
                 user.id,
                 'fact_check',
                 cooldown_seconds=fact_check_cooldown,
@@ -618,7 +619,7 @@ def register_events(bot, db, privacy_manager, claims_tracker, debate_scorekeeper
 
                 # Record usage if successful
                 if result['success']:
-                    db.record_feature_usage(user.id, 'fact_check')
+                    await asyncio.to_thread(db.record_feature_usage, user.id, 'fact_check')
 
                 if result['success']:
                     # Parse verdict emoji
