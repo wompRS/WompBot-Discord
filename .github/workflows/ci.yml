@@ -29,3 +29,16 @@ jobs:
           python-version: "3.11"
       - name: compileall (catches syntax errors before deploy)
         run: python -m compileall -q bot
+
+  test:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install pytest
+        run: pip install pytest
+      - name: Run pure-logic tests (no external services needed)
+        run: pytest

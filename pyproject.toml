@@ -1,0 +1,5 @@
+[tool.pytest.ini_options]
+# bot/ is on sys.path so tests can `import constants`, `from features.x import ...`
+pythonpath = ["bot"]
+testpaths = ["tests"]
+addopts = "-q"
