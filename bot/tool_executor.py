@@ -1592,9 +1592,13 @@ class ToolExecutor:
 
         try:
             def do_convert():
-                # Frankfurter API - free, no key required
-                url = f"https://api.frankfurter.app/latest?amount={amount}&from={from_curr}&to={to_curr}"
-                resp = self.session.get(url, timeout=10)
+                # Frankfurter API - free, no key required. Pass params via dict so requests
+                # URL-encodes the (LLM-provided) currency codes/amount (avoids param injection).
+                resp = self.session.get(
+                    "https://api.frankfurter.app/latest",
+                    params={"amount": amount, "from": from_curr, "to": to_curr},
+                    timeout=10,
+                )
                 return resp
 
             response = await asyncio.to_thread(do_convert)
