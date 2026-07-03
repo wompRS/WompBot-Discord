@@ -21,6 +21,7 @@ logger = get_logger(__name__)
 
 from database import Database
 from db_migrations import run_migrations
+from health import make_health_starter
 from llm import LLMClient
 from cost_tracker import CostTracker
 from search import SearchEngine
@@ -69,6 +70,15 @@ bot = commands.Bot(command_prefix='!', intents=intents, help_command=None)  # Di
 db = Database()
 # Apply any pending schema migrations (idempotent; safe on fresh and existing DBs)
 run_migrations(db)
+
+# Start a /health endpoint (bot ready + DB SELECT 1) via setup_hook for container health checks
+_start_health = make_health_starter(bot, db, port=int(os.getenv('HEALTH_PORT', '8080')))
+_orig_setup_hook = bot.setup_hook
+async def _setup_hook():
+    await _orig_setup_hook()
+    await _start_health()
+bot.setup_hook = _setup_hook
+
 cache = get_cache()  # Redis cache for faster access to hot data
 cost_tracker = None  # Will be initialized in on_ready when bot is available
 llm = LLMClient(cost_tracker=None)  # Cost tracker will be set in on_ready
