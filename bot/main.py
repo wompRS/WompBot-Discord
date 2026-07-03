@@ -22,7 +22,6 @@ logger = get_logger(__name__)
 from database import Database
 from db_migrations import run_migrations
 from llm import LLMClient
-from local_llm import LocalLLMClient
 from cost_tracker import CostTracker
 from search import SearchEngine
 from rag import RAGSystem
@@ -42,10 +41,8 @@ from features.iracing import iRacingIntegration
 from features.iracing_teams import iRacingTeamManager
 from features.trivia import TriviaSystem
 from credential_manager import CredentialManager
-from iracing_graphics import iRacingGraphics
 from self_knowledge import SelfKnowledge
 from features.help_system import HelpSystem
-from backup_manager import BackupManager
 
 # Import registration functions
 from tasks.background_jobs import register_tasks
@@ -75,7 +72,6 @@ run_migrations(db)
 cache = get_cache()  # Redis cache for faster access to hot data
 cost_tracker = None  # Will be initialized in on_ready when bot is available
 llm = LLMClient(cost_tracker=None)  # Cost tracker will be set in on_ready
-local_llm = LocalLLMClient()  # Local uncensored LLM (optional)
 search = SearchEngine()
 
 # Initialize Wolfram Alpha and Weather APIs (optional)
