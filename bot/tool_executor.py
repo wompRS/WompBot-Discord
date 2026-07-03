@@ -557,9 +557,13 @@ class ToolExecutor:
                         for result in results:
                             image_url = result.get('image')
                             if image_url and image_url.startswith('http'):
+                                # SSRF guard: skip URLs resolving to internal/private addresses,
+                                # and don't follow redirects (a result could 302 to an internal host).
+                                if self._is_internal_url(image_url):
+                                    continue
                                 # Verify the image is accessible
                                 try:
-                                    check = self.session.head(image_url, headers=headers, timeout=5, allow_redirects=True)
+                                    check = self.session.head(image_url, headers=headers, timeout=5, allow_redirects=False)
                                     if check.status_code == 200:
                                         return {
                                             'url': image_url,
