@@ -22,7 +22,8 @@ CREATE TABLE IF NOT EXISTS iracing_meta_cache (
 CREATE INDEX IF NOT EXISTS idx_meta_cache_key ON iracing_meta_cache(cache_key);
 CREATE INDEX IF NOT EXISTS idx_meta_cache_series ON iracing_meta_cache(series_id, season_id, week_num);
 CREATE INDEX IF NOT EXISTS idx_meta_cache_expires ON iracing_meta_cache(expires_at);
-CREATE INDEX IF NOT EXISTS idx_meta_cache_expired ON iracing_meta_cache(expires_at) WHERE expires_at < NOW();
+-- (removed a partial index with a NOW() predicate: index predicates must be IMMUTABLE,
+--  and idx_meta_cache_expires above already serves expiry range queries)
 
 -- Add comments
 COMMENT ON TABLE iracing_meta_cache IS 'Cached meta analysis results for iRacing series to avoid re-processing races';

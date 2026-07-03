@@ -20,6 +20,7 @@ setup_logging(
 logger = get_logger(__name__)
 
 from database import Database
+from db_migrations import run_migrations
 from llm import LLMClient
 from local_llm import LocalLLMClient
 from cost_tracker import CostTracker
@@ -69,6 +70,8 @@ bot = commands.Bot(command_prefix='!', intents=intents, help_command=None)  # Di
 
 # Initialize components
 db = Database()
+# Apply any pending schema migrations (idempotent; safe on fresh and existing DBs)
+run_migrations(db)
 cache = get_cache()  # Redis cache for faster access to hot data
 cost_tracker = None  # Will be initialized in on_ready when bot is available
 llm = LLMClient(cost_tracker=None)  # Cost tracker will be set in on_ready
