@@ -10,6 +10,7 @@ import time
 from datetime import datetime, timedelta
 from typing import Optional, Dict, List
 import psycopg2.extras
+from cachetools import TTLCache
 
 logger = logging.getLogger(__name__)
 
@@ -29,8 +30,9 @@ class GDPRPrivacyManager:
             database: Database instance
         """
         self.db = database
-        self._consent_cache = {}  # {user_id: {'status': result, 'expires': timestamp}}
         self._consent_cache_ttl = 300  # 5 minutes
+        # Bounded + auto-expiring so it can't grow unbounded across many distinct users
+        self._consent_cache = TTLCache(maxsize=4096, ttl=self._consent_cache_ttl)
 
     def log_audit_action(self, user_id: int, action: str, details: str = None,
                         performed_by: int = None, success: bool = True, error: str = None):
