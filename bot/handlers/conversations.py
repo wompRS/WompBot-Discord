@@ -6,6 +6,7 @@ and leaderboard generation.
 """
 
 import asyncio
+import json
 import logging
 import os
 import random
@@ -227,6 +228,23 @@ async def _execute_tool_calls(tool_calls, tool_executor, message, channel_id, gu
     return images_to_send, text_responses, tool_results, tool_names
 
 
+def _serialize_tool_call_args(tool_calls):
+    """Ensure each tool_call's function.arguments is a JSON *string*.
+
+    The OpenAI-compatible chat schema requires string arguments when echoing an
+    assistant tool-call message back; some providers return a dict (which our executor
+    tolerates), and replaying that raw would 400 on the next request. Serialize dicts.
+    """
+    normalized = []
+    for tc in tool_calls:
+        fn = tc.get("function", {})
+        args = fn.get("arguments")
+        if isinstance(args, dict):
+            tc = {**tc, "function": {**fn, "arguments": json.dumps(args)}}
+        normalized.append(tc)
+    return normalized
+
+
 async def _run_agent_loop(initial_response, tools, llm, tool_executor, message, channel_id,
                           guild_id, status_msg, max_steps=4):
     """Multi-step tool-use loop (feature-flagged via AGENT_LOOP).
@@ -251,7 +269,7 @@ async def _run_agent_loop(initial_response, tools, llm, tool_executor, message, 
         all_images.extend(images)
 
         # Thread the assistant tool-call turn + exactly one tool result per call
-        messages.append({"role": "assistant", "content": assistant_text or None, "tool_calls": tool_calls})
+        messages.append({"role": "assistant", "content": assistant_text or None, "tool_calls": _serialize_tool_call_args(tool_calls)})
         for i, tc in enumerate(tool_calls):
             result_str = tool_results[i] if i < len(tool_results) else "(no result)"
             messages.append({"role": "tool", "tool_call_id": tc.get("id"), "content": str(result_str)[:4000]})
