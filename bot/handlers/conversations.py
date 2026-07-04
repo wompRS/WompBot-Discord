@@ -227,6 +227,58 @@ async def _execute_tool_calls(tool_calls, tool_executor, message, channel_id, gu
     return images_to_send, text_responses, tool_results, tool_names
 
 
+async def _run_agent_loop(initial_response, tools, llm, tool_executor, message, channel_id,
+                          guild_id, status_msg, max_steps=4):
+    """Multi-step tool-use loop (feature-flagged via AGENT_LOOP).
+
+    Executes the model's tool calls, threads each result back as a role:'tool' message,
+    and re-calls the LLM with tools STILL enabled so it can chain tools (e.g. web_search
+    then create a chart from the results) or self-correct — instead of the single-pass
+    stringify-and-synthesize path. Returns (final_text, all_images_to_send).
+    """
+    messages = list(initial_response.get("messages") or [])
+    model = initial_response.get("model")
+    max_tokens = initial_response.get("max_tokens")
+    tool_calls = initial_response.get("tool_calls") or []
+    assistant_text = initial_response.get("response_text", "")
+    all_images = []
+    final_text = ""
+
+    for step in range(max_steps):
+        images, _text_responses, tool_results, _tool_names = await _execute_tool_calls(
+            tool_calls, tool_executor, message, channel_id, guild_id
+        )
+        all_images.extend(images)
+
+        # Thread the assistant tool-call turn + exactly one tool result per call
+        messages.append({"role": "assistant", "content": assistant_text or None, "tool_calls": tool_calls})
+        for i, tc in enumerate(tool_calls):
+            result_str = tool_results[i] if i < len(tool_results) else "(no result)"
+            messages.append({"role": "tool", "tool_call_id": tc.get("id"), "content": str(result_str)[:4000]})
+
+        try:
+            if status_msg:
+                await status_msg.edit(content="🤔 Analyzing results...")
+        except Exception:
+            pass
+
+        msg = await asyncio.to_thread(llm.chat_raw, messages, tools, model, max_tokens)
+        next_calls = msg.get("tool_calls")
+        if not next_calls:
+            final_text = (msg.get("content") or "").strip()
+            break
+        tool_calls = next_calls
+        assistant_text = msg.get("content", "")
+        logger.info("Agent loop step %d: model chained %d more tool call(s)", step + 1, len(next_calls))
+    else:
+        # Hit the step cap — force a final answer with tools disabled
+        logger.info("Agent loop hit max steps (%d); forcing final answer", max_steps)
+        msg = await asyncio.to_thread(llm.chat_raw, messages, None, model, max_tokens)
+        final_text = (msg.get("content") or "").strip()
+
+    return final_text, all_images
+
+
 async def _send_tool_output(message, images_to_send, text_responses):
     """Send tool-generated images and text responses to Discord.
 
@@ -1186,34 +1238,47 @@ async def handle_bot_mention(message, opted_out, bot, db, llm, cost_tracker, sea
                 else:
                     status_msg = await message.channel.send(status_text)
 
-                # Execute all tool calls in parallel with timeout
-                images_to_send, text_responses, tool_results, tool_names = await _execute_tool_calls(
-                    response["tool_calls"], tool_executor, message,
-                    message.channel.id, message.guild.id if message.guild else None
-                )
+                if os.getenv('AGENT_LOOP', 'false').lower() == 'true':
+                    # Agentic multi-step tool loop (feature-flagged): lets the model chain
+                    # tools (e.g. web_search -> create a chart) and self-correct instead of a
+                    # single pass. Falls back to the else-branch behavior when disabled.
+                    final_text, images_to_send = await _run_agent_loop(
+                        response, tools_for_request, llm, tool_executor, message,
+                        message.channel.id, message.guild.id if message.guild else None,
+                        status_msg
+                    )
+                    await _send_tool_output(message, images_to_send, [])
+                    response = final_text
+                    await status_msg.delete()
+                else:
+                    # Execute all tool calls in parallel with timeout
+                    images_to_send, text_responses, tool_results, tool_names = await _execute_tool_calls(
+                        response["tool_calls"], tool_executor, message,
+                        message.channel.id, message.guild.id if message.guild else None
+                    )
 
-                # Send tool output (images and text) to Discord
-                await _send_tool_output(message, images_to_send, text_responses)
+                    # Send tool output (images and text) to Discord
+                    await _send_tool_output(message, images_to_send, text_responses)
 
-                # Synthesize tool results if needed
-                initial_response_text = response.get("response_text", "").strip()
+                    # Synthesize tool results if needed
+                    initial_response_text = response.get("response_text", "").strip()
 
-                # Update status to show we're analyzing (if synthesis will happen)
-                has_search_results = any("web_search:" in tr for tr in tool_results)
-                only_self_contained = all(tn in SELF_CONTAINED_TOOLS for tn in tool_names)
-                if tool_results and (has_search_results or (not only_self_contained and not initial_response_text)):
-                    await status_msg.edit(content="🤔 Analyzing results...")
+                    # Update status to show we're analyzing (if synthesis will happen)
+                    has_search_results = any("web_search:" in tr for tr in tool_results)
+                    only_self_contained = all(tn in SELF_CONTAINED_TOOLS for tn in tool_names)
+                    if tool_results and (has_search_results or (not only_self_contained and not initial_response_text)):
+                        await status_msg.edit(content="🤔 Analyzing results...")
 
-                response = await _synthesize_tool_response(
-                    tool_results, tool_names, content,
-                    conversation_history, llm, user_context,
-                    context_for_llm, rag_context, bot.user.id,
-                    is_text_mention, message.author.id,
-                    str(message.author), personality,
-                    initial_response_text, has_viz=has_viz
-                )
+                    response = await _synthesize_tool_response(
+                        tool_results, tool_names, content,
+                        conversation_history, llm, user_context,
+                        context_for_llm, rag_context, bot.user.id,
+                        is_text_mention, message.author.id,
+                        str(message.author), personality,
+                        initial_response_text, has_viz=has_viz
+                    )
 
-                await status_msg.delete()
+                    await status_msg.delete()
 
             # Check if response is empty (but allow None for tool-only responses)
             if response is not None and (not response or (isinstance(response, str) and len(response.strip()) == 0)):
