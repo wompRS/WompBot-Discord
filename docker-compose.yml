@@ -93,6 +93,8 @@ services:
       MAX_CONCURRENT_REQUESTS: ${MAX_CONCURRENT_REQUESTS}
       WRAPPED_COOLDOWN: ${WRAPPED_COOLDOWN}
       IRACING_LEADERBOARD_COOLDOWN: ${IRACING_LEADERBOARD_COOLDOWN}
+      # Agentic multi-step tool loop (chained tools / self-correction); off by default
+      AGENT_LOOP: ${AGENT_LOOP:-false}
       # Compression settings
       ENABLE_COMPRESSION: ${ENABLE_COMPRESSION:-true}
       COMPRESSION_RATE: ${COMPRESSION_RATE:-0.6}
