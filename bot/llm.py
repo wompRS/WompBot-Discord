@@ -401,6 +401,58 @@ Be useful and real. That's the balance."""
     
     MAX_HISTORY_CHARS = int(os.getenv('MAX_HISTORY_CHARS', '50000'))  # Increased - was 6000
 
+    def chat_raw(self, messages, tools=None, model=None, max_tokens=None, temperature=0.7):
+        """Single chat-completion call over an EXPLICIT message list, returning the raw
+        assistant message dict ({'content': str, 'tool_calls': [...]}). Used by the agent
+        loop to continue a tool-use conversation with role:'tool' results threaded in.
+        Reuses the same OpenRouter endpoint + transient-error retry as generate_response.
+        """
+        model = model or self.model
+        if max_tokens is None:
+            max_tokens = int(os.getenv('MAX_TOKENS_PER_REQUEST', '1000'))
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "model": model,
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+        }
+        if tools:
+            payload["tools"] = tools
+            payload["tool_choice"] = "auto"
+
+        max_transient_retries = 3
+        transient_retry = 0
+        response = None
+        while transient_retry <= max_transient_retries:
+            response = self.session.post(self.base_url, headers=headers, json=payload, timeout=(5, 55))
+            if response.status_code in (429, 502, 503):
+                transient_retry += 1
+                if transient_retry > max_transient_retries:
+                    raise requests.HTTPError(f"API error {response.status_code} after retries", response=response)
+                time.sleep(2 ** transient_retry)
+                continue
+            break
+        response.raise_for_status()
+        result = response.json()
+        message = result["choices"][0]["message"]
+
+        usage = result.get("usage", {})
+        if self.cost_tracker and usage.get("prompt_tokens"):
+            try:
+                threading.Thread(
+                    target=self.cost_tracker.record_costs_sync,
+                    args=(model, usage.get("prompt_tokens", 0), usage.get("completion_tokens", 0), 'agent_loop', None, None),
+                    daemon=True,
+                ).start()
+            except Exception as e:
+                logger.warning("Error tracking agent-loop costs: %s", e)
+
+        return message
+
     def generate_response(
         self,
         user_message,
@@ -740,7 +792,10 @@ Use this history to maintain conversation continuity and remember what was discu
                 return {
                     "type": "tool_calls",
                     "tool_calls": tool_calls,
-                    "response_text": response_text  # May be empty if only tool calls
+                    "response_text": response_text,  # May be empty if only tool calls
+                    "messages": messages,            # full message list, for the agent loop to continue
+                    "model": model_to_use,
+                    "max_tokens": max_tokens,
                 }
 
             # Extract token usage for cost tracking
