@@ -46,6 +46,15 @@ docs/guides/AI_SESSION_MANUAL.md
 docs/compliance/GDPR_AUDIT_*.md
 docs/compliance/GDPR_AUDIT_*.txt
 
+# Generated code-review / audit artifacts — never commit (per user)
+review.txt
+review*.txt
+*_Report.pdf
+*_Review_Report.pdf
+*Code_Review*.pdf
+CODE_REVIEW.md
+ARCHITECTURE_VERDICT.md
+
 # LLM Tuning (personal customizations)
 bot/prompts/system_prompt.txt
 
