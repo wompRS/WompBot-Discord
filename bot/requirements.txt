@@ -14,7 +14,7 @@ networkx==3.3  # Updated for bug fixes
 pandas==2.2.2  # Updated for performance improvements
 numpy==1.26.4  # Keep on 1.x branch (numpy 2.x has breaking changes)
 cryptography==48.0.1  # SECURITY: 46.0.3 had 6 CVEs (pip-audit 2026-06); fixed in 48.0.1
-Pillow==12.2.0  # SECURITY: 11.0.0 had 6 CVEs (decodes user images); fixed in 12.2.0
+Pillow==12.3.0  # SECURITY: 11.0.0 had 6 CVEs (decodes user images); fixed in 12.2.0
 matplotlib==3.9.0  # Visualization library for charts and tables
 seaborn==0.13.2  # Statistical visualizations built on matplotlib
 llmlingua==0.2.2  # Prompt compression for reducing context token usage
